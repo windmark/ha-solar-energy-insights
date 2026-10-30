@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -37,3 +38,14 @@ def sunny(*days: date, peak_kw: float = 8.0) -> PvForecast:
 
 def constant(kw: float):
     return lambda _t: kw
+
+
+def house_use(
+    days: int, kwh_at: Callable[[int], float], before: date
+) -> dict[tuple[date, int], float]:
+    """*days* of hourly use ending the day before *before*, the same each day."""
+    return {
+        (before - timedelta(days=n), hour): kwh_at(hour)
+        for n in range(1, days + 1)
+        for hour in range(24)
+    }

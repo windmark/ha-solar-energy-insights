@@ -1,19 +1,22 @@
 # Solar Energy Insights
 
-A Home Assistant integration that plans a home battery against the Solcast forecast and learns how your house uses power. It answers the questions a solar dashboard keeps asking — _when will the battery be full, will it last the night, when should the dishwasher run_ — once, on the server, as entities that automations can use.
+A Home Assistant integration that answers three questions about a home battery:
 
-It reads the entities you already have (battery, power and energy sensors, Solcast) and never talks to a device. With [EF-PowerOcean-TcpModbus](https://github.com/MaxGrmm/EF-PowerOcean-TcpModbus) and [Solcast](https://github.com/BJReplay/ha-solcast-solar) installed, setup fills itself in.
+1. **Will it fill today?** And when, if the sun comes as forecast or if it's cloudier.
+2. **Will it last the night?** And if not, when does it reach the reserve?
+3. **When should heavy loads run?** The window with the most solar to spare.
 
-## What it does
+It reads entities you already have and never talks to a device. With [EF-PowerOcean-TcpModbus](https://github.com/MaxGrmm/EF-PowerOcean-TcpModbus) and [Solcast](https://github.com/BJReplay/ha-solcast-solar) installed, setup fills itself in.
 
-- **Plans the battery** in 30-minute steps until the next sunset and sunrise: Solcast minus the learned house load, with the battery's power limit, round-trip losses and reserve floor.
-- **Learns the house load** per hour of the week, and separately for evenings with and without cooking. Metered appliances are taken out and hours with an unmetered one running are skipped, so the model is the house alone.
-- **Learns appliances** from their smart plugs: energy and length per run.
-- **Corrects Solcast for your roof** per month and hour — but only switches the correction on once it has beaten the raw forecast on the days scored so far.
-- **Keeps a record per day** from the recorder's statistics: energy totals, self-sufficiency, a score, when the battery got full, the forecasts at each lead time, and after sunrise the night that followed (grid use, and whether the battery was the right size).
-- **Values a bigger battery** by replaying every recorded hour with extra capacity.
+## How it answers
 
-Learning reads completed periods from long-term statistics rather than sampling states at midnight, so a restart or a slow counter only delays it. What is learned is kept in `.storage`, not in state attributes.
+**The night is replayed, not modelled.** The battery as it is now is run, in half-hour steps, against each of the last 14 nights as your house actually used power in them, read from the recorder. The answer is how many of those nights it would have lasted:
+
+> Lasts the night on 11 of the last 14 nights. On a heavy night, the reserve is reached around 04:10.
+
+Cooking, the dishwasher and a cold night's heat pump are already in those nights, metered or not. There is nothing to classify, learn or keep: the recorder is the only store, and a restart loses nothing.
+
+**The day** runs Solcast's expected and cloudy case against the house's typical use at each hour. Both runs account for the battery's power limit, round-trip losses and reserve.
 
 ## Installation
 
@@ -25,62 +28,52 @@ Requires Home Assistant 2025.12 or newer and the recorder.
 
 ## Setup
 
-Three steps pick existing entities:
+| Field                      | Entity                                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Battery state of charge    | %                                                                                                       |
+| Battery capacity           | Wh or kWh; while it reports none, the last value is used                                                |
+| Battery reserve (optional) | %, the reserve in force; for PowerOcean, Effective Battery Reserve                                      |
+| House energy               | A counter of the house's use, daily or lifetime; its recorded hours are what the night is replayed from |
+| Grid power (optional)      | To tell when a full battery is exporting                                                                |
+| Solcast today and tomorrow | The forecast sensors, with `detailedForecast`                                                           |
 
-| Step              | Entities                                                                                                      |
-| ----------------- | ------------------------------------------------------------------------------------------------------------- |
-| Battery and power | State of charge, battery power, capacity (Wh or kWh), reserve (optional), solar, house and grid power         |
-| Energy counters   | Solar, house, grid import, grid export, battery charged and discharged — daily or lifetime counters both work |
-| Forecast          | Solcast today and tomorrow (with `detailedForecast`), and optionally day 3 onwards                            |
-
-**Options:** electricity price and feed-in tariff (numbers, or entities that override them), the lowest state of charge the inverter discharges to by itself (default 5 %), the battery power limit, which sign means charging and importing, the cooking threshold, and the battery upgrade to value.
-
-**Appliances** are added as sub-entries (⋮ → Add appliance): a plug's power sensor (and energy counter for exact kWh), or for an appliance without a meter a state entity such as Home Connect's operation state.
+**Options:** how many nights to replay (default 14), the lowest state of charge the inverter discharges to by itself (5 %), the battery's power limit (5 kW), round-trip efficiency (92 %), and which sign means importing.
 
 ## Entities
 
-| Entity                                                              | What it says                                                                                                    |
-| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Plan                                                                | One sentence for now, with the sub-line and up to four answer lines in attributes                               |
-| Battery full at · Battery peak · Battery at sunset                  | Today's charging, or the next day's at night                                                                    |
-| Reserve reached at · Load / Grid until sunrise · Spare at sunrise   | The night ahead, for the most likely evening                                                                    |
-| Best appliance window · Sun covers the house at                     | When to run heavy loads; when solar takes over in the morning                                                   |
-| Self-sufficiency today · Solar score today                          | The day so far (score: own power 40, solar kept 30, battery used 15, performance against the 06:00 forecast 15) |
-| Forecast accuracy                                                   | Actual against the 06:00 forecast, 30 days; the miss at each lead time in attributes                            |
-| Battery sizing                                                      | Last night's verdict: right size, ran out after a full day, or did not get full                                 |
-| Battery upgrade value per year                                      | The configured upgrade, replayed; payback time in attributes                                                    |
-| Battery lasts the night · Free power · On the grid · Cooked tonight | Binary sensors for automations                                                                                  |
-| Per appliance: Energy per run · Run duration · Running              | Learned from the plug, or the configured default                                                                |
-| Load model error · Forecast correction gain                         | Diagnostics: how well the models are doing                                                                      |
+| Entity                      |                                                                                                                |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Battery full at             | Expected; attributes: the cloudy case, and peak % in both                                                      |
+| Battery at sunset           | %                                                                                                              |
+| Nights covered              | % of recent nights the battery would last; attributes: nights, lasting                                         |
+| Reserve reached at          | On a typical recent night; attribute: on a heavy one                                                           |
+| Spare at sunrise            | kWh above the reserve on a typical night; attributes: a heavy night, grid kWh                                  |
+| Best window for heavy loads | Its start; attributes: end, spare kWh                                                                          |
+| Battery lasts the night     | On when a typical recent night lasts                                                                           |
+| Free power                  | On when the battery is full and exporting; the `solar_energy_insights_free_power` event fires when it turns on |
 
-The event `solar_energy_insights_free_power` fires when the battery is full and power is being exported.
+The entities hold facts, not sentences: word them in your dashboard.
 
-## Actions
+## Simulate
 
-- `solar_energy_insights.simulate` — runs the battery to sunrise or sunset with appliances started now, in the expected, cloudy or sunny case, and returns the result and the curve.
-- `solar_energy_insights.value_upgrade` — values a list of added capacities from your recorded hours.
-- `solar_energy_insights.relearn` — forgets the learned load and learns it again from statistics.
+The plan with an extra load started now, such as a dryer:
 
 ```yaml
 action: solar_energy_insights.simulate
 data:
-  appliances: [Dishwasher, Dryer]
-  until: sunrise
-response_variable: night
+  extra_kwh: 2.5
+  extra_hours: 2
+response_variable: with_dryer
 ```
 
 ## For dashboard cards
 
-Cards ask the integration instead of querying the recorder themselves, so every device shows the same numbers:
-
 ```js
-await hass.callWS({ type: "solar_energy_insights/plan" }); // the plan with its battery curve
-await hass.callWS({ type: "solar_energy_insights/days", start: "2026-10-01" }); // day records
-await hass.callWS({ type: "solar_energy_insights/upgrade", sizes: [5, 8, 16] });
+await hass.callWS({ type: "solar_energy_insights/plan" });
 ```
 
-Day records carry yes/no `flags` per day — self-sufficient, battery full, beat the forecast, grid-free night — as the raw material for streaks and badges.
+returns the whole plan: each replayed night, the typical and heavy one, and the battery curve until sunset.
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The models live in `custom_components/solar_energy_insights/core/` as plain Python without Home Assistant imports, and are tested directly.
+See [CONTRIBUTING.md](CONTRIBUTING.md).

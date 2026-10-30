@@ -2,59 +2,25 @@
   "config": {
     "step": {
       "user": {
-        "title": "Battery and power",
-        "description": "Pick the battery and power sensors. With EF-PowerOcean-TcpModbus installed they are filled in.",
+        "title": "Solar Energy Insights",
+        "description": "Pick the battery, the house's energy counter and Solcast. With EF-PowerOcean-TcpModbus and Solcast installed they are filled in.",
         "data": {
           "battery_soc": "Battery state of charge",
-          "battery_power": "Battery power",
           "battery_capacity": "Battery capacity",
           "battery_reserve": "Battery reserve",
-          "solar_power": "Solar power",
-          "house_power": "House power",
-          "grid_power": "Grid power"
-        },
-        "data_description": {
-          "battery_soc": "Percentage of charge (%).",
-          "battery_power": "Power into or out of the battery.",
-          "battery_capacity": "Nominal capacity in Wh or kWh. While it reports none, the last value is used.",
-          "battery_reserve": "The reserve in force, in %. For EF-PowerOcean-TcpModbus use Effective Battery Reserve.",
-          "solar_power": "Total PV power.",
-          "house_power": "What the house uses right now.",
-          "grid_power": "Grid exchange; the sign is set in the options."
-        }
-      },
-      "energy": {
-        "title": "Energy counters",
-        "description": "Pick the energy counters. Long-term statistics are read from them, so daily and lifetime counters both work.",
-        "data": {
-          "solar_energy": "Solar energy",
           "house_energy": "House energy",
-          "grid_import_energy": "Grid import",
-          "grid_export_energy": "Grid export",
-          "battery_charge_energy": "Battery charged",
-          "battery_discharge_energy": "Battery discharged"
-        },
-        "data_description": {
-          "solar_energy": "A counter of solar energy produced; daily or lifetime.",
-          "house_energy": "A counter of energy the house used.",
-          "grid_import_energy": "A counter of energy bought.",
-          "grid_export_energy": "A counter of energy exported.",
-          "battery_charge_energy": "A counter of energy into the battery.",
-          "battery_discharge_energy": "A counter of energy out of the battery."
-        }
-      },
-      "forecast": {
-        "title": "Forecast",
-        "description": "Pick the Solcast forecast sensors.",
-        "data": {
+          "grid_power": "Grid power",
           "solcast_today": "Solcast forecast today",
-          "solcast_tomorrow": "Solcast forecast tomorrow",
-          "solcast_later": "Solcast later days"
+          "solcast_tomorrow": "Solcast forecast tomorrow"
         },
         "data_description": {
+          "battery_soc": "Percentage of charge.",
+          "battery_capacity": "In Wh or kWh. While it reports none, the last value is used.",
+          "battery_reserve": "The reserve in force, in %. For EF-PowerOcean-TcpModbus: Effective Battery Reserve.",
+          "house_energy": "A counter of energy the house used, daily or lifetime. Its recorded hours are what the night is replayed from.",
+          "grid_power": "Optional: shows when a full battery is exporting (free power).",
           "solcast_today": "The Solcast sensor for today, with its detailedForecast attribute.",
-          "solcast_tomorrow": "The Solcast sensor for tomorrow.",
-          "solcast_later": "Day 3 onwards, to compare tomorrow with the week."
+          "solcast_tomorrow": "The Solcast sensor for tomorrow."
         }
       },
       "reconfigure": {
@@ -62,39 +28,21 @@
         "description": "Change the entities used.",
         "data": {
           "battery_soc": "Battery state of charge",
-          "battery_power": "Battery power",
           "battery_capacity": "Battery capacity",
           "battery_reserve": "Battery reserve",
-          "solar_power": "Solar power",
-          "house_power": "House power",
-          "grid_power": "Grid power",
-          "solar_energy": "Solar energy",
           "house_energy": "House energy",
-          "grid_import_energy": "Grid import",
-          "grid_export_energy": "Grid export",
-          "battery_charge_energy": "Battery charged",
-          "battery_discharge_energy": "Battery discharged",
+          "grid_power": "Grid power",
           "solcast_today": "Solcast forecast today",
-          "solcast_tomorrow": "Solcast forecast tomorrow",
-          "solcast_later": "Solcast later days"
+          "solcast_tomorrow": "Solcast forecast tomorrow"
         },
         "data_description": {
-          "battery_soc": "Percentage of charge (%).",
-          "battery_power": "Power into or out of the battery.",
-          "battery_capacity": "Nominal capacity in Wh or kWh. While it reports none, the last value is used.",
-          "battery_reserve": "The reserve in force, in %. For EF-PowerOcean-TcpModbus use Effective Battery Reserve.",
-          "solar_power": "Total PV power.",
-          "house_power": "What the house uses right now.",
-          "grid_power": "Grid exchange; the sign is set in the options.",
-          "solar_energy": "A counter of solar energy produced; daily or lifetime.",
-          "house_energy": "A counter of energy the house used.",
-          "grid_import_energy": "A counter of energy bought.",
-          "grid_export_energy": "A counter of energy exported.",
-          "battery_charge_energy": "A counter of energy into the battery.",
-          "battery_discharge_energy": "A counter of energy out of the battery.",
+          "battery_soc": "Percentage of charge.",
+          "battery_capacity": "In Wh or kWh. While it reports none, the last value is used.",
+          "battery_reserve": "The reserve in force, in %. For EF-PowerOcean-TcpModbus: Effective Battery Reserve.",
+          "house_energy": "A counter of energy the house used, daily or lifetime. Its recorded hours are what the night is replayed from.",
+          "grid_power": "Optional: shows when a full battery is exporting (free power).",
           "solcast_today": "The Solcast sensor for today, with its detailedForecast attribute.",
-          "solcast_tomorrow": "The Solcast sensor for tomorrow.",
-          "solcast_later": "Day 3 onwards, to compare tomorrow with the week."
+          "solcast_tomorrow": "The Solcast sensor for tomorrow."
         }
       }
     },
@@ -110,176 +58,43 @@
     "step": {
       "init": {
         "title": "Settings",
-        "description": "Prices, battery limits and what counts as cooking.",
+        "description": "How the night is tested, and the battery's limits.",
         "data": {
-          "price": "Electricity price",
-          "feed_in": "Feed-in tariff",
-          "price_entity": "Price entity",
-          "feed_in_entity": "Feed-in entity",
+          "nights": "Nights replayed",
           "min_reserve": "Lowest state of charge",
           "max_power": "Battery power limit",
-          "charge_positive": "Battery power is positive when charging",
-          "import_positive": "Grid power is positive when importing",
-          "cook_threshold": "Cooking threshold",
-          "upgrade_kwh": "Battery upgrade size",
-          "upgrade_cost": "Battery upgrade cost"
+          "round_trip": "Round-trip efficiency",
+          "import_positive": "Grid power is positive when importing"
         },
         "data_description": {
-          "price": "What you pay per kWh bought, in ct.",
-          "feed_in": "What you get per kWh exported, in ct.",
-          "price_entity": "Overrides the price; in ct/kWh, or €/kWh if its unit says so.",
-          "feed_in_entity": "Overrides the feed-in tariff, the same way.",
+          "nights": "How many recent nights the battery is tested against.",
           "min_reserve": "The lowest the inverter discharges to by itself, under any reserve.",
           "max_power": "The most the battery charges or discharges at.",
-          "charge_positive": "Turn off if charging shows as negative.",
-          "import_positive": "Turn off if import shows as negative.",
-          "cook_threshold": "House power beyond the metered appliances, during the evening, that counts as cooking.",
-          "upgrade_kwh": "The added capacity valued by the upgrade sensor.",
-          "upgrade_cost": "Its price, for the payback time."
+          "round_trip": "Share of stored energy that comes back out.",
+          "import_positive": "Turn off if import shows as negative."
         }
-      }
-    }
-  },
-  "config_subentries": {
-    "appliance": {
-      "initiate_flow": {
-        "user": "Add appliance"
-      },
-      "entry_type": "Appliance",
-      "step": {
-        "user": {
-          "title": "Appliance",
-          "description": "An appliance the plan can suggest a time for.",
-          "data": {
-            "name": "Name",
-            "power_entity": "Power",
-            "energy_entity": "Energy",
-            "state_entity": "State",
-            "default_kwh": "Energy per run until learned",
-            "default_hours": "Run length until learned",
-            "max_kwh": "Most a run can use"
-          },
-          "data_description": {
-            "name": "Shown in the plan, for example Dishwasher.",
-            "power_entity": "A smart plug's power: runs are detected from it.",
-            "energy_entity": "The plug's energy counter, for exact kWh per run and to take it out of the house load.",
-            "state_entity": "For an appliance without a meter, such as Home Connect's operation state; hours it runs are left out of learning.",
-            "default_kwh": "Used until the first runs have been measured.",
-            "default_hours": "Used until the first runs have been measured.",
-            "max_kwh": "Readings above this are ignored as glitches."
-          }
-        },
-        "reconfigure": {
-          "title": "Appliance",
-          "description": "Change the appliance.",
-          "data": {
-            "name": "Name",
-            "power_entity": "Power",
-            "energy_entity": "Energy",
-            "state_entity": "State",
-            "default_kwh": "Energy per run until learned",
-            "default_hours": "Run length until learned",
-            "max_kwh": "Most a run can use"
-          },
-          "data_description": {
-            "name": "Shown in the plan, for example Dishwasher.",
-            "power_entity": "A smart plug's power: runs are detected from it.",
-            "energy_entity": "The plug's energy counter, for exact kWh per run and to take it out of the house load.",
-            "state_entity": "For an appliance without a meter, such as Home Connect's operation state; hours it runs are left out of learning.",
-            "default_kwh": "Used until the first runs have been measured.",
-            "default_hours": "Used until the first runs have been measured.",
-            "max_kwh": "Readings above this are ignored as glitches."
-          }
-        }
-      },
-      "error": {
-        "appliance_needs_input": "Pick a power sensor or a state entity."
-      },
-      "abort": {
-        "reconfigure_successful": "The appliance was changed."
       }
     }
   },
   "entity": {
     "sensor": {
-      "headline": {
-        "name": "Plan",
-        "state_attributes": {
-          "subline": {
-            "name": "Subline"
-          },
-          "phase": {
-            "name": "Phase"
-          },
-          "tone": {
-            "name": "Tone"
-          },
-          "grid_mode": {
-            "name": "On the grid"
-          },
-          "lines": {
-            "name": "Lines"
-          }
-        }
-      },
       "battery_full_at": {
         "name": "Battery full at"
-      },
-      "battery_peak": {
-        "name": "Battery peak"
       },
       "battery_at_sunset": {
         "name": "Battery at sunset"
       },
+      "nights_covered": {
+        "name": "Nights covered"
+      },
       "reserve_reached_at": {
         "name": "Reserve reached at"
       },
-      "night_load": {
-        "name": "Load until sunrise"
-      },
-      "night_grid": {
-        "name": "Grid until sunrise"
-      },
-      "night_spare": {
+      "spare_at_sunrise": {
         "name": "Spare at sunrise"
       },
       "best_window": {
-        "name": "Best appliance window"
-      },
-      "sun_covers_house_at": {
-        "name": "Sun covers the house at"
-      },
-      "self_sufficiency_today": {
-        "name": "Self-sufficiency today"
-      },
-      "score_today": {
-        "name": "Solar score today"
-      },
-      "forecast_accuracy": {
-        "name": "Forecast accuracy"
-      },
-      "battery_sizing": {
-        "name": "Battery sizing",
-        "state": {
-          "right": "Right size",
-          "too_small": "Ran out after a full day",
-          "never_full": "Did not get full"
-        }
-      },
-      "upgrade_value": {
-        "name": "Battery upgrade value per year"
-      },
-      "load_model_error": {
-        "name": "Load model error"
-      },
-      "forecast_correction": {
-        "name": "Forecast correction gain"
-      },
-      "energy_per_run": {
-        "name": "Energy per run"
-      },
-      "run_duration": {
-        "name": "Run duration"
+        "name": "Best window for heavy loads"
       }
     },
     "binary_sensor": {
@@ -288,89 +103,22 @@
       },
       "free_power": {
         "name": "Free power"
-      },
-      "grid_mode": {
-        "name": "On the grid"
-      },
-      "cooked_tonight": {
-        "name": "Cooked tonight"
-      },
-      "running": {
-        "name": "Running"
       }
     }
   },
   "services": {
     "simulate": {
       "name": "Simulate",
-      "description": "Runs the battery forward with appliances started now and returns the result.",
+      "description": "The plan with an extra load started now.",
       "fields": {
-        "appliances": {
-          "name": "Appliances",
-          "description": "Configured appliances to start now, by name."
-        },
         "extra_kwh": {
           "name": "Extra energy",
-          "description": "Any other load to add."
+          "description": "Energy the extra load uses."
         },
         "extra_hours": {
-          "name": "Extra duration",
-          "description": "How long that load runs."
-        },
-        "until": {
-          "name": "Until",
-          "description": "How far to run."
-        },
-        "evening": {
-          "name": "Evening",
-          "description": "Which kind of evening to assume."
-        },
-        "forecast": {
-          "name": "Forecast",
-          "description": "Solcast's expected, cloudy (10th percentile) or sunny (90th) case."
+          "name": "Duration",
+          "description": "How long it runs."
         }
-      }
-    },
-    "value_upgrade": {
-      "name": "Value a battery upgrade",
-      "description": "Replays your recorded hours with added capacity and returns its value per size.",
-      "fields": {
-        "sizes": {
-          "name": "Sizes",
-          "description": "Added capacities in kWh."
-        }
-      }
-    },
-    "relearn": {
-      "name": "Relearn the house load",
-      "description": "Forgets the learned load and learns it again from recorded statistics.",
-      "fields": {
-        "days": {
-          "name": "Days",
-          "description": "How many days of history to learn from."
-        }
-      }
-    }
-  },
-  "selector": {
-    "until": {
-      "options": {
-        "sunrise": "Sunrise",
-        "sunset": "Sunset"
-      }
-    },
-    "evening": {
-      "options": {
-        "mix": "As usual",
-        "cook": "Cooking",
-        "quiet": "Quiet"
-      }
-    },
-    "forecast": {
-      "options": {
-        "expected": "Expected",
-        "cloudy": "Cloudy",
-        "sunny": "Sunny"
       }
     }
   },
@@ -378,8 +126,8 @@
     "not_loaded": {
       "message": "Solar Energy Insights is not set up or not loaded."
     },
-    "unknown_appliance": {
-      "message": "No appliance named {name}. Configured: {known}."
+    "not_ready": {
+      "message": "No plan yet: {reason}."
     }
   }
 }
