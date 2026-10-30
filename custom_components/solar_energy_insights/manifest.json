@@ -1,0 +1,21 @@
+{
+  "domain": "solar_energy_insights",
+  "name": "Solar Energy Insights",
+  "codeowners": [
+    "@windmark"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "recorder"
+  ],
+  "documentation": "https://github.com/windmark/ha-solar-energy-insights",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/windmark/ha-solar-energy-insights/issues",
+  "loggers": [
+    "custom_components.solar_energy_insights"
+  ],
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}
