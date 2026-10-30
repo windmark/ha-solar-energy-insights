@@ -1,4 +1,5 @@
-"""Solar Energy Insights: plans the home battery against Solcast, learns the house."""
+"""Solar Energy Insights: will the battery fill, will it last the night, and when
+to run heavy loads."""
 
 from __future__ import annotations
 
@@ -24,19 +25,10 @@ async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: InsightsConfigEntry) -> bool:
     coordinator = InsightsCoordinator(hass, entry)
-    await coordinator.store.async_load()
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
-
-    coordinator.async_start()
-    coordinator.learner.async_start()
-    entry.async_on_unload(coordinator.async_stop)
-    entry.async_on_unload(coordinator.learner.async_stop)
+    entry.async_on_unload(coordinator.async_follow_states())
     entry.async_on_unload(entry.add_update_listener(_async_reload))
-    entry.async_create_background_task(
-        hass, coordinator.learner.async_catch_up(), f"{DOMAIN} catch up"
-    )
-
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
@@ -46,13 +38,4 @@ async def _async_reload(hass: HomeAssistant, entry: InsightsConfigEntry) -> None
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: InsightsConfigEntry) -> bool:
-    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unloaded:
-        await entry.runtime_data.store.async_save()
-    return unloaded
-
-
-async def async_remove_entry(hass: HomeAssistant, entry: InsightsConfigEntry) -> None:
-    from .store import InsightsStore
-
-    await InsightsStore(hass, entry.entry_id).async_remove()
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

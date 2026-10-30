@@ -1,79 +1,62 @@
-"""Turn plans and simulations into JSON for services and the WebSocket API."""
+"""The plan as JSON, for the action, the WebSocket API and diagnostics."""
 
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
 
-from .core.battery import Simulation
-from .core.planner import Plan
+from .core.plan import NightOutcome, Plan
 
 
 def _iso(t: datetime | None) -> str | None:
     return t.isoformat() if t else None
 
 
-def _r(value: float | None, digits: int = 2) -> float | None:
-    return None if value is None else round(value, digits)
+def _outcome(o: NightOutcome) -> dict[str, Any]:
+    return {
+        "days_ago": o.days_ago,
+        "lasts": o.lasts,
+        "reserve_at": _iso(o.reserve_at),
+        "load_kwh": round(o.load_kwh, 2),
+        "grid_kwh": round(o.grid_kwh, 2),
+        "spare_kwh": round(o.spare_kwh, 2),
+    }
 
 
-def plan_dict(plan: Plan, *, curve: bool = True) -> dict[str, Any]:
+def plan_dict(plan: Plan, *, detail: bool = True) -> dict[str, Any]:
+    night = plan.night
     data: dict[str, Any] = {
         "at": _iso(plan.now),
-        "phase": str(plan.phase),
-        "grid_mode": plan.grid_mode,
-        "headline": plan.headline,
-        "subline": plan.subline,
-        "tone": str(plan.tone),
-        "lines": [
-            {
-                "key": line.key,
-                "label": line.label,
-                "text": line.text,
-                "detail": line.detail,
-                "tone": str(line.tone),
-                "icon": line.icon,
-            }
-            for line in plan.lines
-        ],
-        "full_at": _iso(plan.full_at),
-        "peak_pct": _r(plan.peak_pct, 0),
-        "peak_at": _iso(plan.peak_at),
-        "sunset_pct": _r(plan.sunset_pct, 0),
-        "lasts_night": plan.lasts_night,
-        "lasts_night_any_evening": plan.lasts_night_any_evening,
-        "reserve_at": _iso(plan.reserve_at),
-        "night_load_kwh": _r(plan.night_load_kwh),
-        "night_grid_kwh": _r(plan.night_grid_kwh),
-        "night_spare_kwh": _r(plan.night_spare_kwh),
+        "sunrise": _iso(plan.sunrise),
+        "sunset": _iso(plan.sunset),
+        "charge": {
+            "full_at": _iso(plan.charge.full_at),
+            "full_at_cloudy": _iso(plan.charge.full_at_cloudy),
+            "peak_pct": round(plan.charge.peak_pct),
+            "peak_pct_cloudy": round(plan.charge.peak_pct_cloudy),
+            "sunset_pct": None
+            if plan.charge.sunset_pct is None
+            else round(plan.charge.sunset_pct),
+        },
+        "night": None
+        if night is None
+        else {
+            "nights": len(night.outcomes),
+            "lasting": night.lasting,
+            "typical": _outcome(night.typical),
+            "heavy": _outcome(night.heavy),
+        },
+        "best_window": None
+        if plan.best_window is None
+        else {
+            "start": _iso(plan.best_window.start),
+            "end": _iso(plan.best_window.end),
+            "kwh": round(plan.best_window.kwh, 2),
+        },
         "free_power": plan.free_power,
-        "free_until": _iso(plan.free_until),
-        "best_window": {
-            "start": plan.best_window.start.isoformat(),
-            "end": plan.best_window.end.isoformat(),
-            "kwh": _r(plan.best_window.kwh),
-        }
-        if plan.best_window
-        else None,
-        "sun_covers_house_at": _iso(plan.sun_covers_house_at),
     }
-    if curve:
+    if detail:
+        if night is not None:
+            data["night"]["each"] = [_outcome(o) for o in night.outcomes]
         data["curve"] = [[t.isoformat(), round(pct, 1)] for t, pct in plan.curve]
     return data
-
-
-def simulation_dict(sim: Simulation) -> dict[str, Any]:
-    return {
-        "full_at": _iso(sim.full_at),
-        "reserve_at": _iso(sim.reserve_at),
-        "lasts": sim.lasts,
-        "grid_kwh": _r(sim.grid_kwh),
-        "export_kwh": _r(sim.export_kwh + sim.export_before_full_kwh),
-        "pv_kwh": _r(sim.pv_kwh),
-        "load_kwh": _r(sim.load_kwh),
-        "peak_pct": _r(sim.peak_pct, 0),
-        "end_pct": _r(sim.end_pct, 0),
-        "sunset_pct": _r(sim.mark_pct, 0),
-        "spare_kwh": _r(sim.spare_kwh),
-        "points": [[t.isoformat(), round(pct, 1)] for t, pct in sim.points],
-    }

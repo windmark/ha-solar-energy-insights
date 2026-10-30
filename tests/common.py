@@ -1,14 +1,20 @@
-"""A small home in Augsburg: a battery, panels, Solcast and the counters."""
+"""A small home in Augsburg: a battery, a house energy counter and Solcast."""
 
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from homeassistant.components.recorder.models import StatisticData, StatisticMeanType
+from homeassistant.components.recorder.statistics import async_import_statistics
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.components.recorder.common import (
+    async_wait_recording_done,
+)
 
 from custom_components.solar_energy_insights import const
 
@@ -17,18 +23,10 @@ DAY = date(2026, 6, 10)
 
 ENTITIES = {
     const.CONF_BATTERY_SOC: "sensor.battery_soc",
-    const.CONF_BATTERY_POWER: "sensor.battery_power",
     const.CONF_BATTERY_CAPACITY: "sensor.battery_capacity",
     const.CONF_BATTERY_RESERVE: "sensor.battery_reserve",
-    const.CONF_SOLAR_POWER: "sensor.solar_power",
-    const.CONF_HOUSE_POWER: "sensor.house_power",
-    const.CONF_GRID_POWER: "sensor.grid_power",
-    const.CONF_SOLAR_ENERGY: "sensor.solar_energy",
     const.CONF_HOUSE_ENERGY: "sensor.house_energy",
-    const.CONF_GRID_IMPORT_ENERGY: "sensor.grid_import",
-    const.CONF_GRID_EXPORT_ENERGY: "sensor.grid_export",
-    const.CONF_BATTERY_CHARGE_ENERGY: "sensor.battery_charged",
-    const.CONF_BATTERY_DISCHARGE_ENERGY: "sensor.battery_discharged",
+    const.CONF_GRID_POWER: "sensor.grid_power",
     const.CONF_SOLCAST_TODAY: "sensor.solcast_pv_forecast_forecast_today",
     const.CONF_SOLCAST_TOMORROW: "sensor.solcast_pv_forecast_forecast_tomorrow",
 }
@@ -43,6 +41,11 @@ def local(day: date, hour: int, minute: int = 0) -> datetime:
         minute,
         tzinfo=dt_util.get_default_time_zone(),
     )
+
+
+async def configure_home(hass: HomeAssistant) -> None:
+    await hass.config.async_set_time_zone(TZ)
+    hass.config.latitude, hass.config.longitude = 48.37, 10.9
 
 
 def solcast_periods(day: date, peak_kw: float) -> list[dict[str, Any]]:
@@ -60,38 +63,15 @@ def solcast_periods(day: date, peak_kw: float) -> list[dict[str, Any]]:
     return periods
 
 
-async def configure_home(hass: HomeAssistant) -> None:
-    await hass.config.async_set_time_zone(TZ)
-    hass.config.latitude, hass.config.longitude = 48.37, 10.9
-
-
 def set_states(
     hass: HomeAssistant,
     *,
     soc: float = 50.0,
     capacity_wh: float | str = 15180,
     reserve: float = 10.0,
-    solar_w: float = 3000,
-    house_w: float = 600,
     grid_w: float = 0,
     peak_kw: float = 8.0,
 ) -> None:
-    def power(entity_id: str, watts: float) -> None:
-        hass.states.async_set(
-            entity_id, str(watts), {"unit_of_measurement": "W", "device_class": "power"}
-        )
-
-    def energy(entity_id: str, kwh: float) -> None:
-        hass.states.async_set(
-            entity_id,
-            str(kwh),
-            {
-                "unit_of_measurement": "kWh",
-                "device_class": "energy",
-                "state_class": "total_increasing",
-            },
-        )
-
     hass.states.async_set(
         ENTITIES[const.CONF_BATTERY_SOC],
         str(soc),
@@ -100,59 +80,87 @@ def set_states(
     hass.states.async_set(
         ENTITIES[const.CONF_BATTERY_CAPACITY],
         str(capacity_wh),
-        {"unit_of_measurement": "Wh", "device_class": "energy_storage"},
+        {"unit_of_measurement": "Wh"},
     )
     hass.states.async_set(
         ENTITIES[const.CONF_BATTERY_RESERVE], str(reserve), {"unit_of_measurement": "%"}
     )
-    power(ENTITIES[const.CONF_BATTERY_POWER], 0)
-    power(ENTITIES[const.CONF_SOLAR_POWER], solar_w)
-    power(ENTITIES[const.CONF_HOUSE_POWER], house_w)
-    power(ENTITIES[const.CONF_GRID_POWER], grid_w)
-    for key, value in (
-        (const.CONF_SOLAR_ENERGY, 1000.0),
-        (const.CONF_HOUSE_ENERGY, 800.0),
-        (const.CONF_GRID_IMPORT_ENERGY, 300.0),
-        (const.CONF_GRID_EXPORT_ENERGY, 400.0),
-        (const.CONF_BATTERY_CHARGE_ENERGY, 200.0),
-        (const.CONF_BATTERY_DISCHARGE_ENERGY, 180.0),
-    ):
-        energy(ENTITIES[key], value)
+    hass.states.async_set(
+        ENTITIES[const.CONF_GRID_POWER],
+        str(grid_w),
+        {"unit_of_measurement": "W", "device_class": "power"},
+    )
+    hass.states.async_set(
+        ENTITIES[const.CONF_HOUSE_ENERGY],
+        "1000",
+        {
+            "unit_of_measurement": "kWh",
+            "device_class": "energy",
+            "state_class": "total_increasing",
+        },
+    )
     today = dt_util.as_local(dt_util.utcnow()).date()
     for key, day in (
         (const.CONF_SOLCAST_TODAY, today),
-        (const.CONF_SOLCAST_TOMORROW, today + timedelta(1)),
+        (const.CONF_SOLCAST_TOMORROW, today + timedelta(days=1)),
     ):
         periods = solcast_periods(day, peak_kw)
-        total = sum(p["pv_estimate"] for p in periods) / 2
         hass.states.async_set(
             ENTITIES[key],
-            str(round(total, 2)),
+            str(round(sum(p["pv_estimate"] for p in periods) / 2, 2)),
             {"unit_of_measurement": "kWh", "detailedForecast": periods},
         )
 
 
+async def record_house(
+    hass: HomeAssistant, days: list[date], kwh_at: Callable[[int], float]
+) -> None:
+    """Record whole days of the house's hourly use, as the recorder would have."""
+    total = 0.0
+    rows: list[StatisticData] = []
+    for day in days:
+        for hour in range(24):
+            total += kwh_at(hour)
+            rows.append(
+                StatisticData(start=local(day, hour), state=1000 + total, sum=total)
+            )
+    async_import_statistics(
+        hass,
+        {
+            "mean_type": StatisticMeanType.NONE,
+            "has_sum": True,
+            "name": None,
+            "source": "recorder",
+            "statistic_id": ENTITIES[const.CONF_HOUSE_ENERGY],
+            "unit_class": "energy",
+            "unit_of_measurement": "kWh",
+        },
+        rows,
+    )
+    await async_wait_recording_done(hass)
+
+
+def recent(count: int) -> list[date]:
+    """The *count* days before DAY, oldest first."""
+    return [DAY - timedelta(days=n) for n in range(count, 0, -1)]
+
+
 async def setup_entry(
-    hass: HomeAssistant,
-    options: dict[str, Any] | None = None,
-    subentries: list[Any] | None = None,
+    hass: HomeAssistant, options: dict[str, Any] | None = None
 ) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=const.DOMAIN,
         title="Solar Energy Insights",
         data=dict(ENTITIES),
         options=options or {},
-        subentries_data=subentries or [],
     )
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
-    # Includes the catch-up from history, which reads the recorder.
     await hass.async_block_till_done(wait_background_tasks=True)
     return entry
 
 
 def state(hass: HomeAssistant, entity_id: str) -> str:
-    """The state of an entity that must exist."""
     current = hass.states.get(entity_id)
     assert current is not None, entity_id
     return current.state
