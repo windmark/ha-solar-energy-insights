@@ -239,11 +239,14 @@ def _milestones(ctx: _Ctx, start: datetime, load: Rate) -> _Milestones:
         return None
 
     return _Milestones(
-        cross(1, 0.5), cross(1, 1.0), cross(2, 0.0), max((p[1] for p in points), default=0)
+        cross(1, 0.5),
+        cross(1, 1.0),
+        cross(2, 0.0),
+        max((p[1] for p in points), default=0),
     )
 
 
-def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per branch
+def plan(inputs: PlanInputs) -> Plan:
     """Work out the plan for the moment in *inputs*."""
     i = inputs
     tz, now = i.tz, i.now
@@ -319,8 +322,9 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
             Tone.BAD,
             "mdi:weather-night",
         )
-        night_short = f"Grid from ~{hm(best.reserve_at if spread else worst.reserve_at)}" + (
-            f" (~{hm(worst.reserve_at)} if you cook)" if spread else ""
+        night_short = (
+            f"Grid from ~{hm(best.reserve_at if spread else worst.reserve_at)}"
+            + (f" (~{hm(worst.reserve_at)} if you cook)" if spread else "")
         )
 
     # ── Battery ──
@@ -333,13 +337,27 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
                 if i.full_since and i.full_since.astimezone(tz).date() == local.date()
                 else "Full"
             )
-            more = f" · ~{_kwh(day_run.export_kwh)} kWh more export" if day_run.export_kwh > 0.3 else ""
-            battery_line = Line("battery", "Battery today", since + more, Tone.GOOD, "mdi:battery-check")
+            more = (
+                f" · ~{_kwh(day_run.export_kwh)} kWh more export"
+                if day_run.export_kwh > 0.3
+                else ""
+            )
+            battery_line = Line(
+                "battery", "Battery today", since + more, Tone.GOOD, "mdi:battery-check"
+            )
             battery_short = since
         elif day_run.full_at:
-            then = f" · then ~{_kwh(day_run.export_kwh)} kWh export" if day_run.export_kwh > 0.3 else ""
+            then = (
+                f" · then ~{_kwh(day_run.export_kwh)} kWh export"
+                if day_run.export_kwh > 0.3
+                else ""
+            )
             battery_line = Line(
-                "battery", "Battery today", f"Full ~{hm(day_run.full_at)}{then}", Tone.GOOD, "mdi:battery-charging-high"
+                "battery",
+                "Battery today",
+                f"Full ~{hm(day_run.full_at)}{then}",
+                Tone.GOOD,
+                "mdi:battery-charging-high",
             )
             battery_short = f"Full ~{hm(day_run.full_at)}"
         elif day_run.peak_pct > soc + 1:
@@ -363,7 +381,10 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
             )
             battery_short = "No more charging today"
     elif phase is Phase.EVENING:
-        full = i.full_since is not None and i.full_since.astimezone(tz).date() == local.date()
+        full = (
+            i.full_since is not None
+            and i.full_since.astimezone(tz).date() == local.date()
+        )
         if full:
             assert i.full_since is not None
             battery_line = Line(
@@ -375,17 +396,31 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
             )
             battery_short = f"Got full at {hm(i.full_since)}"
         else:
-            peaked = f"Peaked at {i.soc_max_today:.0f}% today · " if i.soc_max_today is not None else ""
+            peaked = (
+                f"Peaked at {i.soc_max_today:.0f}% today · "
+                if i.soc_max_today is not None
+                else ""
+            )
             battery_line = Line(
-                "battery", "Battery today", f"{peaked}now {soc:.0f}%", Tone.NEUTRAL, "mdi:battery-50"
+                "battery",
+                "Battery today",
+                f"{peaked}now {soc:.0f}%",
+                Tone.NEUTRAL,
+                "mdi:battery-50",
             )
             battery_short = (
-                f"Peaked at {i.soc_max_today:.0f}%" if i.soc_max_today is not None else f"Now {soc:.0f}%"
+                f"Peaked at {i.soc_max_today:.0f}%"
+                if i.soc_max_today is not None
+                else f"Now {soc:.0f}%"
             )
     else:
         day_word = "Today" if pre_dawn else "Tomorrow"
         if day_run.full_at:
-            then = f" · then ~{_kwh(day_run.export_kwh)} kWh export" if day_run.export_kwh > 0.3 else ""
+            then = (
+                f" · then ~{_kwh(day_run.export_kwh)} kWh export"
+                if day_run.export_kwh > 0.3
+                else ""
+            )
             battery_line = Line(
                 "battery",
                 f"Battery {day_word.lower()}",
@@ -437,7 +472,13 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
     elif phase is Phase.DAY:
         best_window = _window(ctx, now, i.sunset)
         if best_window is None:
-            appliances = Line("appliances", "Appliances", "Little spare sun", Tone.NEUTRAL, "mdi:washing-machine")
+            appliances = Line(
+                "appliances",
+                "Appliances",
+                "Little spare sun",
+                Tone.NEUTRAL,
+                "mdi:washing-machine",
+            )
             appliances_short = "Little spare sun today"
         elif best_window.start <= now:
             appliances = Line(
@@ -456,7 +497,9 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
                 Tone.NEUTRAL,
                 "mdi:washing-machine",
             )
-            appliances_short = f"Run appliances {hm(best_window.start)}–{hm(best_window.end)}"
+            appliances_short = (
+                f"Run appliances {hm(best_window.start)}–{hm(best_window.end)}"
+            )
     elif phase is Phase.EVENING and i.appliances:
         failing: list[tuple[ApplianceLoad, datetime]] = []
         for appliance in i.appliances:
@@ -495,10 +538,16 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
                 Tone.NEUTRAL,
                 "mdi:washing-machine",
             )
-            appliances_short = f"Appliances {day_word} {hm(best_window.start)}–{hm(best_window.end)}"
+            appliances_short = (
+                f"Appliances {day_word} {hm(best_window.start)}–{hm(best_window.end)}"
+            )
         else:
             appliances = Line(
-                "appliances", f"Appliances {day_word}", "Little spare sun", Tone.NEUTRAL, "mdi:washing-machine"
+                "appliances",
+                f"Appliances {day_word}",
+                "Little spare sun",
+                Tone.NEUTRAL,
+                "mdi:washing-machine",
             )
             appliances_short = f"Little spare sun {day_word}"
 
@@ -532,10 +581,16 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
             pct = (yield_today / fc_today - 1) * 100
             vs = f" · forecast was {_kwh(fc_today)} ({'+' if pct >= 0 else '−'}{abs(pct):.0f}%)"
         production = Line(
-            "production", "Production today", f"{_kwh(yield_today)} kWh{vs}", Tone.NEUTRAL, "mdi:solar-power-variant"
+            "production",
+            "Production today",
+            f"{_kwh(yield_today)} kWh{vs}",
+            Tone.NEUTRAL,
+            "mdi:solar-power-variant",
         )
     else:
-        days = ([fc_today] if pre_dawn and fc_today is not None else []) + list(i.forecast_next_days)
+        days = ([fc_today] if pre_dawn and fc_today is not None else []) + list(
+            i.forecast_next_days
+        )
         day_word = "today" if pre_dawn else "tomorrow"
         if days:
             first = days[0]
@@ -554,7 +609,13 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
             text = f"{_kwh(first)} kWh forecast" + (f" · {how}" if how else "")
         else:
             text = "No forecast"
-        production = Line("production", f"Sun {day_word}", text, Tone.NEUTRAL, "mdi:solar-power-variant")
+        production = Line(
+            "production",
+            f"Sun {day_word}",
+            text,
+            Tone.NEUTRAL,
+            "mdi:solar-power-variant",
+        )
 
     # ── At night, or on the grid in the morning: the night card ──
     now_load, now_pv = ctx.mix(now), i.pv.kw_at(now)
@@ -568,20 +629,41 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
     cover_at: datetime | None = None
 
     def sun_row(ms: _Milestones) -> Line:
-        parts = [f"{label} ~{hm(t)}" for label, t in (("500 W", ms.w500), ("1 kW", ms.kw1)) if t]
-        total = i.forecast_today_kwh if sun_word == "today" else (
-            i.forecast_next_days[0] if i.forecast_next_days else None
+        parts = [
+            f"{label} ~{hm(t)}"
+            for label, t in (("500 W", ms.w500), ("1 kW", ms.kw1))
+            if t
+        ]
+        total = (
+            i.forecast_today_kwh
+            if sun_word == "today"
+            else (i.forecast_next_days[0] if i.forecast_next_days else None)
         )
-        covers = f"covers the house from ~{hm(ms.cover)}" if ms.cover else "won’t cover the house"
-        detail = " · ".join([covers] + ([f"{_kwh(total)} kWh in total"] if total is not None else []))
+        covers = (
+            f"covers the house from ~{hm(ms.cover)}"
+            if ms.cover
+            else "won’t cover the house"
+        )
+        detail = " · ".join(
+            [covers] + ([f"{_kwh(total)} kWh in total"] if total is not None else [])
+        )
         if parts:
             return Line(
-                "sun", f"Sun {sun_word}", " · ".join(parts), Tone.GOOD if ms.kw1 else Tone.WARN,
-                "mdi:solar-power-variant", detail,
+                "sun",
+                f"Sun {sun_word}",
+                " · ".join(parts),
+                Tone.GOOD if ms.kw1 else Tone.WARN,
+                "mdi:solar-power-variant",
+                detail,
             )
         return Line(
-            "sun", f"Sun {sun_word}", "Under 500 W all day", Tone.WARN, "mdi:solar-power-variant",
-            f"peak ~{ms.peak_kw:.1f} kW" + (f" · {_kwh(total)} kWh in total" if total is not None else ""),
+            "sun",
+            f"Sun {sun_word}",
+            "Under 500 W all day",
+            Tone.WARN,
+            "mdi:solar-power-variant",
+            f"peak ~{ms.peak_kw:.1f} kW"
+            + (f" · {_kwh(total)} kWh in total" if total is not None else ""),
         )
 
     headline_tone: Tone
@@ -590,12 +672,22 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
         from_battery = max(tonight.load_kwh - tonight.grid_kwh, 0.0)
         if grid_mode or from_battery < 0.05:
             tone, detail = Tone.BAD, f"all from the grid · {eur(tonight.grid_kwh)}"
-        elif len(kinds) == 2 and nights[Evening.QUIET].lasts and not nights[Evening.COOK].lasts:
+        elif (
+            len(kinds) == 2
+            and nights[Evening.QUIET].lasts
+            and not nights[Evening.COOK].lasts
+        ):
             cook_at = nights[Evening.COOK].reserve_at
             assert cook_at is not None
-            tone, detail = Tone.WARN, f"from the battery if you don’t cook · cooking: grid from ~{hm(cook_at)}"
+            tone, detail = (
+                Tone.WARN,
+                f"from the battery if you don’t cook · cooking: grid from ~{hm(cook_at)}",
+            )
         elif tonight.lasts:
-            tone, detail = Tone.GOOD, f"all from the battery · ~{_kwh(tonight.spare_kwh)} kWh left at sunrise"
+            tone, detail = (
+                Tone.GOOD,
+                f"all from the battery · ~{_kwh(tonight.spare_kwh)} kWh left at sunrise",
+            )
         else:
             assert tonight.reserve_at is not None
             tone, detail = (
@@ -607,12 +699,18 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
             f"Until sunrise at {hm(i.sunrise)}",
             f"~{_kwh(tonight.load_kwh)} kWh",
             tone,
-            "mdi:transmission-tower-import" if tone is Tone.BAD else "mdi:weather-night",
+            "mdi:transmission-tower-import"
+            if tone is Tone.BAD
+            else "mdi:weather-night",
             detail,
         )
         ms = _milestones(ctx, i.sunrise, load_now)
         cover_at = ms.cover
-        rows = [night_row, sun_row(ms), replace(battery_line, label=f"Battery {sun_word}")]
+        rows = [
+            night_row,
+            sun_row(ms),
+            replace(battery_line, label=f"Battery {sun_word}"),
+        ]
         if phase is Phase.EVENING and not grid_mode:
             rows.append(appliances)
         lines = tuple(rows)
@@ -640,7 +738,11 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
 
     # ── Headline ──
     if grid_mode:
-        headline = f"On the grid until ~{hm(cover_at)}" if cover_at else "On the grid · battery empty"
+        headline = (
+            f"On the grid until ~{hm(cover_at)}"
+            if cover_at
+            else "On the grid · battery empty"
+        )
         headline_tone = Tone.BAD
         if not is_day:
             subline = f"~{_kwh(ctx.run(i.sunrise, load_now).load_kwh)} kWh tonight · sunrise {hm(i.sunrise)}"
@@ -653,10 +755,15 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
             )
     elif phase is Phase.DAY:
         if free_power:
-            headline, headline_tone = f"Free power now · {i.export_kw:.1f} kW spare", Tone.GOOD
+            headline, headline_tone = (
+                f"Free power now · {i.export_kw:.1f} kW spare",
+                Tone.GOOD,
+            )
         else:
             headline, headline_tone = battery_short, battery_line.tone
-        subline = f"{night_short} tonight" if night.tone is Tone.BAD else appliances_short
+        subline = (
+            f"{night_short} tonight" if night.tone is Tone.BAD else appliances_short
+        )
     elif phase is Phase.EVENING:
         headline, headline_tone, subline = night_short, night.tone, appliances_short
     else:
@@ -665,7 +772,11 @@ def plan(inputs: PlanInputs) -> Plan:  # noqa: PLR0912, PLR0915 - one answer per
     # ── Facts for entities and automations ──
     mix_night = ctx.run(i.sunrise, ctx.mix)
     likely = mix_night if len(kinds) > 1 else nights[kinds[0]]
-    full_at = (i.full_since or now) if battery.is_full and phase is Phase.DAY else day_run.full_at
+    full_at = (
+        (i.full_since or now)
+        if battery.is_full and phase is Phase.DAY
+        else day_run.full_at
+    )
     return Plan(
         now=now,
         phase=phase,
