@@ -88,9 +88,7 @@ def evaluate(
         shifted += bought_less
     # Months with at least ten days of data, each scaled to a whole month.
     full = {
-        key: months[key] / hours_in[key] * 730
-        for key in months
-        if hours_in[key] >= 240
+        key: months[key] / hours_in[key] * 730 for key in months if hours_in[key] >= 240
     }
     per_year = sum(full.values()) / len(full) * 12 if full else 0.0
     return UpgradeValue(
