@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+
 import pytest
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
@@ -15,8 +17,10 @@ async def home(
     enable_custom_integrations: None,  # noqa: ARG001
     hass: HomeAssistant,
     freezer: FrozenDateTimeFactory,
-) -> HomeAssistant:
+) -> AsyncGenerator[HomeAssistant]:
     """Home Assistant with the recorder, in Augsburg, on a June morning."""
     await configure_home(hass)
     freezer.move_to(local(DAY, 9))
-    return hass
+    yield hass
+    # Let jobs that read the recorder finish before it shuts down.
+    await hass.async_block_till_done(wait_background_tasks=True)
