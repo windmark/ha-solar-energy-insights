@@ -31,6 +31,8 @@ from homeassistant.util.unit_conversion import EnergyConverter, PowerConverter
 
 from .const import (
     CONF_BATTERY_CAPACITY,
+    CONF_BATTERY_CHARGE_ENERGY,
+    CONF_BATTERY_DISCHARGE_ENERGY,
     CONF_BATTERY_POWER,
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
@@ -41,7 +43,10 @@ from .const import (
     CONF_ENERGY_ENTITY,
     CONF_FEED_IN,
     CONF_FEED_IN_ENTITY,
+    CONF_GRID_EXPORT_ENERGY,
+    CONF_GRID_IMPORT_ENERGY,
     CONF_GRID_POWER,
+    CONF_HOUSE_ENERGY,
     CONF_HOUSE_POWER,
     CONF_IMPORT_POSITIVE,
     CONF_MAX_KWH,
@@ -72,12 +77,23 @@ from .const import (
 )
 from .core.appliances import ApplianceProfile
 from .core.battery import Battery
+from .core.bookkeeping import DayTotals
 from .core.forecast import PvForecast
 from .core.load import COOK_WINDOW, cycle_day
 from .core.planner import ApplianceLoad, Plan, PlanInputs, battery_from, plan
+from .jobs import Learner
 from .store import ApplianceState, InsightsData, InsightsStore
 
 _LOGGER = logging.getLogger(__name__)
+
+TOTAL_KEYS = {
+    "solar": CONF_SOLAR_ENERGY,
+    "house": CONF_HOUSE_ENERGY,
+    "imp": CONF_GRID_IMPORT_ENERGY,
+    "exp": CONF_GRID_EXPORT_ENERGY,
+    "charged": CONF_BATTERY_CHARGE_ENERGY,
+    "discharged": CONF_BATTERY_DISCHARGE_ENERGY,
+}
 
 # Above the cooking threshold this long, live, before the evening counts as cooked.
 COOK_CONFIRM = timedelta(minutes=5)
@@ -136,6 +152,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             ),
         )
         self.store = InsightsStore(hass, entry.entry_id)
+        self.learner = Learner(self)
         self.inputs: PlanInputs | None = None
         self._cook_above_since: datetime | None = None
         self._unsubs: list[Callable[[], None]] = []
@@ -312,14 +329,13 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
     # ── The plan ──
 
     def build_inputs(self, now: datetime | None = None) -> PlanInputs:
-        now = now or dt_util.utcnow()
+        if now is None:
+            now = dt_util.utcnow()
         soc = self.number(CONF_BATTERY_SOC)
         if soc is None:
             raise UpdateFailed("The battery's state of charge is not available")
         sunrise = get_astral_event_next(self.hass, "sunrise", now)
         sunset = get_astral_event_next(self.hass, "sunset", now)
-        if sunrise is None or sunset is None:
-            raise UpdateFailed("No sunrise or sunset at this location today")
         later = self.config_entry.data.get(CONF_SOLCAST_LATER) or []
         next_days = [
             value
@@ -351,7 +367,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             solar_kw=self.kw(self.entity(CONF_SOLAR_POWER)) or 0.0,
             house_kw=self.kw(self.entity(CONF_HOUSE_POWER)) or 0.0,
             export_kw=self.export_kw,
-            yield_today_kwh=self.kwh(self.entity(CONF_SOLAR_ENERGY)),
+            yield_today_kwh=self.today_totals().solar,
             forecast_today_kwh=_float(self.state(self.entity(CONF_SOLCAST_TODAY))),
             forecast_next_days=next_days,
             full_since=full_since,
@@ -365,12 +381,33 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             capacity_known=bool(self.capacity_kwh),
         )
 
+    def today_totals(self) -> DayTotals:
+        """Today's energy so far from the counters, daily-reset or lifetime.
+
+        Each counter's reading at the first look of the day is the baseline; a
+        reading below it means the counter reset at midnight, so it is today's.
+        """
+        day = dt_util.as_local(dt_util.utcnow()).date().isoformat()
+        meters = self.data_store.snapshots.get("meters")
+        if not meters or meters.get("day") != day:
+            meters = {"day": day, "start": {}}
+            self.data_store.snapshots["meters"] = meters
+        values: dict[str, float | None] = {}
+        for name, key in TOTAL_KEYS.items():
+            reading = self.kwh(self.entity(key))
+            if reading is None:
+                values[name] = None
+                continue
+            start = meters["start"].setdefault(key, reading)
+            values[name] = reading - start if reading >= start else reading
+        return DayTotals(**values)
+
     async def _async_update_data(self) -> Plan:
-        previous = self.data
+        previous: Plan | None = self.data
         self._track_soc_today()
         self.inputs = self.build_inputs()
         result = plan(self.inputs)
-        if result.free_power and not (previous and previous.free_power):
+        if result.free_power and not (previous is not None and previous.free_power):
             self.hass.bus.async_fire(
                 EVENT_FREE_POWER,
                 {
@@ -400,6 +437,11 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         if changed or self.data_store.snapshots.get("soc") is not seen:
             self.data_store.snapshots["soc"] = seen
             self.store.async_schedule_save()
+
+    @property
+    def plan(self) -> Plan | None:
+        """The latest plan; None before the first one."""
+        return self.data
 
     # ── Live listeners ──
 

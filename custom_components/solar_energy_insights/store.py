@@ -115,7 +115,7 @@ class InsightsData:
             appliances={
                 key: ApplianceState(
                     RunTracker.from_dict(value.get("tracker")),
-                    [tuple(run) for run in value.get("runs", [])],  # type: ignore[misc]
+                    [(float(run[0]), float(run[1])) for run in value.get("runs", [])],
                 )
                 for key, value in (data.get("appliances") or {}).items()
             },
