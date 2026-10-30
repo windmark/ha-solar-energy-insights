@@ -41,7 +41,9 @@ class Evening(StrEnum):
 def cycle_day(t: datetime, tz: tzinfo) -> date:
     """Return the evening a moment belongs to: noon to noon the next day."""
     local = t.astimezone(tz)
-    return local.date() if local.hour >= CYCLE_START_HOUR else local.date() - timedelta(1)
+    return (
+        local.date() if local.hour >= CYCLE_START_HOUR else local.date() - timedelta(1)
+    )
 
 
 def _ok(value: float | None) -> bool:

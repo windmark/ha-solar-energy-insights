@@ -81,7 +81,9 @@ def score(
     parts = {
         "self_sufficiency": _clamp01(1 - imp / house) if house > 0 else 0.0,
         "solar_kept": _clamp01(1 - exp / solar) if solar > 0 else 0.0,
-        "battery_used": _clamp01((totals.discharged or 0.0) / usable) if usable > 0 else 0.0,
+        "battery_used": _clamp01((totals.discharged or 0.0) / usable)
+        if usable > 0
+        else 0.0,
         "performance": _clamp01(solar / forecast_kwh)
         if forecast_kwh and forecast_kwh > 0.5
         else 1.0,
@@ -156,7 +158,9 @@ class DayRecord:
         """Yes/no facts per day, the raw material for streaks and badges."""
         sufficiency = self.totals.self_sufficiency_pct
         return {
-            "self_sufficient": None if sufficiency is None else sufficiency >= SELF_SUFFICIENT_PCT,
+            "self_sufficient": None
+            if sufficiency is None
+            else sufficiency >= SELF_SUFFICIENT_PCT,
             "battery_full": None if self.soc_max is None else self.soc_max >= FULL_PCT,
             "beat_forecast": self.beat_forecast,
             "grid_free_night": None
@@ -183,7 +187,9 @@ class DayRecord:
             day=date.fromisoformat(data["day"]),
             totals=DayTotals(**data.get("totals", {})),
             soc_max=data.get("soc_max"),
-            full_at=datetime.fromisoformat(data["full_at"]) if data.get("full_at") else None,
+            full_at=datetime.fromisoformat(data["full_at"])
+            if data.get("full_at")
+            else None,
             peak_kw=data.get("peak_kw"),
             forecasts=Forecasts(**data.get("forecasts", {})),
             score=Score(**score_data) if score_data else None,
