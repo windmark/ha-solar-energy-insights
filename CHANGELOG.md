@@ -9,3 +9,5 @@
 - The best window for heavy loads, and free power when a full battery exports.
 - The `simulate` action for an extra load, and a WebSocket command with the whole plan.
 - Setup prefilled from EF-PowerOcean-TcpModbus and Solcast.
+- Charge needed for the night, solar surplus until sunset, and until when free power lasts.
+- Nights like tonight weigh more, once replaying recent evenings shows that predicts better than weighting all nights equally; the night prediction error sensor reports how well it does.

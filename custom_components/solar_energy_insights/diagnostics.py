@@ -20,5 +20,23 @@ async def async_get_config_entry_diagnostics(
         "entities": dict(entry.data),
         "options": dict(entry.options),
         "days_of_history": days_covered(coordinator.use),
+        "weighting": str(coordinator.weighting),
+        "backtest": {
+            str(weighting): {
+                "error_kwh": result.error_kwh,
+                "lasts_right": result.agreement,
+                "nights": [
+                    {
+                        "day": n.day.isoformat(),
+                        "predicted_spare_kwh": round(n.predicted_spare_kwh, 2),
+                        "actual_spare_kwh": round(n.actual_spare_kwh, 2),
+                        "predicted_lasts": n.predicted_lasts,
+                        "actual_lasts": n.actual_lasts,
+                    }
+                    for n in result.nights
+                ],
+            }
+            for weighting, result in coordinator.scores.items()
+        },
         "plan": plan_dict(current, detail=False) if current is not None else None,
     }

@@ -26,7 +26,8 @@ The Home Assistant tests run against a real Home Assistant and recorder from [py
   - `battery.py`: steps the battery through solar and load;
   - `forecast.py`: reads Solcast;
   - `nights.py`: lays recent days over the hours ahead;
-  - `plan.py`: the three answers.
+  - `plan.py`: the answers;
+  - `backtest.py`: replays recent evenings to score the night answer and choose the weighting.
 - `coordinator.py`: reads the states, re-reads the house's hourly use from the recorder once an hour, and recomputes the plan when the battery or the forecast changes.
 - On top: the entities, the `simulate` action, the WebSocket command and the config flow.
 

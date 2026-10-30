@@ -164,3 +164,33 @@ def state(hass: HomeAssistant, entity_id: str) -> str:
     current = hass.states.get(entity_id)
     assert current is not None, entity_id
     return current.state
+
+
+async def record_battery(
+    hass: HomeAssistant, days: list[date], soc_at: Callable[[int], float]
+) -> None:
+    """Record the battery's hourly lowest level, as the recorder would have."""
+    rows = [
+        StatisticData(
+            start=local(day, hour),
+            mean=soc_at(hour),
+            min=soc_at(hour),
+            max=soc_at(hour),
+        )
+        for day in days
+        for hour in range(24)
+    ]
+    async_import_statistics(
+        hass,
+        {
+            "mean_type": StatisticMeanType.ARITHMETIC,
+            "has_sum": False,
+            "name": None,
+            "source": "recorder",
+            "statistic_id": ENTITIES[const.CONF_BATTERY_SOC],
+            "unit_class": None,
+            "unit_of_measurement": "%",
+        },
+        rows,
+    )
+    await async_wait_recording_done(hass)

@@ -95,6 +95,18 @@
       },
       "best_window": {
         "name": "Best window for heavy loads"
+      },
+      "charge_needed": {
+        "name": "Charge needed for the night"
+      },
+      "surplus": {
+        "name": "Solar surplus until sunset"
+      },
+      "night_error": {
+        "name": "Night prediction error"
+      },
+      "history_days": {
+        "name": "Days of history"
       }
     },
     "binary_sensor": {

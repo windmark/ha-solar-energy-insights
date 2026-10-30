@@ -29,6 +29,9 @@ DEFAULT_MIN_RESERVE_PCT: Final = 5.0
 DEFAULT_MAX_POWER_KW: Final = 5.0
 DEFAULT_ROUND_TRIP_PCT: Final = 92.0
 
+# Recent evenings the night answer is scored on, to choose how nights are weighted.
+BACKTEST_EVENINGS: Final = 14
+
 # Minutes past the hour the recorder has compiled the hour before.
 HISTORY_MINUTE: Final = 5
 LIVE_INTERVAL_MIN: Final = 5

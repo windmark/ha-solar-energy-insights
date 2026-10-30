@@ -46,6 +46,9 @@ BINARY_SENSORS: tuple[InsightsBinaryDescription, ...] = (
         translation_key="free_power",
         device_class=BinarySensorDeviceClass.POWER,
         is_on_fn=lambda p: p.free_power,
+        attrs_fn=lambda p: {
+            "until": p.free_until.isoformat() if p.free_until else None
+        },
     ),
 )
 

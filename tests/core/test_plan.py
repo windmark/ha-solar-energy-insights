@@ -97,3 +97,61 @@ def test_the_best_window_is_where_the_sun_beats_the_house() -> None:
 def test_a_full_battery_exporting_is_free_power() -> None:
     assert plan(inputs(13, 100, export_kw=3.0)).free_power
     assert not plan(inputs(13, 60, export_kw=3.0)).free_power
+
+
+def test_charging_to_what_is_needed_gets_through_the_heavy_night() -> None:
+    result = plan(inputs(21, 40))
+    assert result.needed is not None
+    needed = result.needed.heavy_pct
+    assert needed is not None
+
+    enough = plan(inputs(21, needed))
+    short = plan(inputs(21, needed - 3))
+
+    assert enough.night is not None
+    assert short.night is not None
+    assert enough.night.heavy.lasts
+    assert not short.night.heavy.lasts
+
+
+def test_a_night_no_battery_could_cover_needs_more_than_full() -> None:
+    hungry = house_use(14, lambda _h: 3.0, DAY)
+
+    result = plan(inputs(21, 50, use=hungry))
+
+    assert result.needed is not None
+    assert result.needed.heavy_pct is None
+
+
+def test_more_sun_leaves_more_surplus() -> None:
+    dull = plan(inputs(9, 60, pv=sunny(DAY, NEXT, peak_kw=4)))
+    bright = plan(inputs(9, 60, pv=sunny(DAY, NEXT, peak_kw=10)))
+
+    assert bright.surplus.total_kwh > dull.surplus.total_kwh
+    assert bright.surplus.cloudy_kwh <= bright.surplus.total_kwh
+
+
+def test_free_power_says_until_when() -> None:
+    result = plan(inputs(12, 100, export_kw=3.0))
+
+    assert result.free_power
+    assert result.free_until is not None
+    assert at(DAY, 12) < result.free_until <= at(DAY, 21, 20)
+
+
+def test_weights_lean_the_night_towards_similar_days() -> None:
+    use = {
+        **house_use(14, lambda _h: 0.3, DAY),
+        **{
+            (DAY - timedelta(days=n), h): 1.6
+            for n in (3, 6, 9, 12)
+            for h in (22, 23, 0, 1, 2, 3)
+        },
+    }
+    equal = plan(inputs(21, 45, use=use))
+    heavy_like = [10.0 if n in (3, 6, 9, 12) else 0.1 for n in range(1, 15)]
+    leaning = plan(inputs(21, 45, use=use, weights=heavy_like))
+
+    assert equal.night is not None
+    assert leaning.night is not None
+    assert leaning.night.share < equal.night.share

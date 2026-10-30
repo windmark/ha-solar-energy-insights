@@ -18,6 +18,18 @@
       },
       "best_window": {
         "default": "mdi:washing-machine"
+      },
+      "charge_needed": {
+        "default": "mdi:battery-arrow-up"
+      },
+      "surplus": {
+        "default": "mdi:solar-power-variant"
+      },
+      "night_error": {
+        "default": "mdi:target"
+      },
+      "history_days": {
+        "default": "mdi:calendar-range"
       }
     },
     "binary_sensor": {

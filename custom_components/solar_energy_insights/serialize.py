@@ -15,6 +15,7 @@ def _iso(t: datetime | None) -> str | None:
 def _outcome(o: NightOutcome) -> dict[str, Any]:
     return {
         "days_ago": o.days_ago,
+        "weight": round(o.weight, 3),
         "lasts": o.lasts,
         "reserve_at": _iso(o.reserve_at),
         "load_kwh": round(o.load_kwh, 2),
@@ -46,6 +47,18 @@ def plan_dict(plan: Plan, *, detail: bool = True) -> dict[str, Any]:
             "typical": _outcome(night.typical),
             "heavy": _outcome(night.heavy),
         },
+        "surplus": {
+            "kwh": round(plan.surplus.total_kwh, 2),
+            "after_full_kwh": round(plan.surplus.after_full_kwh, 2),
+            "while_charging_kwh": round(plan.surplus.while_charging_kwh, 2),
+            "cloudy_kwh": round(plan.surplus.cloudy_kwh, 2),
+        },
+        "needed": None
+        if plan.needed is None
+        else {
+            "heavy_pct": plan.needed.heavy_pct,
+            "typical_pct": plan.needed.typical_pct,
+        },
         "best_window": None
         if plan.best_window is None
         else {
@@ -54,6 +67,7 @@ def plan_dict(plan: Plan, *, detail: bool = True) -> dict[str, Any]:
             "kwh": round(plan.best_window.kwh, 2),
         },
         "free_power": plan.free_power,
+        "free_until": _iso(plan.free_until),
     }
     if detail:
         if night is not None:
