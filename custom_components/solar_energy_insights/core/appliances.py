@@ -53,7 +53,11 @@ class RunTracker:
 
         if watts > RUNNING_W:
             if self.first_above is None:
-                self.first_above, self.start_kwh, self.integrated_kwh = t, meter_kwh, 0.0
+                self.first_above, self.start_kwh, self.integrated_kwh = (
+                    t,
+                    meter_kwh,
+                    0.0,
+                )
             self.last_above = t
             if not self.running and t - self.first_above >= START_AFTER:
                 self.running = True
