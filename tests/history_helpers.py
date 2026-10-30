@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import date, timedelta
 
-from homeassistant.components.recorder.models import StatisticMeanType
+from homeassistant.components.recorder.models import StatisticData, StatisticMeanType
 from homeassistant.components.recorder.statistics import async_import_statistics
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.components.recorder.common import (
@@ -65,10 +65,11 @@ async def import_days(
     hours = [local(day, 0) + timedelta(hours=h) for day in days for h in range(24)]
     for key, per_hour in energy.items():
         # The meter reads on from 1000 kWh; the recorder's sum starts at zero.
-        total, rows = 0.0, []
+        total = 0.0
+        rows: list[StatisticData] = []
         for start in hours:
             total += per_hour(start.hour)
-            rows.append({"start": start, "state": 1000.0 + total, "sum": total})
+            rows.append(StatisticData(start=start, state=1000.0 + total, sum=total))
         async_import_statistics(
             hass,
             {

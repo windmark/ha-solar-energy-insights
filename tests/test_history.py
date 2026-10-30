@@ -23,7 +23,7 @@ async def days(home: HomeAssistant, ws: WebSocketGenerator) -> list[dict[str, An
     await client.send_json_auto_id({"type": f"{const.DOMAIN}/days"})
     reply = await client.receive_json()
     assert reply["success"], reply
-    return reply["result"]["days"]  # type: ignore[no-any-return]
+    return reply["result"]["days"]
 
 
 async def test_a_recorded_day_becomes_a_record(
