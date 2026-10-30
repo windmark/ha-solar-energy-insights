@@ -70,7 +70,7 @@ from .const import (
     RUNNING_STATES,
     SUBENTRY_APPLIANCE,
 )
-from .core.appliances import ApplianceProfile, RunTracker
+from .core.appliances import ApplianceProfile
 from .core.battery import Battery
 from .core.forecast import PvForecast
 from .core.load import COOK_WINDOW, cycle_day
@@ -199,7 +199,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         unit = state.attributes.get("unit_of_measurement") or UnitOfPower.WATT
         try:
             return PowerConverter.convert(value, unit, UnitOfPower.KILO_WATT)
-        except Exception:  # noqa: BLE001 - an odd unit is a missing reading
+        except Exception:
             return None
 
     def kwh(self, entity_id: str | None) -> float | None:
@@ -212,7 +212,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         )
         try:
             return EnergyConverter.convert(value, unit, UnitOfEnergy.KILO_WATT_HOUR)
-        except Exception:  # noqa: BLE001 - an odd unit is a missing reading
+        except Exception:
             return None
 
     def _eur_per_kwh(
