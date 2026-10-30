@@ -39,8 +39,9 @@ class UpgradeValue:
 
 def replay(
     hours: Sequence[Hour], extra_kwh: float, round_trip: float, max_kw: float
-) -> list[tuple[float, float]]:
-    """Return each hour's (import, export) with *extra_kwh* more battery."""
+) -> tuple[list[tuple[float, float]], float]:
+    """Return each hour's (import, export) with *extra_kwh* more battery, and the
+    energy left in it at the end."""
     eta = math.sqrt(round_trip)
     usable = extra_kwh * (1 - MIN_SOC_PCT / 100)
     level = 0.0
@@ -52,7 +53,7 @@ def replay(
         charge = min(hour.exp, max_kw, max(usable - level, 0.0) / eta)
         level += charge * eta
         out.append((hour.imp - discharge, hour.exp - charge))
-    return out
+    return out, level
 
 
 def _month(t: datetime, tz: tzinfo) -> str:
@@ -74,7 +75,7 @@ def evaluate(
     The yearly figure averages the months seen so far; with fewer than twelve it is
     an estimate that leans towards the seasons already lived.
     """
-    replayed = replay(hours, extra_kwh, round_trip, max_kw)
+    replayed, left = replay(hours, extra_kwh, round_trip, max_kw)
     months: dict[str, float] = {}
     hours_in: dict[str, int] = {}
     value = shifted = 0.0
@@ -86,6 +87,12 @@ def evaluate(
         hours_in[key] = hours_in.get(key, 0) + 1
         value += gain
         shifted += bought_less
+    if hours and left > 0:
+        # What is still stored was not lost: it is worth at least its feed-in.
+        residual = left * math.sqrt(round_trip) * feed_in_eur_kwh
+        key = _month(hours[-1].start, tz)
+        months[key] += residual
+        value += residual
     # Months with at least ten days of data, each scaled to a whole month.
     full = {
         key: months[key] / hours_in[key] * 730 for key in months if hours_in[key] >= 240

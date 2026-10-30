@@ -149,6 +149,10 @@ def _slot_start(t: datetime) -> datetime:
     return t.replace(minute=0 if t.minute < 30 else 30, second=0, microsecond=0)
 
 
+def _plus(base: Rate, extra: Rate) -> Rate:
+    return lambda t: base(t) + extra(t)
+
+
 @dataclass(slots=True)
 class _Ctx:
     i: PlanInputs
@@ -213,13 +217,17 @@ def _milestones(ctx: _Ctx, start: datetime, load: Rate) -> _Milestones:
     Solcast gives half-hour averages: each is taken as the value at the middle of
     its half hour and the crossing is interpolated, to the nearest 5 minutes.
     """
-    points: list[tuple[datetime, float, float]] = []
+    times: list[datetime] = []
+    sun: list[float] = []
+    surplus: list[float] = []
     end = ctx.i.sunset if ctx.i.sunset > start else start + timedelta(days=1)
     t = _slot_start(start)
     while t < end:
         mid = t + timedelta(minutes=15)
         kw = ctx.i.pv.kw_at(mid)
-        points.append((mid, kw, kw - load(mid)))
+        times.append(mid)
+        sun.append(kw)
+        surplus.append(kw - load(mid))
         t += timedelta(minutes=30)
     floor = max(start, ctx.i.now)
 
@@ -227,22 +235,21 @@ def _milestones(ctx: _Ctx, start: datetime, load: Rate) -> _Milestones:
         ts = round(t.timestamp() / 300) * 300
         return max(datetime.fromtimestamp(ts, t.tzinfo), floor)
 
-    def cross(index: int, level: float) -> datetime | None:
-        for n, point in enumerate(points):
-            if point[index] < level:
+    def cross(values: list[float], level: float) -> datetime | None:
+        for n, value in enumerate(values):
+            if value < level:
                 continue
             if n == 0:
-                return rounded(point[0])
-            a, b = points[n - 1], point
-            share = (level - a[index]) / (b[index] - a[index])
-            return rounded(a[0] + (b[0] - a[0]) * share)
+                return rounded(times[0])
+            share = (level - values[n - 1]) / (value - values[n - 1])
+            return rounded(times[n - 1] + (times[n] - times[n - 1]) * share)
         return None
 
     return _Milestones(
-        cross(1, 0.5),
-        cross(1, 1.0),
-        cross(2, 0.0),
-        max((p[1] for p in points), default=0),
+        cross(sun, 0.5),
+        cross(sun, 1.0),
+        cross(surplus, 0.0),
+        max(sun, default=0.0),
     )
 
 
@@ -313,12 +320,14 @@ def plan(inputs: PlanInputs) -> Plan:
             key=lambda sim: sim.reserve_at or i.sunrise,
         )
         worst, best = ends[0], ends[-1]
-        assert worst.reserve_at is not None and best.reserve_at is not None
+        assert worst.reserve_at is not None
+        assert best.reserve_at is not None
         spread = best.reserve_at - worst.reserve_at >= DISTINCT
         night = Line(
             "night",
             "Tonight",
-            f"Reserve ~{hm(worst.reserve_at)} · ~{_kwh(worst.grid_kwh)} kWh from the grid",
+            f"Reserve ~{hm(worst.reserve_at)} · "
+            f"~{_kwh(worst.grid_kwh)} kWh from the grid",
             Tone.BAD,
             "mdi:weather-night",
         )
@@ -365,7 +374,8 @@ def plan(inputs: PlanInputs) -> Plan:
             battery_line = Line(
                 "battery",
                 "Battery today",
-                f"Peaks at {day_run.peak_pct:.0f}% ~{hm(day_run.peak_at)} · {at_sunset:.0f}% at sunset",
+                f"Peaks at {day_run.peak_pct:.0f}% ~{hm(day_run.peak_at)} · "
+                f"{at_sunset:.0f}% at sunset",
                 Tone.WARN,
                 "mdi:battery-charging-50",
             )
@@ -503,20 +513,19 @@ def plan(inputs: PlanInputs) -> Plan:
     elif phase is Phase.EVENING and i.appliances:
         failing: list[tuple[ApplianceLoad, datetime]] = []
         for appliance in i.appliances:
-            extra = appliance.rate(now)
-            run = ctx.run(i.sunrise, lambda t, extra=extra: ctx.mix(t) + extra(t))
+            run = ctx.run(i.sunrise, _plus(ctx.mix, appliance.rate(now)))
             if run.reserve_at is not None:
                 failing.append((appliance, run.reserve_at))
         if failing:
-            name, at = failing[0][0].name, failing[0][1]
+            name, grid_at = failing[0][0].name, failing[0][1]
             appliances = Line(
                 "appliances",
                 f"{name} tonight",
-                f"Grid from ~{hm(at)} · if you run it tonight",
+                f"Grid from ~{hm(grid_at)} · if you run it tonight",
                 Tone.WARN,
                 "mdi:dishwasher",
             )
-            appliances_short = f"{name} tonight → grid {hm(at)}"
+            appliances_short = f"{name} tonight → grid {hm(grid_at)}"
         else:
             names = " and ".join(a.name for a in i.appliances[:2])
             appliances = Line(
@@ -579,7 +588,8 @@ def plan(inputs: PlanInputs) -> Plan:
         vs = ""
         if fc_today and fc_today > 0.3:
             pct = (yield_today / fc_today - 1) * 100
-            vs = f" · forecast was {_kwh(fc_today)} ({'+' if pct >= 0 else '−'}{abs(pct):.0f}%)"
+            sign = "+" if pct >= 0 else "−"
+            vs = f" · forecast was {_kwh(fc_today)} ({sign}{abs(pct):.0f}%)"
         production = Line(
             "production",
             "Production today",
@@ -623,7 +633,10 @@ def plan(inputs: PlanInputs) -> Plan:
     grid_mode = at_floor and now_pv < now_load and (not is_day or now_pv < 1)
     kind_now = kinds[0] if len(kinds) == 1 else Evening.MIX
     load_now = ctx.rate(kind_now)
-    eur = lambda kwh: f"≈ €{kwh * i.price_eur_kwh:.2f}"  # noqa: E731
+
+    def eur(kwh: float) -> str:
+        return f"≈ €{kwh * i.price_eur_kwh:.2f}"
+
     sun_word = "today" if is_day or pre_dawn else "tomorrow"
     lines: tuple[Line, ...]
     cover_at: datetime | None = None
@@ -681,18 +694,22 @@ def plan(inputs: PlanInputs) -> Plan:
             assert cook_at is not None
             tone, detail = (
                 Tone.WARN,
-                f"from the battery if you don’t cook · cooking: grid from ~{hm(cook_at)}",
+                "from the battery if you don’t cook · "
+                f"cooking: grid from ~{hm(cook_at)}",
             )
         elif tonight.lasts:
             tone, detail = (
                 Tone.GOOD,
-                f"all from the battery · ~{_kwh(tonight.spare_kwh)} kWh left at sunrise",
+                "all from the battery · "
+                f"~{_kwh(tonight.spare_kwh)} kWh left at sunrise",
             )
         else:
             assert tonight.reserve_at is not None
             tone, detail = (
                 Tone.WARN,
-                f"{_kwh(from_battery)} from the battery · ~{_kwh(tonight.grid_kwh)} from the grid after ~{hm(tonight.reserve_at)}",
+                f"{_kwh(from_battery)} from the battery · "
+                f"~{_kwh(tonight.grid_kwh)} from the grid "
+                f"after ~{hm(tonight.reserve_at)}",
             )
         night_row = Line(
             "night",
@@ -745,7 +762,8 @@ def plan(inputs: PlanInputs) -> Plan:
         )
         headline_tone = Tone.BAD
         if not is_day:
-            subline = f"~{_kwh(ctx.run(i.sunrise, load_now).load_kwh)} kWh tonight · sunrise {hm(i.sunrise)}"
+            tonight_kwh = ctx.run(i.sunrise, load_now).load_kwh
+            subline = f"~{_kwh(tonight_kwh)} kWh tonight · sunrise {hm(i.sunrise)}"
         else:
             ms = _milestones(ctx, now, load_now)
             subline = (

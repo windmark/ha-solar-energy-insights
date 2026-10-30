@@ -28,6 +28,9 @@ ignore = [
     "TRY003", # Descriptive exception messages are wanted, as in Home Assistant.
 ]
 
+# Text shown to people uses typographic apostrophes, dashes and minus signs.
+allowed-confusables = ["’", "–", "−"]
+
 [tool.ruff.lint.flake8-unused-arguments]
 # Entity methods take **kwargs because Home Assistant's signatures do.
 ignore-variadic-names = true
