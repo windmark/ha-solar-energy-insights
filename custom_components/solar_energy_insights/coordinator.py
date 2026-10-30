@@ -398,7 +398,10 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             if reading is None:
                 values[name] = None
                 continue
-            start = meters["start"].setdefault(key, reading)
+            if key not in meters["start"]:
+                meters["start"][key] = reading
+                self.store.async_schedule_save()
+            start = meters["start"][key]
             values[name] = reading - start if reading >= start else reading
         return DayTotals(**values)
 
