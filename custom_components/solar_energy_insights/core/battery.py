@@ -92,7 +92,11 @@ class Simulation:
         With a mark, only the lowest point after it counts: tonight's spare is not
         about this morning's low.
         """
-        low = self.low_after_mark_kwh if self.low_after_mark_kwh is not None else self.low_kwh
+        low = (
+            self.low_after_mark_kwh
+            if self.low_after_mark_kwh is not None
+            else self.low_kwh
+        )
         return max(low - self.floor_kwh, 0.0)
 
     @property
@@ -181,7 +185,9 @@ def simulate(
         if mark_at is not None and mark is None and nxt >= mark_at:
             mark = level
         if mark is not None and nxt >= (mark_at or start):
-            low_after_mark = level if low_after_mark is None else min(low_after_mark, level)
+            low_after_mark = (
+                level if low_after_mark is None else min(low_after_mark, level)
+            )
         points.append((nxt, _pct(level, cap)))
         t = nxt
 

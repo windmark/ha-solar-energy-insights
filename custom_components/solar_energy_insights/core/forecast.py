@@ -169,9 +169,7 @@ class PvBias:
 
     @property
     def active(self) -> bool:
-        return (
-            self.scored_days >= MIN_SCORED_DAYS and self.err_corrected < self.err_raw
-        )
+        return self.scored_days >= MIN_SCORED_DAYS and self.err_corrected < self.err_raw
 
     @property
     def improvement_pct(self) -> float | None:
@@ -180,7 +178,9 @@ class PvBias:
             return None
         return (1 - self.err_corrected / self.err_raw) * 100
 
-    def observe_day(self, month: int, forecast: list[float], actual: list[float]) -> None:
+    def observe_day(
+        self, month: int, forecast: list[float], actual: list[float]
+    ) -> None:
         """Score yesterday's forecast with and without the correction, then learn.
 
         Scoring happens before learning, so the correction is always judged on a
