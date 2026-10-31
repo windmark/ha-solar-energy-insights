@@ -10,6 +10,8 @@ DOMAIN: Final = "solar_energy_insights"
 CONF_BATTERY_SOC: Final = "battery_soc"
 CONF_BATTERY_CAPACITY: Final = "battery_capacity"
 CONF_BATTERY_RESERVE: Final = "battery_reserve"
+# Optional: the level charging stops at, when set below 100 % to spare the cells.
+CONF_CHARGE_LIMIT: Final = "charge_limit"
 CONF_HOUSE_ENERGY: Final = "house_energy"
 CONF_GRID_POWER: Final = "grid_power"
 CONF_SOLCAST_TODAY: Final = "solcast_today"
@@ -20,6 +22,8 @@ CONF_NIGHTS: Final = "nights"
 CONF_MIN_RESERVE: Final = "min_reserve"
 CONF_MAX_POWER: Final = "max_power"
 CONF_ROUND_TRIP: Final = "round_trip"
+# The charge limit when no entity gives one.
+CONF_MAX_CHARGE: Final = "max_charge"
 CONF_IMPORT_POSITIVE: Final = "import_positive"
 CONF_PRICE: Final = "price"
 CONF_FEED_IN: Final = "feed_in"
@@ -44,6 +48,7 @@ DEFAULT_NIGHTS: Final = 14
 DEFAULT_MIN_RESERVE_PCT: Final = 5.0
 DEFAULT_MAX_POWER_KW: Final = 5.0
 DEFAULT_ROUND_TRIP_PCT: Final = 92.0
+DEFAULT_MAX_CHARGE_PCT: Final = 100.0
 # Prices in cents per kWh, until set in the options.
 DEFAULT_PRICE_CT: Final = 30.0
 DEFAULT_FEED_IN_CT: Final = 8.0

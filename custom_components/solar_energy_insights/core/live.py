@@ -47,18 +47,19 @@ def score_nights(
 
 
 def full_times(
-    highest: Mapping[datetime, float], tz: tzinfo
+    highest: Mapping[datetime, float], tz: tzinfo, full_pct: float = FULL_PCT
 ) -> dict[date, datetime | None]:
     """When the battery first got full each local day; None for days it did not.
 
     *highest* is the highest level per period (5 minutes or an hour); the time
-    is the start of the first period that reached full.
+    is the start of the first period that reached *full_pct*, which is just
+    below the battery's charge limit.
     """
     out: dict[date, datetime | None] = {}
     for start in sorted(highest):
         day = start.astimezone(tz).date()
         out.setdefault(day, None)
-        if out[day] is None and highest[start] >= FULL_PCT:
+        if out[day] is None and highest[start] >= full_pct:
             out[day] = start
     return out
 

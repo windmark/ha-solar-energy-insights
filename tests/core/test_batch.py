@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+from dataclasses import replace
 from datetime import timedelta
 
 import numpy as np
@@ -31,7 +32,13 @@ def test_batch_runs_match_single_runs(season, sky_name, start_hour, minute) -> N
     sunset = season.sunset_after(start)
     mark = sunset if sunset < sunrise else None
     pv = sky(season, SKIES[sky_name])
-    battery = Battery(capacity_kwh=10.0, soc_pct=50.0, floor_pct=7.0, max_power_kw=4.0)
+    battery = Battery(
+        capacity_kwh=10.0,
+        soc_pct=50.0,
+        floor_pct=7.0,
+        max_power_kw=4.0,
+        ceiling_pct=85.0,
+    )
     slices = Slices.between(start, sunrise, mark)
     sun = slices.sample(pv.kw_at)
     socs, rates = [], []
@@ -52,12 +59,7 @@ def test_batch_runs_match_single_runs(season, sky_name, start_hour, minute) -> N
 
     for k, (soc, rate) in enumerate(zip(socs, rates, strict=True)):
         one = simulate(
-            Battery(10.0, soc, 7.0, max_power_kw=4.0),
-            start,
-            sunrise,
-            pv.kw_at,
-            rate,
-            mark,
+            replace(battery, soc_pct=soc), start, sunrise, pv.kw_at, rate, mark
         )
         assert bool(batch.lasts[k]) == one.night_lasts
         assert batch.grid_kwh[k] == pytest.approx(one.night_grid_kwh, abs=1e-9)

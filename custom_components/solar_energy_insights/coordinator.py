@@ -40,10 +40,12 @@ from .const import (
     CONF_BATTERY_CAPACITY,
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
+    CONF_CHARGE_LIMIT,
     CONF_FEED_IN,
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
     CONF_IMPORT_POSITIVE,
+    CONF_MAX_CHARGE,
     CONF_MAX_POWER,
     CONF_MIN_RESERVE,
     CONF_NIGHTS,
@@ -56,6 +58,7 @@ from .const import (
     CONF_SOLCAST_TOMORROW,
     CONF_TEMPERATURE,
     DEFAULT_FEED_IN_CT,
+    DEFAULT_MAX_CHARGE_PCT,
     DEFAULT_MAX_POWER_KW,
     DEFAULT_MIN_RESERVE_PCT,
     DEFAULT_NIGHTS,
@@ -282,6 +285,15 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         value = _number(self.hass.states.get(helper))
         return value if value is not None and value >= 0 else default
 
+    def charge_limit(self, floor: float) -> float:
+        """The level charging stops at: the entity while it gives a sensible
+        value (above the floor, at most 100), else the option, else 100."""
+        value = _number(self._state(CONF_CHARGE_LIMIT))
+        if value is not None and floor < value <= 100:
+            return value
+        option = self._option(CONF_MAX_CHARGE, DEFAULT_MAX_CHARGE_PCT)
+        return option if floor < option <= 100 else 100.0
+
     def battery(self) -> Battery:
         soc = _number(self._state(CONF_BATTERY_SOC))
         if soc is None:
@@ -299,6 +311,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             capacity_kwh=capacity,
             soc_pct=soc,
             floor_pct=floor,
+            ceiling_pct=self.charge_limit(floor),
             max_power_kw=self._option(CONF_MAX_POWER, DEFAULT_MAX_POWER_KW),
             round_trip=self._option(CONF_ROUND_TRIP, DEFAULT_ROUND_TRIP_PCT) / 100,
         )
@@ -577,9 +590,11 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             for row in fine.get(soc, [])
             if (value := row.get("max")) is not None
         }
+        # Full is reaching the charge limit, which may be below 100 %.
+        full_pct = battery.ceiling_pct - 1.0
         actual_full = {
             day: t
-            for day, t in live.full_times(highest, self.tz).items()
+            for day, t in live.full_times(highest, self.tz, full_pct).items()
             if day < today
         }
         predicted_full = {
@@ -666,6 +681,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             for key in (
                 CONF_BATTERY_SOC,
                 CONF_BATTERY_CAPACITY,
+                CONF_CHARGE_LIMIT,
                 CONF_BATTERY_RESERVE,
                 CONF_GRID_POWER,
                 CONF_SOLCAST_TODAY,

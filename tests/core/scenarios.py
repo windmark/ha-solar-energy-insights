@@ -114,6 +114,7 @@ def inputs(
     use: Use,
     soc: float,
     nights: int = 7,
+    ceiling: float = 100.0,
     **kwargs: Any,
 ) -> PlanInputs:
     return PlanInputs(
@@ -122,7 +123,10 @@ def inputs(
         sunrise=season.sunrise_after(now),
         sunset=season.sunset_after(now),
         battery=Battery(
-            capacity_kwh=BATTERY.capacity_kwh, soc_pct=soc, floor_pct=BATTERY.floor_pct
+            capacity_kwh=BATTERY.capacity_kwh,
+            soc_pct=soc,
+            floor_pct=BATTERY.floor_pct,
+            ceiling_pct=ceiling,
         ),
         pv=sky(season, peak_kw),
         use=use,

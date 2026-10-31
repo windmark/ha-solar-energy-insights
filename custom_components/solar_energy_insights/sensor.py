@@ -91,7 +91,7 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
             if p.needed is None
             else p.needed.heavy_pct
             if p.needed.heavy_pct is not None
-            else 100.0
+            else p.charge_limit_pct
         ),
         attrs_fn=lambda p: (
             {}
@@ -101,7 +101,8 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
                 "for": "sunset" if p.needed.at == p.sunset else "now",
                 "typical_night": p.needed.typical_pct
                 if p.needed.typical_pct is not None
-                else 100.0,
+                else p.charge_limit_pct,
+                "charge_limit": p.charge_limit_pct,
                 "full_battery_lasts": p.needed.heavy_pct is not None,
                 "grid_even_when_full_kwh": round(p.needed.heavy_short_kwh, 2),
                 "grid_even_when_full_typical_kwh": round(p.needed.typical_short_kwh, 2),

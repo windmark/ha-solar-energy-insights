@@ -54,6 +54,7 @@ Requires Home Assistant 2025.12 or newer and the recorder.
 | Battery state of charge    | %                                                                                                       |
 | Battery capacity           | Wh or kWh; while it reports none, the last value is used                                                |
 | Battery reserve (optional) | %, the reserve in force; for PowerOcean, Effective Battery Reserve                                      |
+| Charge limit (optional)    | %, the level charging stops at if set below 100 %; for PowerOcean, Charge Limit SOC                     |
 | House energy               | A counter of the house's use, daily or lifetime; its recorded hours are what the night is replayed from |
 | Grid power (optional)      | To tell when a full battery is exporting                                                                |
 | Solcast today and tomorrow | The forecast sensors, with `detailedForecast`                                                           |
@@ -63,7 +64,7 @@ Requires Home Assistant 2025.12 or newer and the recorder.
 - **Prices:** the electricity price and feed-in tariff, in cents per kWh. Until they're saved here, `input_number.electricity_price` and `input_number.feed_in_tariff` are used if you have them. For a dynamic tariff, an optional price entity overrides the price while it has a value.
 - **Optional inputs:** an outdoor temperature sensor and a presence sensor (each with statistics) for telling nights apart, and a solar energy counter for learning a Solcast correction. Each is used only if it predicts better.
 - **The night test:** how many nights to replay (default 14), and the lowest state of charge the inverter discharges to by itself (5 %).
-- **The battery:** its power limit (5 kW), round-trip efficiency (92 %), and which sign of grid power means importing.
+- **The battery:** its charge limit when no entity gives one (100 %), its power limit (5 kW), round-trip efficiency (92 %), and which sign of grid power means importing.
 
 Prices only turn kWh into money. They never change the plan: a price entity's current value applies to every hour ahead, and nothing is timed to cheap hours.
 

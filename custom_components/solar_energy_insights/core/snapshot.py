@@ -46,6 +46,7 @@ def to_snapshot(i: PlanInputs, evenings: Sequence[Evening] = ()) -> dict[str, An
             "floor_pct": i.battery.floor_pct,
             "max_power_kw": i.battery.max_power_kw,
             "round_trip": i.battery.round_trip,
+            "ceiling_pct": i.battery.ceiling_pct,
         },
         "export_kw": i.export_kw,
         "nights": i.nights,

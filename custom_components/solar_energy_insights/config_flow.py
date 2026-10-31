@@ -27,10 +27,12 @@ from .const import (
     CONF_BATTERY_CAPACITY,
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
+    CONF_CHARGE_LIMIT,
     CONF_FEED_IN,
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
     CONF_IMPORT_POSITIVE,
+    CONF_MAX_CHARGE,
     CONF_MAX_POWER,
     CONF_MIN_RESERVE,
     CONF_NIGHTS,
@@ -43,6 +45,7 @@ from .const import (
     CONF_SOLCAST_TOMORROW,
     CONF_TEMPERATURE,
     DEFAULT_FEED_IN_CT,
+    DEFAULT_MAX_CHARGE_PCT,
     DEFAULT_MAX_POWER_KW,
     DEFAULT_MIN_RESERVE_PCT,
     DEFAULT_NIGHTS,
@@ -59,6 +62,8 @@ POWEROCEAN_KEYS: dict[str, tuple[str, ...]] = {
     CONF_BATTERY_SOC: ("battery_soc",),
     CONF_BATTERY_CAPACITY: ("battery_capacity",),
     CONF_BATTERY_RESERVE: ("battery_reserve_effective", "min_soc_limit"),
+    # A number entity: the limit set while Modbus control is on.
+    CONF_CHARGE_LIMIT: ("charge_limit_soc",),
     CONF_HOUSE_ENERGY: ("house_energy_total",),
     CONF_GRID_POWER: ("grid_power",),
 }
@@ -93,6 +98,9 @@ SCHEMA = vol.Schema(
         vol.Required(CONF_BATTERY_SOC): _sensor(SensorDeviceClass.BATTERY),
         vol.Required(CONF_BATTERY_CAPACITY): _sensor(),
         vol.Optional(CONF_BATTERY_RESERVE): _sensor(),
+        vol.Optional(CONF_CHARGE_LIMIT): EntitySelector(
+            EntitySelectorConfig(domain=["number", "sensor", "input_number"])
+        ),
         vol.Required(CONF_HOUSE_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Optional(CONF_GRID_POWER): _sensor(SensorDeviceClass.POWER),
         vol.Required(CONF_SOLCAST_TODAY): _sensor(),
@@ -121,6 +129,9 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Required(CONF_MAX_POWER, default=DEFAULT_MAX_POWER_KW): _number(
             0.5, 50, 0.1, "kW"
         ),
+        vol.Required(CONF_MAX_CHARGE, default=DEFAULT_MAX_CHARGE_PCT): _number(
+            50, 100, 1, "%"
+        ),
         vol.Required(CONF_ROUND_TRIP, default=DEFAULT_ROUND_TRIP_PCT): _number(
             70, 100, 1, "%"
         ),
@@ -133,7 +144,7 @@ def suggested_entities(hass: HomeAssistant) -> dict[str, Any]:
     """Prefill from EF-PowerOcean-TcpModbus and Solcast where they are installed."""
     found: dict[str, str] = {}
     for entry in er.async_get(hass).entities.values():
-        if entry.platform != POWEROCEAN or entry.domain != "sensor":
+        if entry.platform != POWEROCEAN or entry.domain not in ("sensor", "number"):
             continue
         for keys in POWEROCEAN_KEYS.values():
             for key in keys:

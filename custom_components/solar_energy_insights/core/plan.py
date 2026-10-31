@@ -19,7 +19,8 @@ from .forecast import PvForecast, Quantile
 from .nights import HourlyUse, PastDay, past_days, recent_use, typical
 
 # Battery at least this full and exporting at least this much = free power.
-FREE_SOC_PCT = 97.0
+# Within this many points of the charge limit counts as full, for free power.
+FREE_MARGIN_PCT = 3.0
 FREE_EXPORT_KW = 1.5
 # Spare solar from which a half hour counts towards a window for heavy loads.
 WINDOW_SURPLUS_KW = 1.0
@@ -158,6 +159,8 @@ class Plan:
     best_window: Window | None
     free_power: bool
     free_until: datetime | None
+    # The level charging stops at, as planned with.
+    charge_limit_pct: float
     curve: tuple[tuple[datetime, float], ...] = field(repr=False)
 
 
@@ -265,8 +268,10 @@ def _needed(
         return None
     start = i.sunset if i.sunset < i.sunrise else i.now
     slices = Slices.between(start, i.sunrise, None)
+    # Up to the charge limit: a level the battery never charges to is no answer.
+    ceiling = i.battery.ceiling_pct
     levels = np.unique(
-        np.append(np.arange(i.battery.floor_pct, 100.0, CHARGE_STEP_PCT), 100.0)
+        np.append(np.arange(i.battery.floor_pct, ceiling, CHARGE_STEP_PCT), ceiling)
     )
     loads = _loads(i, slices, days)
     # Runs ordered level-major: run (l, d) is level l against night d.
@@ -367,7 +372,10 @@ def plan(i: PlanInputs) -> Plan:
     charge, surplus, expected = _charge(i, load)
     sun = _sun(i.pv, Quantile.P50)
     night = _night(i, days, weights, sun)
-    free = i.battery.soc_pct >= FREE_SOC_PCT and i.export_kw >= FREE_EXPORT_KW
+    free = (
+        i.battery.soc_pct >= i.battery.ceiling_pct - FREE_MARGIN_PCT
+        and i.export_kw >= FREE_EXPORT_KW
+    )
     return Plan(
         now=i.now,
         sunrise=i.sunrise,
@@ -379,5 +387,6 @@ def plan(i: PlanInputs) -> Plan:
         best_window=_best_window(i, load),
         free_power=free,
         free_until=_free_until(i, load) if free else None,
+        charge_limit_pct=i.battery.ceiling_pct,
         curve=expected.points,
     )
