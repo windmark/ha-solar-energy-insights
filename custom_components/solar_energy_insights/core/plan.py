@@ -4,6 +4,7 @@ Facts only; wording is left to whoever shows them."""
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, tzinfo
@@ -104,8 +105,10 @@ class Surplus:
 
 @dataclass(frozen=True, slots=True)
 class Needed:
-    """The lowest state of charge now from which the night lasts."""
+    """The lowest state of charge from which the night lasts, at *at*: sunset
+    in the day, now at night. None when even a full battery does not."""
 
+    at: datetime
     typical_pct: float | None
     heavy_pct: float | None
 
@@ -160,7 +163,12 @@ def _days(i: PlanInputs) -> tuple[list[PastDay], list[float]]:
 def _night(
     i: PlanInputs, days: list[PastDay], weights: list[float], sun: Rate
 ) -> Night | None:
-    """Replay each of the last nights from now until sunrise."""
+    """Replay each of the last nights from now until sunrise.
+
+    In the day, the replay runs through the rest of today, but only what happens
+    from sunset on is the night: reaching the reserve this morning, before the
+    sun takes over, is not a night that failed.
+    """
     if not days:
         return None
     outcomes = []
@@ -170,34 +178,47 @@ def _night(
             NightOutcome(
                 days_ago=day.days_ago,
                 weight=weight,
-                lasts=sim.lasts,
-                reserve_at=sim.reserve_at,
-                load_kwh=sim.load_kwh,
-                grid_kwh=sim.grid_kwh,
+                lasts=sim.night_lasts,
+                reserve_at=sim.night_reserve_at,
+                load_kwh=sim.night_load_kwh,
+                grid_kwh=sim.night_grid_kwh,
                 spare_kwh=sim.spare_kwh,
             )
         )
-    by_load = [(o.load_kwh, o.weight) for o in outcomes]
+    by_outcome = [(_badness(o), o.weight) for o in outcomes]
 
     def at(share: float) -> NightOutcome:
-        load = weighted_quantile(by_load, share)
-        return min(outcomes, key=lambda o: (abs(o.load_kwh - load), -o.weight))
+        target = weighted_quantile(by_outcome, share)
+        return min(outcomes, key=lambda o: (abs(_badness(o) - target), -o.weight))
 
     return Night(outcomes=tuple(outcomes), typical=at(0.5), heavy=at(HEAVY_SHARE))
 
 
-def _needed_for(i: PlanInputs, day: PastDay, sun: Rate) -> float | None:
-    """The lowest state of charge now from which this night lasts, or None if
-    even a full battery does not."""
+def _badness(o: NightOutcome) -> float:
+    """How badly a night ends: grid energy needed, else minus the spare left.
+
+    Ranking by how a night ends, not by its load, keeps a heavy night from ever
+    looking better than a typical one.
+    """
+    return o.grid_kwh if o.grid_kwh > 0 else -o.spare_kwh
+
+
+def _needed_for(i: PlanInputs, day: PastDay, sun: Rate, start: datetime) -> float:
+    """The lowest state of charge at *start* from which this night lasts.
+
+    Returns more than 100 when even a full battery does not.
+    """
+    load = _plus(day.rate, i.extra)
 
     def lasts(soc: float) -> bool:
-        return _replay(i, replace(i.battery, soc_pct=soc), day, sun).lasts
+        battery = replace(i.battery, soc_pct=soc)
+        return simulate(battery, start, i.sunrise, sun, load).lasts
 
     floor = i.battery.floor_pct
     if lasts(floor):
         return floor
     if not lasts(100.0):
-        return None
+        return math.inf
     low, high = floor, 100.0
     while high - low > CHARGE_STEP_PCT:
         middle = (low + high) / 2
@@ -209,15 +230,26 @@ def _needed_for(i: PlanInputs, day: PastDay, sun: Rate) -> float | None:
 
 
 def _needed(
-    i: PlanInputs, night: Night | None, days: list[PastDay], sun: Rate
+    i: PlanInputs, days: list[PastDay], weights: list[float], sun: Rate
 ) -> Needed | None:
-    if night is None:
+    """The charge needed for the night, at sunset in the day and now at night.
+
+    Each past night gives the lowest level it would have needed; typical and
+    heavy are the weighted middle and the 80th percentile of those.
+    """
+    if not days:
         return None
-    by_age = {day.days_ago: day for day in days}
-    return Needed(
-        typical_pct=_needed_for(i, by_age[night.typical.days_ago], sun),
-        heavy_pct=_needed_for(i, by_age[night.heavy.days_ago], sun),
-    )
+    start = i.sunset if i.sunset < i.sunrise else i.now
+    needed = [
+        (_needed_for(i, day, sun, start), weight)
+        for day, weight in zip(days, weights, strict=True)
+    ]
+
+    def pct(share: float) -> float | None:
+        value = weighted_quantile(needed, share)
+        return None if math.isinf(value) else value
+
+    return Needed(at=start, typical_pct=pct(0.5), heavy_pct=pct(HEAVY_SHARE))
 
 
 def _charge(i: PlanInputs, load: Rate) -> tuple[Charge, Surplus, Simulation]:
@@ -295,7 +327,7 @@ def plan(i: PlanInputs) -> Plan:
         charge=charge,
         surplus=surplus,
         night=night,
-        needed=_needed(i, night, days, sun),
+        needed=_needed(i, days, weights, sun),
         best_window=_best_window(i, load),
         free_power=free,
         free_until=_free_until(i, load) if free else None,

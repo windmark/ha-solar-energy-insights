@@ -82,6 +82,7 @@ def plan_dict(
         "needed": None
         if plan.needed is None
         else {
+            "at": _iso(plan.needed.at),
             "heavy_pct": plan.needed.heavy_pct,
             "typical_pct": plan.needed.typical_pct,
         },

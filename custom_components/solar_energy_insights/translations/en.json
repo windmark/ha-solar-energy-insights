@@ -103,7 +103,16 @@
         "name": "Best window for heavy loads"
       },
       "charge_needed": {
-        "name": "Charge needed for the night"
+        "name": "Charge needed for the night",
+        "state_attributes": {
+          "for": {
+            "name": "For",
+            "state": {
+              "sunset": "Sunset",
+              "now": "Now"
+            }
+          }
+        }
       },
       "surplus": {
         "name": "Solar surplus until sunset"
