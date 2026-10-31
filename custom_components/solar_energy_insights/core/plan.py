@@ -147,6 +147,22 @@ class Window:
 
 
 @dataclass(frozen=True, slots=True)
+class Day:
+    """The rest of the day until sunset, as expected, for showing the working."""
+
+    # Solcast's expected solar, and the house's usual use, until sunset.
+    pv_kwh: float
+    load_kwh: float
+    # When the battery would hand over to the grid before sunset, such as this
+    # morning before the sun takes over; None if it does not.
+    reserve_at: datetime | None
+    # The battery's level if it is cloudier, as Solcast's low case.
+    curve_cloudy: tuple[tuple[datetime, float], ...] = field(repr=False)
+    # Each half hour until sunset: its start, expected solar kW and house kW.
+    slots: tuple[tuple[datetime, float, float], ...] = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
 class Plan:
     now: datetime
     sunrise: datetime
@@ -162,6 +178,7 @@ class Plan:
     # The level charging stops at, as planned with.
     charge_limit_pct: float
     curve: tuple[tuple[datetime, float], ...] = field(repr=False)
+    day: Day | None = field(default=None, repr=False, compare=False)
 
 
 def _plus(base: Rate, extra: Rate | None) -> Rate:
@@ -303,7 +320,25 @@ def _needed(
     )
 
 
-def _charge(i: PlanInputs, load: Rate) -> tuple[Charge, Surplus, Simulation]:
+def _day(i: PlanInputs, load: Rate, expected: Simulation, cloudy: Simulation) -> Day:
+    start = _slot(i.now if i.sunset < i.sunrise else i.sunrise)
+    slots = []
+    t = start
+    while t < i.sunset:
+        slots.append((t, round(i.pv.kw_at(t), 3), round(load(t), 3)))
+        t += HALF_HOUR
+    return Day(
+        pv_kwh=expected.pv_kwh,
+        load_kwh=expected.load_kwh,
+        reserve_at=expected.reserve_at,
+        curve_cloudy=cloudy.points,
+        slots=tuple(slots),
+    )
+
+
+def _charge(
+    i: PlanInputs, load: Rate
+) -> tuple[Charge, Surplus, Simulation, Simulation]:
     expected = simulate(
         i.battery, i.now, i.sunset, _sun(i.pv, Quantile.P50), load, mark_at=i.sunset
     )
@@ -320,7 +355,7 @@ def _charge(i: PlanInputs, load: Rate) -> tuple[Charge, Surplus, Simulation]:
         while_charging_kwh=expected.export_before_full_kwh,
         cloudy_kwh=cloudy.export_kwh + cloudy.export_before_full_kwh,
     )
-    return charge, surplus, expected
+    return charge, surplus, expected, cloudy
 
 
 def _slot(t: datetime) -> datetime:
@@ -369,7 +404,7 @@ def plan(i: PlanInputs) -> Plan:
     # The day's usual load, from the same recent days the night replays.
     recent = recent_use(i.use, _today(i), [d.days_ago for d in days])
     load = _house(i, typical(recent, i.tz))
-    charge, surplus, expected = _charge(i, load)
+    charge, surplus, expected, cloudy = _charge(i, load)
     sun = _sun(i.pv, Quantile.P50)
     night = _night(i, days, weights, sun)
     free = (
@@ -389,4 +424,5 @@ def plan(i: PlanInputs) -> Plan:
         free_until=_free_until(i, load) if free else None,
         charge_limit_pct=i.battery.ceiling_pct,
         curve=expected.points,
+        day=_day(i, load, expected, cloudy),
     )

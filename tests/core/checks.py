@@ -7,7 +7,7 @@ tests run them over real moments saved from diagnostics.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from custom_components.solar_energy_insights.core.plan import Plan, PlanInputs
 
@@ -99,7 +99,32 @@ def windows_are_ahead_and_in_daylight(name: str, i: PlanInputs, p: Plan) -> None
         assert p.free_until > i.now, name
 
 
+def the_days_working_adds_up(name: str, i: PlanInputs, p: Plan) -> None:
+    day = p.day
+    assert day is not None, name
+    start = i.now if i.sunset < i.sunrise else i.sunrise
+    for t, pv, load in day.slots:
+        assert start - timedelta(minutes=30) < t < i.sunset, name
+        assert pv >= 0, name
+        assert load >= 0, name
+    # Less sun never leaves the battery fuller.
+    expected = dict(p.curve)
+    for t, pct in day.curve_cloudy:
+        if t in expected:
+            assert pct <= expected[t] + EPS, name
+    if day.reserve_at is not None:
+        assert i.now <= day.reserve_at <= i.sunset, name
+    # The best window is made of half hours that really have sun to spare.
+    window = p.best_window
+    if window is not None:
+        spare = {t: pv - load for t, pv, load in day.slots}
+        inside = [v for t, v in spare.items() if window.start <= t < window.end]
+        assert inside, name
+        assert all(v >= 1.0 - EPS for v in inside), name
+
+
 ALL: tuple[Check, ...] = (
+    the_days_working_adds_up,
     heavy_never_ends_better,
     nights_are_consistent,
     shares_and_counts_agree,
