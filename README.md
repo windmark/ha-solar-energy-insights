@@ -14,11 +14,11 @@ It reads entities you already have and never talks to a device. With [EF-PowerOc
 
 > Lasts the night on 11 of the last 14 nights. On a heavy night, the reserve is reached around 04:10.
 
-Cooking, the dishwasher and a cold night's heat pump are already in those nights, metered or not. There is nothing to classify, learn or keep: the recorder is the only store, and a restart loses nothing.
+Cooking, the dishwasher and a cold night's heat pump are already in those nights, metered or not, so nothing has to be classified. A day the recorder mostly missed is skipped rather than replayed, and the day's usual load comes from the same recent days, not from months back.
 
 **Nights like tonight count more, once that has proved better.** Today's last six hours, including the hour in progress, are compared with the same hours on each past day, and similar days weigh more. After a big dinner, nights that followed big dinners dominate; if the evening turns heavy at 22:00, the weights follow within the hour. This weighting is only used when it beats weighting every night equally on your own recent evenings.
 
-**The score needs no stored predictions.** Each hour, the integration replays each of the last 14 evenings as it would have at 21:00, using only the days before it, and compares the result with the lowest level the battery actually reached before sunrise. Three things keep that honest:
+**The score needs no stored predictions.** Each hour, the integration replays each of the recent evenings as it would have at 21:00, using only the days before it, and compares the result with the lowest level the battery actually reached before sunrise. Three things keep that honest:
 
 - **Contested evenings only.** An evening that starts nearly empty ends at the reserve whatever is predicted, so only evenings where the prediction or the battery said "lasted" are scored.
 - **Clean history.** A battery can't go below its floor. A reading under it is either a glitch (the hour otherwise sat well above) or the battery asleep at its reserve; both are corrected and counted.
@@ -54,6 +54,7 @@ Requires Home Assistant 2025.12 or newer and the recorder.
 | Battery state of charge    | %                                                                                                       |
 | Battery capacity           | Wh or kWh; while it reports none, the last value is used                                                |
 | Battery reserve (optional) | %, the reserve in force; for PowerOcean, Effective Battery Reserve                                      |
+| Charge limit (optional)    | %, the level charging stops at if set below 100 %; for PowerOcean, Charge Limit SOC                     |
 | House energy               | A counter of the house's use, daily or lifetime; its recorded hours are what the night is replayed from |
 | Grid power (optional)      | To tell when a full battery is exporting                                                                |
 | Solcast today and tomorrow | The forecast sensors, with `detailedForecast`                                                           |
@@ -63,7 +64,7 @@ Requires Home Assistant 2025.12 or newer and the recorder.
 - **Prices:** the electricity price and feed-in tariff, in cents per kWh. Until they're saved here, `input_number.electricity_price` and `input_number.feed_in_tariff` are used if you have them. For a dynamic tariff, an optional price entity overrides the price while it has a value.
 - **Optional inputs:** an outdoor temperature sensor and a presence sensor (each with statistics) for telling nights apart, and a solar energy counter for learning a Solcast correction. Each is used only if it predicts better.
 - **The night test:** how many nights to replay (default 14), and the lowest state of charge the inverter discharges to by itself (5 %).
-- **The battery:** its power limit (5 kW), round-trip efficiency (92 %), and which sign of grid power means importing.
+- **The battery:** its charge limit when no entity gives one (100 %), its power limit (5 kW), round-trip efficiency (92 %), and which sign of grid power means importing.
 
 Prices only turn kWh into money. They never change the plan: a price entity's current value applies to every hour ahead, and nothing is timed to cheap hours.
 

@@ -42,9 +42,11 @@ async def test_a_download_replays_to_the_same_plan(
     )
 
     assert plan(from_snapshot(download)) == entry.runtime_data.plan
-    assert len(evenings_from_snapshot(download)) == len(
-        entry.runtime_data.score.nights if entry.runtime_data.score else []
-    )
+    scored = entry.runtime_data.score
+    assert scored is not None
+    assert {n.day for n in scored.nights} <= {
+        e.day for e in evenings_from_snapshot(download)
+    }
 
 
 async def test_the_download_replays_the_plan_shown_even_after_things_move_on(

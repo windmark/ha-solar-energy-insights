@@ -40,10 +40,12 @@ from .const import (
     CONF_BATTERY_CAPACITY,
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
+    CONF_CHARGE_LIMIT,
     CONF_FEED_IN,
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
     CONF_IMPORT_POSITIVE,
+    CONF_MAX_CHARGE,
     CONF_MAX_POWER,
     CONF_MIN_RESERVE,
     CONF_NIGHTS,
@@ -56,6 +58,7 @@ from .const import (
     CONF_SOLCAST_TOMORROW,
     CONF_TEMPERATURE,
     DEFAULT_FEED_IN_CT,
+    DEFAULT_MAX_CHARGE_PCT,
     DEFAULT_MAX_POWER_KW,
     DEFAULT_MIN_RESERVE_PCT,
     DEFAULT_NIGHTS,
@@ -100,6 +103,8 @@ from .core.plan import HEAVY_SHARE, Plan, PlanInputs, plan
 from .core.snapshot import to_snapshot
 from .memory import MemoryStore
 
+# A state of charge below this, with a floor above it, is a sleeping battery.
+SLEEPING_READING_PCT = 0.5
 # The hour in progress counts towards "today so far" once this much of it is seen.
 MIN_PARTIAL_HOUR = timedelta(minutes=15)
 
@@ -280,6 +285,15 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         value = _number(self.hass.states.get(helper))
         return value if value is not None and value >= 0 else default
 
+    def charge_limit(self, floor: float) -> float:
+        """The level charging stops at: the entity while it gives a sensible
+        value (above the floor, at most 100), else the option, else 100."""
+        value = _number(self._state(CONF_CHARGE_LIMIT))
+        if value is not None and floor < value <= 100:
+            return value
+        option = self._option(CONF_MAX_CHARGE, DEFAULT_MAX_CHARGE_PCT)
+        return option if floor < option <= 100 else 100.0
+
     def battery(self) -> Battery:
         soc = _number(self._state(CONF_BATTERY_SOC))
         if soc is None:
@@ -288,12 +302,16 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         if not capacity:
             raise UpdateFailed("The battery's capacity is not available")
         reserve = _number(self._state(CONF_BATTERY_RESERVE)) or 0.0
+        floor = max(reserve, self._option(CONF_MIN_RESERVE, DEFAULT_MIN_RESERVE_PCT))
+        if soc < SLEEPING_READING_PCT < floor:
+            # Some inverters report 0 % while the battery sleeps at its reserve;
+            # it cannot be below a floor it never discharges past.
+            soc = floor
         return Battery(
             capacity_kwh=capacity,
             soc_pct=soc,
-            floor_pct=max(
-                reserve, self._option(CONF_MIN_RESERVE, DEFAULT_MIN_RESERVE_PCT)
-            ),
+            floor_pct=floor,
+            ceiling_pct=self.charge_limit(floor),
             max_power_kw=self._option(CONF_MAX_POWER, DEFAULT_MAX_POWER_KW),
             round_trip=self._option(CONF_ROUND_TRIP, DEFAULT_ROUND_TRIP_PCT) / 100,
         )
@@ -313,8 +331,10 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             )
         )
 
-    def inputs(self, extra: Rate | None = None) -> PlanInputs:
-        now = dt_util.utcnow()
+    def inputs(
+        self, extra: Rate | None = None, now: datetime | None = None
+    ) -> PlanInputs:
+        now = now or dt_util.utcnow()
         days = past_days(self.use, self.tz, self.nights)
         weights = weights_for(
             self.weighting,
@@ -343,14 +363,34 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
 
     # ── History ──
 
+    async def async_refresh_history(self) -> None:
+        """Re-read the history now, whether or not a new hour has been recorded."""
+        self._use_until = None
+        await self.async_load_use()
+
     async def async_load_use(self) -> None:
-        """Re-read the house's hourly use once the recorder has a new hour."""
+        """Re-read the house's hourly use once the recorder has a new hour.
+
+        If the recorder cannot answer (it can be busy), the history already read
+        is kept and it is tried again on the next update: one failed read must
+        not take every answer away.
+        """
         now = dt_util.utcnow()
         hour = now.replace(minute=0, second=0, microsecond=0)
         if now.minute < HISTORY_MINUTE:
             hour -= timedelta(hours=1)
         if self._use_until == hour:
             return
+        try:
+            await self._async_read_history(now, hour)
+        except Exception as err:
+            if not self.use:
+                raise UpdateFailed(f"Could not read history: {err}") from err
+            _LOGGER.warning("Could not read history, keeping what was read: %s", err)
+            return
+        self._use_until = hour
+
+    async def _async_read_history(self, now: datetime, hour: datetime) -> None:
         house = self.config_entry.data[CONF_HOUSE_ENERGY]
         soc = self.config_entry.data[CONF_BATTERY_SOC]
         options = self.config_entry.options
@@ -393,7 +433,6 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         )
         await self._async_calibrate(soc_hours, now)
         await self._async_score_live(rows, soc, now)
-        self._use_until = hour
 
     def _evenings(self, lows: dict[datetime, float], now: datetime) -> list[Evening]:
         """What the battery did on recent nights, from its hourly lowest level."""
@@ -551,9 +590,11 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             for row in fine.get(soc, [])
             if (value := row.get("max")) is not None
         }
+        # Full is reaching the charge limit, which may be below 100 %.
+        full_pct = battery.ceiling_pct - 1.0
         actual_full = {
             day: t
-            for day, t in live.full_times(highest, self.tz).items()
+            for day, t in live.full_times(highest, self.tz, full_pct).items()
             if day < today
         }
         predicted_full = {
@@ -568,10 +609,14 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         if not solar:
             self.correction = Correction.none()
             return
+        if not memory.forecasts:
+            self.correction = Correction.none()
+            return
+        oldest = date.fromisoformat(min(memory.forecasts))
         made = await get_instance(self.hass).async_add_executor_job(
             statistics_during_period,
             self.hass,
-            now - timedelta(days=len(memory.forecasts) + 1),
+            datetime.combine(oldest, datetime.min.time(), self.tz) - timedelta(hours=1),
             now,
             {solar},
             "hour",
@@ -585,6 +630,8 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
                 if (change := row.get("change")) is not None
             },
             self.tz,
+            # A large array can make more than a house uses in an hour.
+            max_kwh=None,
         )
         forecasts, actual = {}, {}
         for day_key, slots in memory.forecasts.items():
@@ -634,6 +681,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             for key in (
                 CONF_BATTERY_SOC,
                 CONF_BATTERY_CAPACITY,
+                CONF_CHARGE_LIMIT,
                 CONF_BATTERY_RESERVE,
                 CONF_GRID_POWER,
                 CONF_SOLCAST_TODAY,

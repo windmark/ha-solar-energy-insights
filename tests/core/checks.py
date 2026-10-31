@@ -61,7 +61,7 @@ def charge_needed_is_a_level(name: str, i: PlanInputs, p: Plan) -> None:
     assert needed.at == night_start(i), name
     for pct in (needed.typical_pct, needed.heavy_pct):
         if pct is not None:
-            assert i.battery.floor_pct - EPS <= pct <= 100 + EPS, name
+            assert i.battery.floor_pct - EPS <= pct <= i.battery.ceiling_pct + EPS, name
     if needed.heavy_pct is not None:
         assert needed.typical_pct is not None, name
         assert needed.heavy_pct >= needed.typical_pct - EPS, name
@@ -74,11 +74,12 @@ def the_day_stays_within_the_day(name: str, i: PlanInputs, p: Plan) -> None:
     if charge.full_at_cloudy is not None:
         assert charge.full_at is not None, name
         assert charge.full_at_cloudy >= charge.full_at, name
-    assert min(i.battery.soc_pct, 100) - 0.5 <= charge.peak_pct <= 100 + EPS, name
+    top = max(i.battery.ceiling_pct, i.battery.soc_pct)
+    assert min(i.battery.soc_pct, 100) - 0.5 <= charge.peak_pct <= top + EPS, name
     assert charge.peak_pct_cloudy <= charge.peak_pct + EPS, name
     if charge.sunset_pct is not None:
         assert 0 <= charge.sunset_pct <= 100 + EPS, name
-    assert all(0 <= pct <= 100 + EPS for _, pct in p.curve), name
+    assert all(0 <= pct <= top + EPS for _, pct in p.curve), name
 
 
 def surplus_is_sane(name: str, _i: PlanInputs, p: Plan) -> None:

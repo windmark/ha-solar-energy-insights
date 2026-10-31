@@ -91,6 +91,7 @@ def run(
     count = len(socs)
     cap, eta, p_max = battery.capacity_kwh, battery.eta, battery.max_power_kw
     floor = battery.floor_kwh
+    top = battery.ceiling_kwh
     level = cap * socs / 100
     grid = np.zeros(count)
     load_total = np.zeros(count)
@@ -105,8 +106,8 @@ def run(
         net = max(sun[k], 0.0) - use
         # Surplus charges, up to the power limit and room left, with losses.
         charge_kw = np.minimum(np.maximum(net, 0.0), p_max)
-        into = np.clip(np.minimum(charge_kw * hours, (cap - level) / eta), 0.0, None)
-        level = np.minimum(level + into * eta, cap)
+        into = np.clip(np.minimum(charge_kw * hours, (top - level) / eta), 0.0, None)
+        level = np.maximum(np.minimum(level + into * eta, top), level)
         # A deficit is covered from the battery down to the floor, then the grid.
         need = np.maximum(-net, 0.0) * hours
         out = np.clip(

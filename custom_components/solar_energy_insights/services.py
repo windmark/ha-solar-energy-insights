@@ -14,6 +14,7 @@ from homeassistant.core import (
 )
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.update_coordinator import UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import InsightsCoordinator
@@ -53,11 +54,10 @@ def _extra(start: datetime, kwh: float, hours: float) -> Rate:
 
 async def _simulate(call: ServiceCall) -> ServiceResponse:
     coordinator = coordinator_for(call.hass)
+    now = dt_util.utcnow()
+    extra = _extra(now, call.data["extra_kwh"], call.data["extra_hours"])
     try:
-        inputs = coordinator.inputs()
-        inputs = coordinator.inputs(
-            _extra(inputs.now, call.data["extra_kwh"], call.data["extra_hours"])
-        )
+        inputs = coordinator.inputs(extra, now)
     except UpdateFailed as err:
         raise ServiceValidationError(
             translation_domain=DOMAIN,

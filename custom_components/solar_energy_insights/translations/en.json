@@ -11,7 +11,8 @@
           "house_energy": "House energy",
           "grid_power": "Grid power",
           "solcast_today": "Solcast forecast today",
-          "solcast_tomorrow": "Solcast forecast tomorrow"
+          "solcast_tomorrow": "Solcast forecast tomorrow",
+          "charge_limit": "Charge limit (optional)"
         },
         "data_description": {
           "battery_soc": "Percentage of charge.",
@@ -20,7 +21,8 @@
           "house_energy": "A counter of energy the house used, daily or lifetime. Its recorded hours are what the night is replayed from.",
           "grid_power": "Optional: shows when a full battery is exporting (free power).",
           "solcast_today": "The Solcast sensor for today, with its detailedForecast attribute.",
-          "solcast_tomorrow": "The Solcast sensor for tomorrow."
+          "solcast_tomorrow": "The Solcast sensor for tomorrow.",
+          "charge_limit": "The level charging stops at, if set below 100 %. For EF-PowerOcean-TcpModbus: Charge Limit SOC. While it has no value, the option is used."
         }
       },
       "reconfigure": {
@@ -33,7 +35,8 @@
           "house_energy": "House energy",
           "grid_power": "Grid power",
           "solcast_today": "Solcast forecast today",
-          "solcast_tomorrow": "Solcast forecast tomorrow"
+          "solcast_tomorrow": "Solcast forecast tomorrow",
+          "charge_limit": "Charge limit (optional)"
         },
         "data_description": {
           "battery_soc": "Percentage of charge.",
@@ -42,7 +45,8 @@
           "house_energy": "A counter of energy the house used, daily or lifetime. Its recorded hours are what the night is replayed from.",
           "grid_power": "Optional: shows when a full battery is exporting (free power).",
           "solcast_today": "The Solcast sensor for today, with its detailedForecast attribute.",
-          "solcast_tomorrow": "The Solcast sensor for tomorrow."
+          "solcast_tomorrow": "The Solcast sensor for tomorrow.",
+          "charge_limit": "The level charging stops at, if set below 100 %. For EF-PowerOcean-TcpModbus: Charge Limit SOC. While it has no value, the option is used."
         }
       }
     },
@@ -70,7 +74,8 @@
           "price_entity": "Price entity (optional)",
           "outdoor_temperature": "Outdoor temperature (optional)",
           "presence": "Presence (optional)",
-          "solar_energy": "Solar energy (optional)"
+          "solar_energy": "Solar energy (optional)",
+          "max_charge": "Charge limit"
         },
         "data_description": {
           "nights": "How many recent nights the battery is tested against.",
@@ -83,7 +88,8 @@
           "price_entity": "For a dynamic tariff: overrides the electricity price while it has a value. Its current value applies to every hour ahead; nothing is timed to cheap hours. Read as cents if its unit starts with ct, else as your currency per kWh.",
           "outdoor_temperature": "A thermometer with statistics. Nights that followed similar weather may then count more, but only if that predicts recent evenings better.",
           "presence": "A sensor with statistics that counts who is home, such as a template counting people at home. Used the same way.",
-          "solar_energy": "A counter of what the panels made. With it, Solcast's morning forecasts are compared with what came, and a correction for this roof is used once it beats the raw forecast."
+          "solar_energy": "A counter of what the panels made. With it, Solcast's morning forecasts are compared with what came, and a correction for this roof is used once it beats the raw forecast.",
+          "max_charge": "The level the battery charges to when no entity gives it: lower it if the app stops charging below 100 %. Full means reaching it."
         }
       }
     }
@@ -129,6 +135,9 @@
           },
           "typical_night": {
             "name": "Typical night"
+          },
+          "charge_limit": {
+            "name": "Charge limit"
           }
         }
       },

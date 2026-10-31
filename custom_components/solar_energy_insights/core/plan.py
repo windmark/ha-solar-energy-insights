@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, tzinfo
+from datetime import date, datetime, timedelta, tzinfo
 from enum import StrEnum
 
 import numpy as np
@@ -16,10 +16,11 @@ from . import batch
 from .batch import Floats, Slices
 from .battery import Battery, Rate, Simulation, simulate
 from .forecast import PvForecast, Quantile
-from .nights import HourlyUse, PastDay, days_covered, past_days, typical
+from .nights import HourlyUse, PastDay, past_days, recent_use, typical
 
 # Battery at least this full and exporting at least this much = free power.
-FREE_SOC_PCT = 97.0
+# Within this many points of the charge limit counts as full, for free power.
+FREE_MARGIN_PCT = 3.0
 FREE_EXPORT_KW = 1.5
 # Spare solar from which a half hour counts towards a window for heavy loads.
 WINDOW_SURPLUS_KW = 1.0
@@ -158,6 +159,8 @@ class Plan:
     best_window: Window | None
     free_power: bool
     free_until: datetime | None
+    # The level charging stops at, as planned with.
+    charge_limit_pct: float
     curve: tuple[tuple[datetime, float], ...] = field(repr=False)
 
 
@@ -181,9 +184,12 @@ def _sun(pv: PvForecast, quantile: Quantile) -> Rate:
     return lambda t: pv.kw_at(t, quantile)
 
 
+def _today(i: PlanInputs) -> date:
+    return i.now.astimezone(i.tz).date()
+
+
 def _days(i: PlanInputs) -> tuple[list[PastDay], Floats]:
-    available = min(i.nights, days_covered(i.use))
-    days = past_days(i.use, i.tz, available)
+    days = past_days(i.use, i.tz, i.nights, _today(i))
     weights = np.asarray(i.weights[: len(days)] if i.weights else [], dtype=float)
     if len(weights) != len(days) or weights.sum() <= 0:
         weights = np.ones(len(days))
@@ -262,8 +268,10 @@ def _needed(
         return None
     start = i.sunset if i.sunset < i.sunrise else i.now
     slices = Slices.between(start, i.sunrise, None)
+    # Up to the charge limit: a level the battery never charges to is no answer.
+    ceiling = i.battery.ceiling_pct
     levels = np.unique(
-        np.append(np.arange(i.battery.floor_pct, 100.0, CHARGE_STEP_PCT), 100.0)
+        np.append(np.arange(i.battery.floor_pct, ceiling, CHARGE_STEP_PCT), ceiling)
     )
     loads = _loads(i, slices, days)
     # Runs ordered level-major: run (l, d) is level l against night d.
@@ -357,12 +365,17 @@ def replay_night(i: PlanInputs) -> Night | None:
 
 def plan(i: PlanInputs) -> Plan:
     """Answer the questions for the moment in *i*."""
-    load = _house(i, typical(i.use, i.tz))
+    days, weights = _days(i)
+    # The day's usual load, from the same recent days the night replays.
+    recent = recent_use(i.use, _today(i), [d.days_ago for d in days])
+    load = _house(i, typical(recent, i.tz))
     charge, surplus, expected = _charge(i, load)
     sun = _sun(i.pv, Quantile.P50)
-    days, weights = _days(i)
     night = _night(i, days, weights, sun)
-    free = i.battery.soc_pct >= FREE_SOC_PCT and i.export_kw >= FREE_EXPORT_KW
+    free = (
+        i.battery.soc_pct >= i.battery.ceiling_pct - FREE_MARGIN_PCT
+        and i.export_kw >= FREE_EXPORT_KW
+    )
     return Plan(
         now=i.now,
         sunrise=i.sunrise,
@@ -374,5 +387,6 @@ def plan(i: PlanInputs) -> Plan:
         best_window=_best_window(i, load),
         free_power=free,
         free_until=_free_until(i, load) if free else None,
+        charge_limit_pct=i.battery.ceiling_pct,
         curve=expected.points,
     )

@@ -4,52 +4,24 @@
 
 ### Added
 
-- The `plan` WebSocket reply carries each replayed night's battery curve.
-- A `backtest` WebSocket command returns every scored evening and what was learned, for dashboards.
-
-### Added
-
-- numpy: nights, battery levels and hidden loads are simulated in batches. The plan takes 7 ms instead of 21; calibration 25 ms instead of 444.
-- Up to 60 recent evenings are scored instead of 14.
-- More ways of weighting nights: the same kind of day, similar outdoor temperature, similar presence at home (the last two when configured). Each is used only if it predicts left-out evenings clearly better, and the simplest of near-equal options wins.
-- The heavy night is calibrated from where real nights fell among the replayed ones.
-- A small store keeps Solcast's morning forecast, the plan's own answers and the weighting in use. Full-at error and live night scores come from it.
-- An optional solar energy counter enables a per-hour Solcast correction for the roof, used once it beats raw Solcast on left-out days.
-
-### Added
-
-- Night outlook: lasts, borderline, or needs the grid.
-- A hidden load (such as the inverter's standby) is learned from recent evenings, kept only if it predicts left-out evenings better, and used in every simulation.
-
-### Changed
-
-- The night prediction error is measured on evenings that could have gone either way, and left out of any fitting.
-- The weighting in use changes only for a clear gain.
-- Prices fall back to `input_number.electricity_price` and `input_number.feed_in_tariff` until the options are saved.
-
-### Fixed
-
-- Battery readings below the floor (a glitch, or the battery asleep at its reserve) are corrected and counted, instead of scoring as nights that ran out.
-- Diagnostics replay the plan shown, not one made from readings taken at download.
-
-### Added
-
-- Diagnostics carry a replay snapshot of everything the plan was made from: battery, forecast, hourly use and scored evenings. A download can be replayed offline as a test.
-
-### Fixed
-
-- During the day, the night answers now start at sunset. Reaching the reserve this morning, before the sun takes over, no longer counts as a failed night.
-- A heavy night can no longer show more spare energy than a typical one. Nights are ranked by how they end, not by their load including today.
-- Charge needed is for sunset during the day, instead of the floor because the sun will come.
-- Free power no longer shows an empty "until" time (displayed as 01:00).
-
-### Added
-
-- When the battery fills, in the expected and the cloudy case, and its level at sunset.
-- Whether it lasts the night, by replaying the house's recent nights from the recorder: the share of nights covered, and the reserve time and spare energy on a typical and a heavy night.
-- The best window for heavy loads, and free power when a full battery exports.
-- The `simulate` action for an extra load, and a WebSocket command with the whole plan.
+- The battery's answers: when it fills (expected and cloudy), its level at sunset, the best window for heavy loads, and free power with until when.
+- The night, by replaying the house's recent nights from the recorder: nights covered, reserve time and spare energy on a typical and a heavy night, a three-way outlook (lasts, borderline, needs the grid), and the charge needed for the night (at sunset in the day, now at night; 100 % with the shortfall when even full is not enough).
+- Nights like tonight weigh more: by similar afternoons, the same kind of day, and optionally outdoor temperature or presence. Each way is used only if it predicts left-out evenings clearly better, and the simplest of near-equal options wins.
+- Learning from up to 60 recent evenings: a hidden load the house counter never sees (such as the inverter's standby), and how heavy a heavy night is. Both are kept only when they predict evenings they were not fitted on better.
+- Battery readings below the floor (a glitch, or a battery asleep at its reserve) are cleaned and counted.
+- A small store keeps Solcast's morning forecast, the plan's own answers and the weighting in use. It gives a live full-at error, live night scores, and, with a solar energy counter, a per-hour Solcast correction for the roof once it beats raw Solcast on left-out days.
+- Prices: a fixed price and feed-in tariff (falling back to the dashboard's helpers until saved), with an optional price entity for dynamic tariffs; grid cost until sunrise and the saving from using the surplus. Prices never change the plan.
+- The `simulate` action for an extra load; WebSocket commands `plan` (with each replayed night's battery curve) and `backtest`; diagnostics that replay the exact moment offline.
+- numpy batches every replay: a plan takes about 7 ms, calibration about 25 ms.
+- A charge limit, from an entity (PowerOcean's Charge Limit SOC is found at setup) or the options. Charging stops there and "full" means reaching it, for the day, charge needed, free power and the full-at score; what the battery no longer takes counts as surplus.
 - Setup prefilled from EF-PowerOcean-TcpModbus and Solcast.
-- Charge needed for the night, solar surplus until sunset, and until when free power lasts.
-- Prices: a fixed electricity price and feed-in tariff, with an optional price entity for dynamic tariffs; grid cost until sunrise and the saving from using the surplus. Prices never change the plan.
-- Nights like tonight weigh more, once replaying recent evenings shows that predicts better than weighting all nights equally; the night prediction error sensor reports how well it does.
+
+### Fixed
+
+- During the day, the night is measured from sunset: this morning's reserve is not a failed night, and a heavy night never ends better than a typical one.
+- The day's usual load and the fill-in for missing hours come from the recent days replayed, not the whole history read for scoring.
+- A day the recorder mostly missed is skipped, not replayed as a night.
+- A 0 % reading from a battery asleep at its reserve is taken as the reserve.
+- Every saved morning is learned from, however far apart, and large solar hours are kept.
+- A failed read from the recorder keeps the answers already made instead of making every entity unavailable.
+- Numeric answers keep long-term statistics.

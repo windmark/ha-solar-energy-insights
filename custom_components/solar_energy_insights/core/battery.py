@@ -11,7 +11,8 @@ from datetime import UTC, datetime, timedelta
 type Rate = Callable[[datetime], float]
 
 STEP = timedelta(minutes=30)
-FULL_SOC_PCT = 99.5
+# Within this many points of its charge limit, a battery counts as full.
+FULL_MARGIN_PCT = 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +24,9 @@ class Battery:
     floor_pct: float
     max_power_kw: float = 5.0
     round_trip: float = 0.92
+    # The level charging stops at: 100, or lower when the battery is set to
+    # spare its cells. "Full" means reaching it.
+    ceiling_pct: float = 100.0
 
     @property
     def eta(self) -> float:
@@ -43,8 +47,12 @@ class Battery:
         return max(self.stored_kwh - self.floor_kwh, 0.0)
 
     @property
+    def ceiling_kwh(self) -> float:
+        return self.capacity_kwh * self.ceiling_pct / 100
+
+    @property
     def is_full(self) -> bool:
-        return self.soc_pct >= FULL_SOC_PCT
+        return self.soc_pct >= self.ceiling_pct - FULL_MARGIN_PCT
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +152,7 @@ def simulate(
     """
     cap, eta, p_max = battery.capacity_kwh, battery.eta, battery.max_power_kw
     floor = battery.floor_kwh
+    top = battery.ceiling_kwh
     level = battery.stored_kwh
     full_at = start if battery.is_full else None
     export = export_before = grid = pv_total = load_total = 0.0
@@ -172,8 +181,8 @@ def simulate(
 
         if net > 0:
             charge_kw = min(net, p_max)
-            into = max(min(charge_kw * hours, (cap - level) / eta), 0.0)
-            level = min(level + into * eta, cap)
+            into = max(min(charge_kw * hours, (top - level) / eta), 0.0)
+            level = max(min(level + into * eta, top), level)
             if into < charge_kw * hours - 1e-9:
                 # The battery filled during this slice.
                 filled_h = into / charge_kw

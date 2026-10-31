@@ -64,8 +64,13 @@ def test_days_like_today_weigh_more() -> None:
 
 
 def test_without_anything_to_compare_all_weigh_the_same() -> None:
-    use = {(DAY - timedelta(days=n), 3): 0.3 for n in range(1, 6)}
-    days = past_days(use, TZ, 5)
+    # Whole past days, but nothing recorded today to compare them with.
+    use = {
+        (DAY - timedelta(days=n), h): 0.3 + n / 10
+        for n in range(1, 6)
+        for h in range(24)
+    }
+    days = past_days(use, TZ, 5, today=DAY)
 
     assert len(set(similarity_weights(use, TZ, at(DAY, 21), days))) == 1
 
