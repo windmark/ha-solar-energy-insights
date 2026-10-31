@@ -24,7 +24,7 @@ Cooking, the dishwasher and a cold night's heat pump are already in those nights
 - **Clean history.** A battery can't go below its floor. A reading under it is either a glitch (the hour otherwise sat well above) or the battery asleep at its reserve; both are corrected and counted.
 - **The hidden load.** The house counter doesn't see everything the battery feeds, such as the inverter's own standby. One constant is learned from the evenings and kept only if it predicts evenings it wasn't fitted on better. On the first real installation it was 50 W, and it took the predictions from 0.5 kWh optimistic to unbiased.
 
-**Up to 60 recent evenings** are scored. Each is replayed once against every past night and every hidden-load candidate, as arrays (numpy). Ways of weighting the nights only change how much each counts, so they're tried on the same runs:
+**The last 30 evenings** are scored: about a month, enough to learn from and recent enough to follow the season. Each is replayed once against every past night and every hidden-load candidate, as arrays (numpy). Ways of weighting the nights only change how much each counts, so they're tried on the same runs:
 
 - equal;
 - similar afternoons;
