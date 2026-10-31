@@ -26,16 +26,19 @@ type HourlyUse = Mapping[tuple[date, int], float]
 
 
 def hourly_use(
-    rows: Mapping[datetime, float], tz: tzinfo
+    rows: Mapping[datetime, float],
+    tz: tzinfo,
+    max_kwh: float | None = MAX_HOURLY_KWH,
 ) -> dict[tuple[date, int], float]:
     """Key the recorder's hourly kWh by local date and clock hour.
 
     An hour seen twice (the autumn clock change) holds both; implausible values
-    are left out rather than learned.
+    are left out rather than learned. *max_kwh* None keeps any positive hour, as
+    for a large solar array.
     """
     use: dict[tuple[date, int], float] = {}
     for start, kwh in rows.items():
-        if not 0 <= kwh <= MAX_HOURLY_KWH:
+        if kwh < 0 or (max_kwh is not None and kwh > max_kwh):
             continue
         local = start.astimezone(tz)
         key = (local.date(), local.hour)
@@ -80,14 +83,57 @@ def typical_by_hour(use: HourlyUse) -> dict[int, float]:
     return {hour: statistics.median(values) for hour, values in by_hour.items()}
 
 
-def past_days(use: HourlyUse, tz: tzinfo, count: int) -> list[PastDay]:
-    """The last *count* days, each ready to stand in for the hours ahead.
+# A past day needs this many recorded hours to be replayed as a night.
+MIN_DAY_HOURS = 12
+# How far back to look for days with data, as a multiple of the days wanted.
+LOOK_BACK = 3
 
-    An hour the recorder missed takes that hour's median, so a gap does not read
-    as a night without load.
+
+def _today(use: HourlyUse) -> date | None:
+    """The day the history runs up to: the last day if it is still partial,
+    else the day after it."""
+    if not use:
+        return None
+    last = max(day for day, _ in use)
+    hours = sum(1 for day, _ in use if day == last)
+    return last if hours < 24 else last + timedelta(days=1)
+
+
+def past_days(
+    use: HourlyUse, tz: tzinfo, count: int, today: date | None = None
+) -> list[PastDay]:
+    """The last *count* days with data, each ready to stand in for the hours ahead.
+
+    A day the recorder mostly missed is skipped, and an older one takes its
+    place: an outage is not a night. An hour missed within a day takes that
+    hour's median over the days replayed, so a gap does not read as a night
+    without load; older history plays no part.
     """
-    fallback = typical_by_hour(use)
-    return [PastDay(n, use, tz, fallback) for n in range(1, count + 1)]
+    today = today or _today(use)
+    if today is None or count <= 0:
+        return []
+    hours_per_day: dict[date, int] = {}
+    for day, _ in use:
+        hours_per_day[day] = hours_per_day.get(day, 0) + 1
+    chosen = [
+        n
+        for n in range(1, count * LOOK_BACK + 1)
+        if hours_per_day.get(today - timedelta(days=n), 0) >= MIN_DAY_HOURS
+    ][:count]
+    # The usual value of each hour: from the days replayed, and for an hour none
+    # of them recorded, from the recent days looked at.
+    window = recent_use(use, today, range(1, count * LOOK_BACK + 1))
+    fallback = typical_by_hour(window) | typical_by_hour(recent_use(use, today, chosen))
+    return [PastDay(n, use, tz, fallback) for n in chosen]
+
+
+def recent_use(
+    use: HourlyUse, today: date, days_ago: Sequence[int]
+) -> dict[tuple[date, int], float]:
+    """Only the hours of the days replayed, and the small hours after each."""
+    dates = {today - timedelta(days=n) for n in days_ago}
+    dates |= {d + timedelta(days=1) for d in dates}
+    return {key: kwh for key, kwh in use.items() if key[0] in dates and key[0] < today}
 
 
 def typical(use: HourlyUse, tz: tzinfo) -> Rate:

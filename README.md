@@ -14,11 +14,11 @@ It reads entities you already have and never talks to a device. With [EF-PowerOc
 
 > Lasts the night on 11 of the last 14 nights. On a heavy night, the reserve is reached around 04:10.
 
-Cooking, the dishwasher and a cold night's heat pump are already in those nights, metered or not. There is nothing to classify, learn or keep: the recorder is the only store, and a restart loses nothing.
+Cooking, the dishwasher and a cold night's heat pump are already in those nights, metered or not, so nothing has to be classified. A day the recorder mostly missed is skipped rather than replayed, and the day's usual load comes from the same recent days, not from months back.
 
 **Nights like tonight count more, once that has proved better.** Today's last six hours, including the hour in progress, are compared with the same hours on each past day, and similar days weigh more. After a big dinner, nights that followed big dinners dominate; if the evening turns heavy at 22:00, the weights follow within the hour. This weighting is only used when it beats weighting every night equally on your own recent evenings.
 
-**The score needs no stored predictions.** Each hour, the integration replays each of the last 14 evenings as it would have at 21:00, using only the days before it, and compares the result with the lowest level the battery actually reached before sunrise. Three things keep that honest:
+**The score needs no stored predictions.** Each hour, the integration replays each of the recent evenings as it would have at 21:00, using only the days before it, and compares the result with the lowest level the battery actually reached before sunrise. Three things keep that honest:
 
 - **Contested evenings only.** An evening that starts nearly empty ends at the reserve whatever is predicted, so only evenings where the prediction or the battery said "lasted" are scored.
 - **Clean history.** A battery can't go below its floor. A reading under it is either a glitch (the hour otherwise sat well above) or the battery asleep at its reserve; both are corrected and counted.

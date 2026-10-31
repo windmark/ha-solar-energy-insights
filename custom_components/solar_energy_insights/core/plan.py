@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, tzinfo
+from datetime import date, datetime, timedelta, tzinfo
 from enum import StrEnum
 
 import numpy as np
@@ -16,7 +16,7 @@ from . import batch
 from .batch import Floats, Slices
 from .battery import Battery, Rate, Simulation, simulate
 from .forecast import PvForecast, Quantile
-from .nights import HourlyUse, PastDay, days_covered, past_days, typical
+from .nights import HourlyUse, PastDay, past_days, recent_use, typical
 
 # Battery at least this full and exporting at least this much = free power.
 FREE_SOC_PCT = 97.0
@@ -181,9 +181,12 @@ def _sun(pv: PvForecast, quantile: Quantile) -> Rate:
     return lambda t: pv.kw_at(t, quantile)
 
 
+def _today(i: PlanInputs) -> date:
+    return i.now.astimezone(i.tz).date()
+
+
 def _days(i: PlanInputs) -> tuple[list[PastDay], Floats]:
-    available = min(i.nights, days_covered(i.use))
-    days = past_days(i.use, i.tz, available)
+    days = past_days(i.use, i.tz, i.nights, _today(i))
     weights = np.asarray(i.weights[: len(days)] if i.weights else [], dtype=float)
     if len(weights) != len(days) or weights.sum() <= 0:
         weights = np.ones(len(days))
@@ -357,10 +360,12 @@ def replay_night(i: PlanInputs) -> Night | None:
 
 def plan(i: PlanInputs) -> Plan:
     """Answer the questions for the moment in *i*."""
-    load = _house(i, typical(i.use, i.tz))
+    days, weights = _days(i)
+    # The day's usual load, from the same recent days the night replays.
+    recent = recent_use(i.use, _today(i), [d.days_ago for d in days])
+    load = _house(i, typical(recent, i.tz))
     charge, surplus, expected = _charge(i, load)
     sun = _sun(i.pv, Quantile.P50)
-    days, weights = _days(i)
     night = _night(i, days, weights, sun)
     free = i.battery.soc_pct >= FREE_SOC_PCT and i.export_kw >= FREE_EXPORT_KW
     return Plan(

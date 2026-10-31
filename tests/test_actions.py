@@ -129,4 +129,8 @@ async def test_the_backtest_is_served_for_drawing(
     )
     assert result["weighting"]
     assert "live" in result
-    assert len(result["evenings"]) == len(result["nights"])
+    # Every scored evening is one of the evenings; one without an earlier day
+    # to replay (the first in the history) is not scored.
+    assert {n["day"] for n in result["nights"]} <= {
+        e["day"] for e in result["evenings"]
+    }

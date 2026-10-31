@@ -11,6 +11,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
+    SensorStateClass,
 )
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfEnergy, UnitOfTime
 from homeassistant.core import HomeAssistant
@@ -49,6 +50,7 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
     InsightsSensorDescription(
         key="battery_at_sunset",
         translation_key="battery_at_sunset",
+        state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         value_fn=lambda p: (
             None if p.charge.sunset_pct is None else round(p.charge.sunset_pct)
@@ -65,6 +67,7 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
     InsightsSensorDescription(
         key="nights_covered",
         translation_key="nights_covered",
+        state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         value_fn=lambda p: None if p.night is None else round(p.night.share * 100),
         attrs_fn=lambda p: (
@@ -76,6 +79,7 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
     InsightsSensorDescription(
         key="charge_needed",
         translation_key="charge_needed",
+        state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         suggested_display_precision=0,
         # The lowest level from which even a heavy night lasts: at sunset in the
@@ -129,6 +133,7 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
     InsightsSensorDescription(
         key="spare_at_sunrise",
         translation_key="spare_at_sunrise",
+        state_class=SensorStateClass.MEASUREMENT,
         device_class=SensorDeviceClass.ENERGY_STORAGE,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=1,
@@ -212,6 +217,7 @@ STATUS: tuple[InsightsStatusDescription, ...] = (
     InsightsStatusDescription(
         key="night_error",
         translation_key="night_error",
+        state_class=SensorStateClass.MEASUREMENT,
         device_class=SensorDeviceClass.ENERGY_STORAGE,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=2,
@@ -226,6 +232,7 @@ STATUS: tuple[InsightsStatusDescription, ...] = (
     InsightsStatusDescription(
         key="full_at_error",
         translation_key="full_at_error",
+        state_class=SensorStateClass.MEASUREMENT,
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.MINUTES,
         suggested_display_precision=0,
@@ -244,6 +251,7 @@ STATUS: tuple[InsightsStatusDescription, ...] = (
     InsightsStatusDescription(
         key="forecast_correction",
         translation_key="forecast_correction",
+        state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         native_unit_of_measurement=PERCENTAGE,
         suggested_display_precision=0,
@@ -260,6 +268,7 @@ STATUS: tuple[InsightsStatusDescription, ...] = (
     InsightsStatusDescription(
         key="history_days",
         translation_key="history_days",
+        state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         native_unit_of_measurement="d",
         value_fn=lambda c: days_covered(c.use),
