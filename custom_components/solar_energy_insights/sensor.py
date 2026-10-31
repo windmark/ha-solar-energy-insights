@@ -70,12 +70,15 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
         translation_key="charge_needed",
         native_unit_of_measurement=PERCENTAGE,
         suggested_display_precision=0,
-        # The lowest state of charge now from which even a heavy night lasts.
+        # The lowest level from which even a heavy night lasts: at sunset in the
+        # day, compare it with "battery at sunset"; at night it is needed now.
         value_fn=lambda p: p.needed.heavy_pct if p.needed else None,
         attrs_fn=lambda p: (
             {}
             if p.needed is None
             else {
+                "at": p.needed.at.isoformat(),
+                "for": "sunset" if p.needed.at == p.sunset else "now",
                 "typical_night": p.needed.typical_pct,
                 "full_battery_lasts": p.needed.heavy_pct is not None,
             }

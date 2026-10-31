@@ -71,6 +71,10 @@ class Simulation:
     mark_kwh: float | None
     # The lowest level from the mark on, such as overnight after sunset.
     low_after_mark_kwh: float | None
+    # From the mark on (or the whole run without one): the night, in the day.
+    night_reserve_at: datetime | None
+    night_grid_kwh: float
+    night_load_kwh: float
     points: tuple[tuple[datetime, float], ...] = field(repr=False)
 
     @property
@@ -103,6 +107,13 @@ class Simulation:
     def lasts(self) -> bool:
         """Whether the battery never had to hand over to the grid."""
         return self.reserve_at is None
+
+    @property
+    def night_lasts(self) -> bool:
+        """Whether the battery got from the mark (sunset) to the end without the
+        grid. Reaching the reserve before the mark, such as this morning before
+        the sun takes over, says nothing about the night."""
+        return self.night_reserve_at is None
 
 
 def _pct(kwh: float, capacity_kwh: float) -> float:
@@ -140,6 +151,9 @@ def simulate(
     peak, peak_at, low = level, start, level
     mark = level if mark_at is not None and mark_at <= start else None
     low_after_mark = mark
+    night_start = mark_at if mark_at is not None else start
+    night_reserve_at: datetime | None = None
+    night_grid = night_load = 0.0
     points: list[tuple[datetime, float]] = [(start, _pct(level, cap))]
 
     t = start
@@ -152,6 +166,9 @@ def simulate(
         net = sun - use
         pv_total += sun * hours
         load_total += use * hours
+        in_night = t >= night_start
+        if in_night:
+            night_load += use * hours
 
         if net > 0:
             charge_kw = min(net, p_max)
@@ -176,8 +193,13 @@ def simulate(
             level -= out / eta
             if out < need - 1e-6:
                 grid += need - out
+                handover = t + (nxt - t) * (out / need)
                 if reserve_at is None:
-                    reserve_at = t + (nxt - t) * (out / need)
+                    reserve_at = handover
+                if in_night:
+                    night_grid += need - out
+                    if night_reserve_at is None:
+                        night_reserve_at = handover
 
         if level > peak + 1e-6:
             peak, peak_at = level, nxt
@@ -207,5 +229,8 @@ def simulate(
         end_kwh=level,
         mark_kwh=mark,
         low_after_mark_kwh=low_after_mark,
+        night_reserve_at=night_reserve_at,
+        night_grid_kwh=night_grid,
+        night_load_kwh=night_load,
         points=tuple(points),
     )

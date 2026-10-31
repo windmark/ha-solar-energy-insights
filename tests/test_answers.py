@@ -83,3 +83,34 @@ async def test_the_night_answer_is_scored_on_recent_nights(home: HomeAssistant) 
     assert error.attributes["nights_scored"] > 0
     assert error.attributes["weighting"] in ("equal", "similar")
     assert int(state(home, f"sensor.{PREFIX}days_of_history")) >= 20
+
+
+async def test_in_the_morning_charge_needed_is_for_sunset(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    await record_house(home, recent(14), evening_load)
+    freezer.move_to(local(DAY, 8, 20))
+    set_states(home, soc=10, peak_kw=9)
+
+    await setup_entry(home)
+
+    needed = home.states.get(f"sensor.{PREFIX}charge_needed_for_the_night")
+    assert needed is not None
+    assert needed.attributes["for"] == "sunset"
+    # About tonight, not the floor just because the sun is coming.
+    assert float(needed.state) > 10
+    spare = home.states.get(f"sensor.{PREFIX}spare_at_sunrise")
+    assert spare is not None
+    assert spare.attributes["heavy_night"] <= float(spare.state)
+
+
+async def test_free_power_off_has_no_until(home: HomeAssistant) -> None:
+    await record_house(home, recent(14), evening_load)
+    set_states(home, soc=50)
+
+    await setup_entry(home)
+
+    free = home.states.get(f"binary_sensor.{PREFIX}free_power")
+    assert free is not None
+    assert free.state == "off"
+    assert "until" not in free.attributes
