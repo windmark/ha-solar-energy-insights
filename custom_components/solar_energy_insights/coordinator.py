@@ -67,6 +67,7 @@ from .core.battery import Battery, Rate
 from .core.forecast import PvForecast
 from .core.nights import HourlyUse, hourly_use, past_days, similarity_weights
 from .core.plan import Plan, PlanInputs, plan
+from .core.snapshot import to_snapshot
 
 # The hour in progress counts towards "today so far" once this much of it is seen.
 MIN_PARTIAL_HOUR = timedelta(minutes=15)
@@ -105,6 +106,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         self._counter_at: tuple[datetime, float] | None = None
         self.weighting = Weighting.EQUAL
         self.scores: dict[Weighting, Score] = {}
+        self.evenings: list[Evening] = []
         # The last capacity reported, for a battery that reports none while asleep.
         self._capacity_kwh: float | None = None
 
@@ -154,7 +156,8 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         imported = (
             kw if self.config_entry.options.get(CONF_IMPORT_POSITIVE, True) else -kw
         )
-        return max(-imported, 0.0)
+        # No export reads as 0.0, not -0.0.
+        return max(-imported, 0.0) + 0.0
 
     def _house_reading(self) -> float | None:
         state = self._state(CONF_HOUSE_ENERGY)
@@ -337,6 +340,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         except UpdateFailed:
             return
         evenings = self._evenings(lows, now)
+        self.evenings = evenings
         self.weighting, self.scores = choose(
             lambda weighting: score(
                 self.use, self.tz, evenings, battery, self.nights, weighting
@@ -357,6 +361,13 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         if result.free_power and not (previous is not None and previous.free_power):
             self.hass.bus.async_fire(EVENT_FREE_POWER, {})
         return result
+
+    def snapshot(self) -> dict[str, Any]:
+        """Everything the plan is made from right now, to replay it offline."""
+        try:
+            return to_snapshot(self.inputs(), self.evenings)
+        except UpdateFailed as err:
+            return {"error": str(err)}
 
     @property
     def plan(self) -> Plan | None:

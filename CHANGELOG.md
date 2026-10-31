@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Diagnostics carry a replay snapshot of everything the plan was made from: battery, forecast, hourly use and scored evenings. A download can be replayed offline as a test.
+
 ### Fixed
 
 - During the day, the night answers now start at sunset. Reaching the reserve this morning, before the sun takes over, no longer counts as a failed night.

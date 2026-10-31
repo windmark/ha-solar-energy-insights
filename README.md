@@ -90,6 +90,10 @@ await hass.callWS({ type: "solar_energy_insights/plan" });
 
 returns the whole plan: each replayed night, the typical and heavy one, and the battery curve until sunset.
 
+## Reporting something that looks wrong
+
+Download diagnostics (Settings → Devices & services → Solar Energy Insights → ⋮ → Download diagnostics) at the moment it looks wrong, and attach the file with a screenshot. The file replays that exact moment as a test (see CONTRIBUTING.md). It holds your energy data and entity ids, nothing else.
+
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
