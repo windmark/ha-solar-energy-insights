@@ -64,7 +64,7 @@ async def _simulate(call: ServiceCall) -> ServiceResponse:
             translation_key="not_ready",
             translation_placeholders={"reason": str(err)},
         ) from err
-    return plan_dict(plan(inputs))
+    return plan_dict(plan(inputs), prices=(coordinator.price, coordinator.feed_in))
 
 
 def async_setup_services(hass: HomeAssistant) -> None:

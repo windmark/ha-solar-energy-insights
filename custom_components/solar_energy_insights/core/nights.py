@@ -7,6 +7,7 @@ cold night's heat pump are all already in those nights, metered or not.
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -94,3 +95,71 @@ def quantile(values: Sequence[float], share: float) -> float:
     ordered = sorted(values)
     index = min(len(ordered) - 1, max(0, round(share * (len(ordered) - 1))))
     return ordered[index]
+
+
+# Hours before now compared with the same hours on each past day.
+SIMILARITY_HOURS = 6
+# A day this many "typical differences" away from today weighs e^-1 as much.
+MIN_BANDWIDTH_KWH = 0.1
+
+
+def similarity_weights(
+    use: HourlyUse,
+    tz: tzinfo,
+    now: datetime,
+    days: Sequence[PastDay],
+    partial_kw: float | None = None,
+) -> list[float]:
+    """Weigh each past day by how much the hours before *now* resemble today.
+
+    Today's last hours are compared with the same clock hours on each past day.
+    The hour in progress counts too, as *partial_kw* (its average so far). Days
+    with no comparable hours, or a today without any, weigh equally: nothing is
+    known yet, so nothing is preferred.
+    """
+    local_now = now.astimezone(tz)
+    hour_start = local_now.replace(minute=0, second=0, microsecond=0)
+    today: list[tuple[datetime, float]] = []
+    for back in range(SIMILARITY_HOURS, 0, -1):
+        start = hour_start - timedelta(hours=back)
+        value = use.get((start.date(), start.hour))
+        if value is not None:
+            today.append((start, value))
+    if partial_kw is not None:
+        today.append((hour_start, partial_kw))
+    distances: list[float | None] = []
+    for day in days:
+        pairs = [
+            (kwh, past)
+            for start, kwh in today
+            if (
+                past := use.get(
+                    (start.date() - timedelta(days=day.days_ago), start.hour)
+                )
+            )
+            is not None
+        ]
+        distances.append(
+            (sum((a - b) ** 2 for a, b in pairs) / len(pairs)) ** 0.5 if pairs else None
+        )
+    known = [d for d in distances if d is not None]
+    if not known:
+        return [1.0] * len(days)
+    bandwidth = max(statistics.median(known), MIN_BANDWIDTH_KWH)
+    return [
+        math.exp(-((d / bandwidth) ** 2)) if d is not None else math.exp(-1)
+        for d in distances
+    ]
+
+
+def weighted_quantile(items: Sequence[tuple[float, float]], share: float) -> float:
+    """The value at *share* of the total weight, for (value, weight) pairs."""
+    ordered = sorted(items)
+    total = sum(weight for _, weight in ordered)
+    target = share * total
+    running = 0.0
+    for value, weight in ordered:
+        running += weight
+        if running >= target - 1e-12:
+            return value
+    return ordered[-1][0]

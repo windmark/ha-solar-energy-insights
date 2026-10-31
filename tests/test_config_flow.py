@@ -98,3 +98,15 @@ async def test_options_set_how_many_nights_are_replayed(home: HomeAssistant) -> 
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.runtime_data.nights == 21
+
+
+async def test_prices_are_prefilled_from_existing_helpers(home: HomeAssistant) -> None:
+    set_states(home)
+    home.states.async_set("input_number.electricity_price", "32.4")
+    home.states.async_set("input_number.feed_in_tariff", "7.9")
+    entry = await setup_entry(home)
+
+    result = await home.config_entries.options.async_init(entry.entry_id)
+
+    assert suggested(result, const.CONF_PRICE) == 32.4
+    assert suggested(result, const.CONF_FEED_IN) == 7.9

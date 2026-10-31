@@ -21,6 +21,9 @@ CONF_MIN_RESERVE: Final = "min_reserve"
 CONF_MAX_POWER: Final = "max_power"
 CONF_ROUND_TRIP: Final = "round_trip"
 CONF_IMPORT_POSITIVE: Final = "import_positive"
+CONF_PRICE: Final = "price"
+CONF_FEED_IN: Final = "feed_in"
+CONF_PRICE_ENTITY: Final = "price_entity"
 
 DEFAULT_NIGHTS: Final = 14
 # The lowest state of charge an inverter discharges to by itself, as a floor under
@@ -28,6 +31,15 @@ DEFAULT_NIGHTS: Final = 14
 DEFAULT_MIN_RESERVE_PCT: Final = 5.0
 DEFAULT_MAX_POWER_KW: Final = 5.0
 DEFAULT_ROUND_TRIP_PCT: Final = 92.0
+# Prices in cents per kWh, until set in the options.
+DEFAULT_PRICE_CT: Final = 30.0
+DEFAULT_FEED_IN_CT: Final = 8.0
+# Helpers whose values prefill the prices, where they exist.
+PRICE_HELPER: Final = "input_number.electricity_price"
+FEED_IN_HELPER: Final = "input_number.feed_in_tariff"
+
+# Recent evenings the night answer is scored on, to choose how nights are weighted.
+BACKTEST_EVENINGS: Final = 14
 
 # Minutes past the hour the recorder has compiled the hour before.
 HISTORY_MINUTE: Final = 5

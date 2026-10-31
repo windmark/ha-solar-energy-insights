@@ -58,20 +58,26 @@
     "step": {
       "init": {
         "title": "Settings",
-        "description": "How the night is tested, and the battery's limits.",
+        "description": "Prices, how the night is tested, and the battery's limits. Prices only turn kWh into money; they never change the plan.",
         "data": {
           "nights": "Nights replayed",
           "min_reserve": "Lowest state of charge",
           "max_power": "Battery power limit",
           "round_trip": "Round-trip efficiency",
-          "import_positive": "Grid power is positive when importing"
+          "import_positive": "Grid power is positive when importing",
+          "price": "Electricity price",
+          "feed_in": "Feed-in tariff",
+          "price_entity": "Price entity (optional)"
         },
         "data_description": {
           "nights": "How many recent nights the battery is tested against.",
           "min_reserve": "The lowest the inverter discharges to by itself, under any reserve.",
           "max_power": "The most the battery charges or discharges at.",
           "round_trip": "Share of stored energy that comes back out.",
-          "import_positive": "Turn off if import shows as negative."
+          "import_positive": "Turn off if import shows as negative.",
+          "price": "What a kWh bought costs, in cents.",
+          "feed_in": "What a kWh exported earns, in cents.",
+          "price_entity": "For a dynamic tariff: overrides the electricity price while it has a value. Its current value applies to every hour ahead; nothing is timed to cheap hours. Read as cents if its unit starts with ct, else as your currency per kWh."
         }
       }
     }
@@ -95,6 +101,60 @@
       },
       "best_window": {
         "name": "Best window for heavy loads"
+      },
+      "charge_needed": {
+        "name": "Charge needed for the night"
+      },
+      "surplus": {
+        "name": "Solar surplus until sunset"
+      },
+      "night_error": {
+        "name": "Night prediction error"
+      },
+      "history_days": {
+        "name": "Days of history"
+      },
+      "night_grid_cost": {
+        "name": "Grid cost until sunrise",
+        "state_attributes": {
+          "heavy_night": {
+            "name": "Heavy night"
+          },
+          "price": {
+            "name": "Price"
+          },
+          "feed_in": {
+            "name": "Feed-in tariff"
+          },
+          "price_source": {
+            "name": "Price source",
+            "state": {
+              "fixed": "Fixed",
+              "entity": "Entity"
+            }
+          }
+        }
+      },
+      "surplus_saving": {
+        "name": "Saving from using the surplus",
+        "state_attributes": {
+          "if_exported": {
+            "name": "Earned if exported"
+          },
+          "price": {
+            "name": "Price"
+          },
+          "feed_in": {
+            "name": "Feed-in tariff"
+          },
+          "price_source": {
+            "name": "Price source",
+            "state": {
+              "fixed": "Fixed",
+              "entity": "Entity"
+            }
+          }
+        }
       }
     },
     "binary_sensor": {

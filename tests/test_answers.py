@@ -1,0 +1,85 @@
+"""Charge needed, surplus, free power until, and how well the night answer did."""
+
+from __future__ import annotations
+
+from freezegun.api import FrozenDateTimeFactory
+from homeassistant.core import HomeAssistant
+
+from tests.common import (
+    DAY,
+    local,
+    recent,
+    record_battery,
+    record_house,
+    set_states,
+    setup_entry,
+    state,
+)
+
+PREFIX = "solar_energy_insights_"
+
+
+def evening_load(hour: int) -> float:
+    return 0.9 if hour >= 18 or hour < 6 else 0.4
+
+
+def draining(hour: int) -> float:
+    """Full by early afternoon, then down about 6 points an hour until morning."""
+    if 13 <= hour < 18:
+        return 100.0
+    if hour >= 18:
+        return 100.0 - (hour - 17) * 6
+    return max(64.0 - (hour + 1) * 6, 12.0)
+
+
+async def test_charge_needed_is_what_gets_through_a_heavy_night(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    await record_house(home, recent(14), evening_load)
+    freezer.move_to(local(DAY, 21))
+    set_states(home, soc=30)
+
+    await setup_entry(home)
+
+    needed = float(state(home, f"sensor.{PREFIX}charge_needed_for_the_night"))
+    assert 30 < needed <= 100
+    assert state(home, f"binary_sensor.{PREFIX}battery_lasts_the_night") == "off"
+
+
+async def test_sunshine_left_over_is_reported(home: HomeAssistant) -> None:
+    await record_house(home, recent(14), evening_load)
+    set_states(home, soc=90, peak_kw=9)
+
+    await setup_entry(home)
+
+    assert float(state(home, f"sensor.{PREFIX}solar_surplus_until_sunset")) > 0
+
+
+async def test_free_power_says_until_when(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    await record_house(home, recent(14), evening_load)
+    freezer.move_to(local(DAY, 12))
+    set_states(home, soc=100, grid_w=-3000, peak_kw=9)
+
+    await setup_entry(home)
+
+    free = home.states.get(f"binary_sensor.{PREFIX}free_power")
+    assert free is not None
+    assert free.state == "on"
+    assert free.attributes["until"] is not None
+
+
+async def test_the_night_answer_is_scored_on_recent_nights(home: HomeAssistant) -> None:
+    await record_house(home, recent(20), evening_load)
+    await record_battery(home, recent(20), draining)
+    set_states(home)
+
+    await setup_entry(home)
+
+    error = home.states.get(f"sensor.{PREFIX}night_prediction_error")
+    assert error is not None
+    assert float(error.state) >= 0
+    assert error.attributes["nights_scored"] > 0
+    assert error.attributes["weighting"] in ("equal", "similar")
+    assert int(state(home, f"sensor.{PREFIX}days_of_history")) >= 20
