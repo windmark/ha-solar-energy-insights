@@ -111,6 +111,18 @@
               "sunset": "Sunset",
               "now": "Now"
             }
+          },
+          "full_battery_lasts": {
+            "name": "A full battery lasts"
+          },
+          "grid_even_when_full_kwh": {
+            "name": "From the grid even when full"
+          },
+          "grid_even_when_full_typical_kwh": {
+            "name": "From the grid even when full, typical night"
+          },
+          "typical_night": {
+            "name": "Typical night"
           }
         }
       },
@@ -118,7 +130,33 @@
         "name": "Solar surplus until sunset"
       },
       "night_error": {
-        "name": "Night prediction error"
+        "name": "Night prediction error",
+        "state_attributes": {
+          "weighting": {
+            "name": "Nights weighted"
+          },
+          "hidden_load_w": {
+            "name": "Hidden load"
+          },
+          "corrected_readings": {
+            "name": "Corrected battery readings"
+          },
+          "contested_evenings": {
+            "name": "Evenings that could have gone either way"
+          },
+          "evenings_scored": {
+            "name": "Evenings scored"
+          },
+          "lasts_right_pct": {
+            "name": "\"Lasts the night\" right"
+          },
+          "bias_kwh": {
+            "name": "Bias"
+          },
+          "bias_without_hidden_load_kwh": {
+            "name": "Bias without the hidden load"
+          }
+        }
       },
       "history_days": {
         "name": "Days of history"
@@ -138,8 +176,10 @@
           "price_source": {
             "name": "Price source",
             "state": {
-              "fixed": "Fixed",
-              "entity": "Entity"
+              "fixed": "Options",
+              "entity": "Entity",
+              "helper": "Dashboard helper",
+              "default": "Default"
             }
           }
         }
@@ -159,10 +199,20 @@
           "price_source": {
             "name": "Price source",
             "state": {
-              "fixed": "Fixed",
-              "entity": "Entity"
+              "fixed": "Options",
+              "entity": "Entity",
+              "helper": "Dashboard helper",
+              "default": "Default"
             }
           }
+        }
+      },
+      "night_outlook": {
+        "name": "Night outlook",
+        "state": {
+          "lasts": "Lasts, even a heavy night",
+          "borderline": "Borderline: lasts unless it is a heavy night",
+          "grid": "Needs the grid"
         }
       }
     },

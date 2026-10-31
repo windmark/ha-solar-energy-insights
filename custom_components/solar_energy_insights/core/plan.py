@@ -8,6 +8,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, tzinfo
+from enum import StrEnum
 
 from .battery import Battery, Rate, Simulation, simulate
 from .forecast import PvForecast, Quantile
@@ -47,6 +48,15 @@ class PlanInputs:
     extra: Rate | None = None
     # How much each of the last nights counts, most recent first; None = equally.
     weights: Sequence[float] | None = None
+    # Load the house counter never sees, such as the inverter's own standby,
+    # learned from how real nights ended.
+    standby_kw: float = 0.0
+
+
+class Outlook(StrEnum):
+    LASTS = "lasts"
+    BORDERLINE = "borderline"
+    GRID = "grid"
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +81,13 @@ class Night:
     @property
     def lasting(self) -> int:
         return sum(outcome.lasts for outcome in self.outcomes)
+
+    @property
+    def outlook(self) -> Outlook:
+        """Lasts on a heavy night too, only on a typical one, or not even that."""
+        if not self.typical.lasts:
+            return Outlook.GRID
+        return Outlook.LASTS if self.heavy.lasts else Outlook.BORDERLINE
 
     @property
     def share(self) -> float:
@@ -111,6 +128,9 @@ class Needed:
     at: datetime
     typical_pct: float | None
     heavy_pct: float | None
+    # What would still come from the grid starting full, when even that is short.
+    typical_short_kwh: float = 0.0
+    heavy_short_kwh: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,13 +162,23 @@ def _plus(base: Rate, extra: Rate | None) -> Rate:
     return lambda t: base(t) + extra(t)
 
 
+def _house(i: PlanInputs, base: Rate) -> Rate:
+    """The load to plan with: the house's use, plus any extra load asked about,
+    plus what the house counter never sees."""
+    load = _plus(base, i.extra)
+    if i.standby_kw <= 0:
+        return load
+    standby = i.standby_kw
+    return lambda t: load(t) + standby
+
+
 def _sun(pv: PvForecast, quantile: Quantile) -> Rate:
     return lambda t: pv.kw_at(t, quantile)
 
 
 def _replay(i: PlanInputs, battery: Battery, day: PastDay, sun: Rate) -> Simulation:
     mark = i.sunset if i.sunset < i.sunrise else None
-    return simulate(battery, i.now, i.sunrise, sun, _plus(day.rate, i.extra), mark)
+    return simulate(battery, i.now, i.sunrise, sun, _house(i, day.rate), mark)
 
 
 def _days(i: PlanInputs) -> tuple[list[PastDay], list[float]]:
@@ -208,7 +238,7 @@ def _needed_for(i: PlanInputs, day: PastDay, sun: Rate, start: datetime) -> floa
 
     Returns more than 100 when even a full battery does not.
     """
-    load = _plus(day.rate, i.extra)
+    load = _house(i, day.rate)
 
     def lasts(soc: float) -> bool:
         battery = replace(i.battery, soc_pct=soc)
@@ -249,7 +279,24 @@ def _needed(
         value = weighted_quantile(needed, share)
         return None if math.isinf(value) else value
 
-    return Needed(at=start, typical_pct=pct(0.5), heavy_pct=pct(HEAVY_SHARE))
+    typical, heavy = pct(0.5), pct(HEAVY_SHARE)
+    short = [(0.0, 1.0)]
+    if typical is None or heavy is None:
+        full = replace(i.battery, soc_pct=100.0)
+        short = [
+            (
+                simulate(full, start, i.sunrise, sun, _house(i, day.rate)).grid_kwh,
+                weight,
+            )
+            for day, weight in zip(days, weights, strict=True)
+        ]
+    return Needed(
+        at=start,
+        typical_pct=typical,
+        heavy_pct=heavy,
+        typical_short_kwh=weighted_quantile(short, 0.5) if typical is None else 0.0,
+        heavy_short_kwh=weighted_quantile(short, HEAVY_SHARE) if heavy is None else 0.0,
+    )
 
 
 def _charge(i: PlanInputs, load: Rate) -> tuple[Charge, Surplus, Simulation]:
@@ -314,7 +361,7 @@ def replay_night(i: PlanInputs) -> Night | None:
 
 def plan(i: PlanInputs) -> Plan:
     """Answer the questions for the moment in *i*."""
-    load = _plus(typical(i.use, i.tz), i.extra)
+    load = _house(i, typical(i.use, i.tz))
     charge, surplus, expected = _charge(i, load)
     sun = _sun(i.pv, Quantile.P50)
     days, weights = _days(i)

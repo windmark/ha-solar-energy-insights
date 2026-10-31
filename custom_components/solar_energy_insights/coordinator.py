@@ -58,11 +58,21 @@ from .const import (
     DEFAULT_ROUND_TRIP_PCT,
     DOMAIN,
     EVENT_FREE_POWER,
+    FEED_IN_HELPER,
     HISTORY_MINUTE,
     LIVE_COOLDOWN_S,
     LIVE_INTERVAL_MIN,
+    PRICE_HELPER,
 )
-from .core.backtest import EVENING, Evening, Score, Weighting, choose, score
+from .core.backtest import (
+    EVENING,
+    Calibration,
+    Evening,
+    Score,
+    Weighting,
+    calibrate,
+    clean_lows,
+)
 from .core.battery import Battery, Rate
 from .core.forecast import PvForecast
 from .core.nights import HourlyUse, hourly_use, past_days, similarity_weights
@@ -105,8 +115,14 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         # The house counter at the end of the last recorded hour, and when that was.
         self._counter_at: tuple[datetime, float] | None = None
         self.weighting = Weighting.EQUAL
-        self.scores: dict[Weighting, Score] = {}
+        self.calibration: Calibration | None = None
         self.evenings: list[Evening] = []
+        # Hours of battery history that held impossible readings, now corrected.
+        self.corrected_readings = 0
+        # What the house counter does not see, learned from real nights.
+        self.standby_kw = 0.0
+        # The inputs behind the plan shown, for an exact replay.
+        self.last_inputs: PlanInputs | None = None
         # The last capacity reported, for a battery that reports none while asleep.
         self._capacity_kwh: float | None = None
 
@@ -199,8 +215,15 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
 
     @property
     def price_source(self) -> str:
-        """Where the price comes from: the entity while it has a value, else fixed."""
-        return "entity" if self._entity_price() is not None else "fixed"
+        """Where the price comes from: the entity while it has a value, else the
+        options once saved, else the dashboard's helper, else the default."""
+        if self._entity_price() is not None:
+            return "entity"
+        if CONF_PRICE in self.config_entry.options:
+            return "fixed"
+        if _number(self.hass.states.get(PRICE_HELPER)) is not None:
+            return "helper"
+        return "default"
 
     @property
     def price(self) -> float:
@@ -212,12 +235,20 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         from_entity = self._entity_price()
         if from_entity is not None:
             return from_entity
-        return self._option(CONF_PRICE, DEFAULT_PRICE_CT) / 100
+        return self._cents(CONF_PRICE, PRICE_HELPER, DEFAULT_PRICE_CT) / 100
 
     @property
     def feed_in(self) -> float:
         """What a kWh exported earns, in currency per kWh."""
-        return self._option(CONF_FEED_IN, DEFAULT_FEED_IN_CT) / 100
+        return self._cents(CONF_FEED_IN, FEED_IN_HELPER, DEFAULT_FEED_IN_CT) / 100
+
+    def _cents(self, option: str, helper: str, default: float) -> float:
+        """A price in cents: the option once saved, else the helper the dashboard
+        already uses, else the default."""
+        if option in self.config_entry.options:
+            return float(self.config_entry.options[option])
+        value = _number(self.hass.states.get(helper))
+        return value if value is not None and value >= 0 else default
 
     def battery(self) -> Battery:
         soc = _number(self._state(CONF_BATTERY_SOC))
@@ -268,6 +299,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             export_kw=self._export_kw(),
             extra=extra,
             weights=weights,
+            standby_kw=self.standby_kw,
         )
 
     # ── History ──
@@ -291,7 +323,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             {house, soc},
             "hour",
             {"energy": UnitOfEnergy.KILO_WATT_HOUR},
-            {"change", "state", "min"},
+            {"change", "state", "min", "mean"},
         )
         house_rows = rows.get(house, [])
         changes = {
@@ -306,12 +338,11 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             if last is not None and (last_state := last.get("state")) is not None
             else None
         )
-        lows = {
-            dt_util.utc_from_timestamp(row["start"]): low
+        soc_hours = {
+            dt_util.utc_from_timestamp(row["start"]): (row.get("min"), row.get("mean"))
             for row in rows.get(soc, [])
-            if (low := row.get("min")) is not None
         }
-        self._choose_weighting(lows, now)
+        await self._async_calibrate(soc_hours, now)
         self._use_until = hour
 
     def _evenings(self, lows: dict[datetime, float], now: datetime) -> list[Evening]:
@@ -334,40 +365,52 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             out.append(Evening(day, before, sunrise, min(night)))
         return out
 
-    def _choose_weighting(self, lows: dict[datetime, float], now: datetime) -> None:
+    async def _async_calibrate(
+        self,
+        soc_hours: dict[datetime, tuple[float | None, float | None]],
+        now: datetime,
+    ) -> None:
+        """Learn from recent evenings: the weighting, and the hidden load."""
         try:
             battery = self.battery()
         except UpdateFailed:
             return
-        evenings = self._evenings(lows, now)
-        self.evenings = evenings
-        self.weighting, self.scores = choose(
-            lambda weighting: score(
-                self.use, self.tz, evenings, battery, self.nights, weighting
-            )
+        lows, self.corrected_readings = clean_lows(soc_hours, battery.floor_pct)
+        self.evenings = self._evenings(lows, now)
+        # A few thousand short simulations: off the event loop.
+        self.calibration = await self.hass.async_add_executor_job(
+            calibrate,
+            self.use,
+            self.tz,
+            self.evenings,
+            battery,
+            self.nights,
+            self.weighting,
         )
+        self.weighting = self.calibration.weighting
+        self.standby_kw = self.calibration.standby_kw
 
     @property
     def score(self) -> Score | None:
-        """How the night answer did on recent evenings, with the weighting in use."""
-        return self.scores.get(self.weighting)
+        """How the night answer did on recent evenings, as it is used now."""
+        return self.calibration.score if self.calibration else None
 
     # ── Updating ──
 
     async def _async_update_data(self) -> Plan:
         await self.async_load_use()
         previous: Plan | None = self.data
-        result = plan(self.inputs())
+        self.last_inputs = self.inputs()
+        result = plan(self.last_inputs)
         if result.free_power and not (previous is not None and previous.free_power):
             self.hass.bus.async_fire(EVENT_FREE_POWER, {})
         return result
 
     def snapshot(self) -> dict[str, Any]:
-        """Everything the plan is made from right now, to replay it offline."""
-        try:
-            return to_snapshot(self.inputs(), self.evenings)
-        except UpdateFailed as err:
-            return {"error": str(err)}
+        """Everything the plan shown was made from, to replay it offline."""
+        if self.last_inputs is None:
+            return {"error": "No plan yet"}
+        return to_snapshot(self.last_inputs, self.evenings)
 
     @property
     def plan(self) -> Plan | None:

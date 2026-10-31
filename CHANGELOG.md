@@ -4,6 +4,22 @@
 
 ### Added
 
+- Night outlook: lasts, borderline, or needs the grid.
+- A hidden load (such as the inverter's standby) is learned from recent evenings, kept only if it predicts left-out evenings better, and used in every simulation.
+
+### Changed
+
+- The night prediction error is measured on evenings that could have gone either way, and left out of any fitting.
+- The weighting in use changes only for a clear gain.
+- Prices fall back to `input_number.electricity_price` and `input_number.feed_in_tariff` until the options are saved.
+
+### Fixed
+
+- Battery readings below the floor (a glitch, or the battery asleep at its reserve) are corrected and counted, instead of scoring as nights that ran out.
+- Diagnostics replay the plan shown, not one made from readings taken at download.
+
+### Added
+
 - Diagnostics carry a replay snapshot of everything the plan was made from: battery, forecast, hourly use and scored evenings. A download can be replayed offline as a test.
 
 ### Fixed

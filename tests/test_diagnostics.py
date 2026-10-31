@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
@@ -46,11 +47,26 @@ async def test_a_download_replays_to_the_same_plan(
     )
 
 
-async def test_without_a_plan_the_download_says_why(home: HomeAssistant) -> None:
-    set_states(home)
+async def test_the_download_replays_the_plan_shown_even_after_things_move_on(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Diagnostics are downloaded a while after the plan on screen was made:
+    the replay must still be that plan, not one made from newer readings."""
+    await record_house(home, recent(20), evening_load)
+    freezer.move_to(local(DAY, 10, 18))
+    set_states(home, soc=55, peak_kw=9)
     entry = await setup_entry(home)
-    home.states.async_set("sensor.battery_soc", "unavailable")
+    shown = entry.runtime_data.plan
 
-    download = await async_get_config_entry_diagnostics(home, entry)
+    # Time passes and the house counter moves on, without a new plan yet.
+    freezer.tick(timedelta(seconds=14))
+    home.states.async_set(
+        "sensor.house_energy",
+        "1003.5",
+        {"unit_of_measurement": "kWh", "device_class": "energy"},
+    )
+    download = json.loads(
+        json.dumps(await async_get_config_entry_diagnostics(home, entry))
+    )
 
-    assert "error" in download["replay"]
+    assert plan(from_snapshot(download)) == shown

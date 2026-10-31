@@ -155,3 +155,22 @@ def test_weights_lean_the_night_towards_similar_days() -> None:
     assert equal.night is not None
     assert leaning.night is not None
     assert leaning.night.share < equal.night.share
+
+
+def test_when_even_a_full_battery_is_short_it_says_by_how_much() -> None:
+    hungry = house_use(14, lambda _h: 3.0, DAY)
+
+    result = plan(inputs(21, 50, use=hungry))
+
+    assert result.needed is not None
+    assert result.needed.heavy_pct is None
+    assert result.needed.heavy_short_kwh > 0
+    assert result.needed.heavy_short_kwh >= result.needed.typical_short_kwh
+
+
+def test_when_a_full_battery_is_enough_nothing_is_short() -> None:
+    result = plan(inputs(21, 40))
+
+    assert result.needed is not None
+    assert result.needed.heavy_pct is not None
+    assert result.needed.heavy_short_kwh == 0

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from tests.core import checks
-from tests.replay import fixtures, replay, replay_scores
+from tests.replay import fixtures, replay, replay_calibration
 
 
 @pytest.mark.parametrize("path", fixtures(), ids=lambda p: p.stem)
@@ -19,8 +19,10 @@ def test_a_saved_moment_passes_every_check(path: Path) -> None:
 
 @pytest.mark.parametrize("path", fixtures(), ids=lambda p: p.stem)
 def test_a_saved_moments_backtest_replays(path: Path) -> None:
-    _, scores = replay_scores(path)
+    cal = replay_calibration(path)
 
-    for result in scores.values():
-        error = result.error_kwh
+    assert cal.standby_kw >= 0
+    for error in cal.honest_error_kwh.values():
         assert error is None or error >= 0
+    # Only evenings that could have gone either way are scored.
+    assert set(cal.score.contested) <= set(cal.score.nights)

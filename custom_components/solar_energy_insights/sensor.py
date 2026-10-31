@@ -19,7 +19,7 @@ from homeassistant.helpers.typing import StateType
 
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
 from .core.nights import days_covered
-from .core.plan import Plan
+from .core.plan import Outlook, Plan
 from .entity import InsightsEntity
 from .serialize import costs
 
@@ -55,6 +55,14 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
         ),
     ),
     InsightsSensorDescription(
+        key="night_outlook",
+        translation_key="night_outlook",
+        device_class=SensorDeviceClass.ENUM,
+        options=[str(o) for o in Outlook],
+        # Yes/no hides a night that lasts only if it is not a heavy one.
+        value_fn=lambda p: None if p.night is None else str(p.night.outlook),
+    ),
+    InsightsSensorDescription(
         key="nights_covered",
         translation_key="nights_covered",
         native_unit_of_measurement=PERCENTAGE,
@@ -72,15 +80,27 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
         suggested_display_precision=0,
         # The lowest level from which even a heavy night lasts: at sunset in the
         # day, compare it with "battery at sunset"; at night it is needed now.
-        value_fn=lambda p: p.needed.heavy_pct if p.needed else None,
+        # When even a full battery is short, 100 %, and how much would still
+        # come from the grid: the most important thing it can say, not unknown.
+        value_fn=lambda p: (
+            None
+            if p.needed is None
+            else p.needed.heavy_pct
+            if p.needed.heavy_pct is not None
+            else 100.0
+        ),
         attrs_fn=lambda p: (
             {}
             if p.needed is None
             else {
                 "at": p.needed.at.isoformat(),
                 "for": "sunset" if p.needed.at == p.sunset else "now",
-                "typical_night": p.needed.typical_pct,
+                "typical_night": p.needed.typical_pct
+                if p.needed.typical_pct is not None
+                else 100.0,
                 "full_battery_lasts": p.needed.heavy_pct is not None,
+                "grid_even_when_full_kwh": round(p.needed.heavy_short_kwh, 2),
+                "grid_even_when_full_typical_kwh": round(p.needed.typical_short_kwh, 2),
             }
         ),
     ),
@@ -147,15 +167,30 @@ class InsightsStatusDescription(SensorEntityDescription):
 
 
 def _score_attrs(c: InsightsCoordinator) -> dict[str, Any]:
-    current = c.score
-    attrs: dict[str, Any] = {"weighting": str(c.weighting)}
-    for weighting, result in c.scores.items():
-        error = result.error_kwh
+    attrs: dict[str, Any] = {
+        "weighting": str(c.weighting),
+        "hidden_load_w": round(c.standby_kw * 1000),
+        "corrected_readings": c.corrected_readings,
+    }
+    cal = c.calibration
+    if cal is None:
+        return attrs
+    for weighting, error in cal.honest_error_kwh.items():
         attrs[f"error_{weighting}"] = None if error is None else round(error, 2)
-    if current is not None:
-        agreement = current.agreement
-        attrs["nights_scored"] = len(current.nights)
-        attrs["lasts_right_pct"] = None if agreement is None else round(agreement * 100)
+    score = cal.score
+    bias, uncorrected = score.bias_kwh, cal.uncorrected.bias_kwh
+    agreement = score.agreement
+    attrs.update(
+        {
+            "evenings_scored": len(score.nights),
+            "contested_evenings": len(score.contested),
+            "lasts_right_pct": None if agreement is None else round(agreement * 100),
+            "bias_kwh": None if bias is None else round(bias, 2),
+            "bias_without_hidden_load_kwh": None
+            if uncorrected is None
+            else round(uncorrected, 2),
+        }
+    )
     return attrs
 
 
@@ -166,10 +201,11 @@ STATUS: tuple[InsightsStatusDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY_STORAGE,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=2,
+        # The honest error: on evenings left out of any fitting.
         value_fn=lambda c: (
             None
-            if c.score is None or c.score.error_kwh is None
-            else round(c.score.error_kwh, 3)
+            if c.calibration is None or c.calibration.error_kwh is None
+            else round(c.calibration.error_kwh, 3)
         ),
         attrs_fn=_score_attrs,
     ),

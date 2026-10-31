@@ -36,6 +36,14 @@
       },
       "surplus_saving": {
         "default": "mdi:piggy-bank-outline"
+      },
+      "night_outlook": {
+        "default": "mdi:weather-night",
+        "state": {
+          "lasts": "mdi:battery-check",
+          "borderline": "mdi:battery-alert-variant-outline",
+          "grid": "mdi:transmission-tower-import"
+        }
       }
     },
     "binary_sensor": {
