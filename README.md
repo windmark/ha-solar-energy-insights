@@ -128,6 +128,12 @@ Switch them on in the options. The integration then replays your history and kee
 
 Thresholds are relative to your home: per kWp of panels, per kWh of battery, or percentiles of your own days. Badges whose data your home cannot supply are not offered; adding the grid import and export counters and a solar counter in the options unlocks more. Earning a tier, breaking a record, levelling up, completing a quest or closing a month fires `solar_energy_insights_achievement` with a ready-made message. The design is in [docs/achievements.md](docs/achievements.md).
 
+To be told on your phone, import the blueprint and pick what to announce:
+
+[![Open your Home Assistant instance and show the blueprint import dialog.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fwindmark%2Fha-solar-energy-insights%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fsolar_energy_insights%2Fannounce_achievements.yaml)
+
+The monthly recap says what the sun kept at home was worth at your price. "Cycle master" needs the battery's own cycle count, such as from the EcoFlow cloud integration; without one it is not offered.
+
 ## Reporting something that looks wrong
 
 Download diagnostics (Settings → Devices & services → Solar Energy Insights → ⋮ → Download diagnostics) at the moment it looks wrong, and attach the file with a screenshot. The file replays that exact moment as a test (see CONTRIBUTING.md). It holds your energy data and entity ids, nothing else.

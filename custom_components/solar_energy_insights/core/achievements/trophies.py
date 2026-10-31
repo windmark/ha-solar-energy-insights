@@ -33,6 +33,7 @@ class Month:
     best_day: date | None
     best_day_kwh: float | None
     kept_kwh: float | None
+    export_kwh: float | None
     self_sufficiency: float | None
     nights_lasted: int
     nights: int
@@ -70,6 +71,7 @@ def _months(
             for f in days
             if f.solar_kwh is not None and f.export_kwh is not None
         ]
+        exported = [f.export_kwh for f in days if f.export_kwh is not None]
         ss = [s for f in days if (s := f.self_sufficiency) is not None]
         nights = [f.night_lasted for f in days if f.night_lasted is not None]
         out.append(
@@ -80,6 +82,7 @@ def _months(
                 best_day=best.day if best else None,
                 best_day_kwh=best.solar_kwh if best else None,
                 kept_kwh=round(sum(kept), 1) if kept else None,
+                export_kwh=round(sum(exported), 1) if exported else None,
                 self_sufficiency=round(sum(ss) / len(ss), 3) if ss else None,
                 nights_lasted=sum(nights),
                 nights=len(nights),
@@ -135,6 +138,7 @@ def as_dict(
     today: date,
     live: DayFacts | None = None,
     floor_pct: float = 5.0,
+    prices: tuple[float, float] | None = None,
 ) -> dict[str, Any]:
     """Everything the Achievements view shows, as JSON."""
     southern = t.profile.southern
@@ -211,27 +215,7 @@ def as_dict(
             for b in t.badges
         ],
         "quests": [q.as_dict() for q in t.quests[-10:]],
-        "months": [
-            {
-                **{
-                    k: getattr(m, k)
-                    for k in (
-                        "month",
-                        "days",
-                        "score",
-                        "best_day_kwh",
-                        "kept_kwh",
-                        "self_sufficiency",
-                        "nights_lasted",
-                        "nights",
-                    )
-                },
-                "best_day": m.best_day.isoformat() if m.best_day else None,
-                "badges": list(m.badges),
-                "records": list(m.records),
-            }
-            for m in t.months[-13:]
-        ],
+        "months": [_month(m, prices) for m in t.months[-13:]],
         "profile": {
             "capabilities": sorted(str(c) for c in t.profile.capabilities),
             "kwp": t.profile.kwp,
@@ -258,3 +242,28 @@ def _in_season(season: str | None, today: date, southern: bool) -> bool:
     if season == "midsummer":
         return days_from_summer_solstice(today, southern) <= 10
     return str(season_of(today, southern)) == season
+
+
+def _month(m: Month, prices: tuple[float, float] | None) -> dict[str, Any]:
+    """A month's recap; with prices, what the sun was worth."""
+    out: dict[str, Any] = {
+        "month": m.month,
+        "days": m.days,
+        "score": m.score,
+        "best_day": m.best_day.isoformat() if m.best_day else None,
+        "best_day_kwh": m.best_day_kwh,
+        "kept_kwh": m.kept_kwh,
+        "export_kwh": m.export_kwh,
+        "self_sufficiency": m.self_sufficiency,
+        "nights_lasted": m.nights_lasted,
+        "nights": m.nights,
+        "badges": list(m.badges),
+        "records": list(m.records),
+    }
+    if prices is not None:
+        price, feed_in = prices
+        out["saved"] = None if m.kept_kwh is None else round(m.kept_kwh * price, 2)
+        out["earned"] = (
+            None if m.export_kwh is None else round(m.export_kwh * feed_in, 2)
+        )
+    return out

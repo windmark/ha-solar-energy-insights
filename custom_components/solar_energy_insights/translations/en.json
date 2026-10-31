@@ -79,7 +79,8 @@
           "achievements": "Achievements",
           "grid_import_energy": "Grid import energy (optional)",
           "grid_export_energy": "Grid export energy (optional)",
-          "solar_power": "Solar power (optional)"
+          "solar_power": "Solar power (optional)",
+          "battery_cycles": "Battery cycles (optional)"
         },
         "data_description": {
           "nights": "How many recent nights the battery is tested against.",
@@ -97,7 +98,8 @@
           "achievements": "Score, levels, streaks, records, badges and quests, earned from your history. The first start replays the history the recorder holds.",
           "grid_import_energy": "A counter of energy bought. With the export counter, unlocks self-sufficiency, grid-free days and the badges that use them.",
           "grid_export_energy": "A counter of energy sold. Unlocks solar kept at home and export badges.",
-          "solar_power": "For the peak power record."
+          "solar_power": "For the peak power record.",
+          "battery_cycles": "The battery's own count of full cycles, such as from the EcoFlow cloud integration. Without it, \"Cycle master\" is not offered."
         }
       }
     }

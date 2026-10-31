@@ -26,6 +26,7 @@ from homeassistant.helpers.selector import (
 from .const import (
     CONF_ACHIEVEMENTS,
     CONF_BATTERY_CAPACITY,
+    CONF_BATTERY_CYCLES,
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
     CONF_CHARGE_LIMIT,
@@ -130,6 +131,7 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Optional(CONF_GRID_IMPORT_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Optional(CONF_GRID_EXPORT_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Optional(CONF_SOLAR_POWER): _sensor(SensorDeviceClass.POWER),
+        vol.Optional(CONF_BATTERY_CYCLES): _sensor(),
         vol.Required(CONF_NIGHTS, default=DEFAULT_NIGHTS): _number(3, 60, 1, "nights"),
         vol.Required(CONF_MIN_RESERVE, default=DEFAULT_MIN_RESERVE_PCT): _number(
             0, 50, 1, "%"
@@ -155,6 +157,22 @@ POWEROCEAN_OPTION_KEYS: dict[str, tuple[str, ...]] = {
     CONF_GRID_EXPORT_ENERGY: ("grid_export_total",),
     CONF_SOLAR_POWER: ("solar_power",),
 }
+
+
+# Integrations that may report an EcoFlow battery's own cycle count.
+ECOFLOW_PLATFORMS = ("powerocean", "ecoflow_cloud", "ecoflow", POWEROCEAN)
+
+
+def _cycle_counter(hass: HomeAssistant) -> dict[str, str]:
+    """A battery cycle counter from an EcoFlow integration, if there is one."""
+    for entry in er.async_get(hass).entities.values():
+        if (
+            entry.domain == "sensor"
+            and entry.platform in ECOFLOW_PLATFORMS
+            and "cycle" in f"{entry.entity_id} {entry.unique_id}".lower()
+        ):
+            return {CONF_BATTERY_CYCLES: entry.entity_id}
+    return {}
 
 
 def _powerocean(
@@ -249,6 +267,7 @@ class InsightsOptionsFlow(OptionsFlow):
                 {
                     **self._helper_prices(),
                     **_powerocean(self.hass, POWEROCEAN_OPTION_KEYS),
+                    **_cycle_counter(self.hass),
                     **self.config_entry.options,
                 },
             ),

@@ -66,3 +66,19 @@ def test_typical_is_the_median_of_each_hour() -> None:
     }
 
     assert typical(use, TZ)(at(DAY, 8)) == 0.4
+
+
+def test_a_meter_total_read_as_one_hour_is_dropped_but_big_real_hours_stay() -> None:
+    from custom_components.solar_energy_insights.core.nights import (
+        plausible,
+    )
+
+    hours = {at(DAY, h): (3.0 if 9 <= h < 17 else 0.0) for h in range(24)}
+    hours[at(DAY, 12)] = 16.0  # a big array's best hour
+    hours[at(DAY, 0)] = 11_671.0  # the lifetime total, in one hour
+
+    kept = plausible(hours)
+
+    assert at(DAY, 0) not in kept
+    assert kept[at(DAY, 12)] == 16.0
+    assert len(kept) == 23

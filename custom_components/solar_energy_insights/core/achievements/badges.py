@@ -260,12 +260,9 @@ def _mwh_per_10kwp(days: Sequence[DayFacts], c: Context) -> float:
 
 
 def _cycles(days: Sequence[DayFacts], _c: Context) -> float:
-    """Full cycles, estimated from each day's swing in charge."""
-    return sum(
-        max((f.soc_max or 0) - (f.soc_min or 0), 0) / 100
-        for f in days
-        if f.soc_max is not None
-    )
+    """The battery's own count of full cycles, as last reported."""
+    counts = [f.battery_cycles for f in days if f.battery_cycles is not None]
+    return max(counts) if counts else 0.0
 
 
 CATALOGUE: tuple[Badge, ...] = (
@@ -480,8 +477,8 @@ CATALOGUE: tuple[Badge, ...] = (
         "cycle_master",
         "Cycle master",
         "mdi:battery-sync",
-        "Full battery cycles, estimated",
-        (Cap.BATTERY,),
+        "Full battery cycles, as the battery counts them",
+        (Cap.CYCLES,),
         (100, 250, 500),
         count=_cycles,
     ),

@@ -99,6 +99,7 @@ from .core.nights import (
     hourly_means,
     hourly_use,
     past_days,
+    plausible,
 )
 from .core.plan import HEAVY_SHARE, Plan, PlanInputs, plan
 from .core.snapshot import to_snapshot
@@ -631,11 +632,14 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             {"change"},
         )
         hourly = hourly_use(
-            {
-                dt_util.utc_from_timestamp(row["start"]): change
-                for row in made.get(solar, [])
-                if (change := row.get("change")) is not None
-            },
+            # The same counter jumps the achievements guard against.
+            plausible(
+                {
+                    dt_util.utc_from_timestamp(row["start"]): change
+                    for row in made.get(solar, [])
+                    if (change := row.get("change")) is not None
+                }
+            ),
             self.tz,
             # A large array can make more than a house uses in an hour.
             max_kwh=None,
