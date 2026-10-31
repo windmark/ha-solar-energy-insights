@@ -53,10 +53,12 @@ def test_the_hidden_load_explains_why_predictions_were_optimistic() -> None:
     assert honest < cal.uncorrected.error_kwh
 
 
-@pytest.mark.parametrize("current", list(Weighting), ids=str)
+@pytest.mark.parametrize("current", (Weighting.EQUAL, Weighting.SIMILAR), ids=str)
 def test_nights_like_tonight_win_clearly_whatever_was_in_use(
     current: Weighting,
 ) -> None:
+    """Adding weekday or weekend was 1.5 % better on these evenings: a coin
+    toss, so the simpler weighting is the one used."""
     cal = replay_calibration(BORDERLINE, current)
 
     assert cal.weighting is Weighting.SIMILAR

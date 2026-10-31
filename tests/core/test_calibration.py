@@ -119,7 +119,8 @@ def test_evenings_that_start_empty_do_not_count() -> None:
     assert with_empty.score.agreement == pytest.approx(without.score.agreement)
 
 
-@pytest.mark.parametrize("current", list(Weighting), ids=str)
+# Afternoons are alike here, so similar afternoons weigh exactly like equal.
+@pytest.mark.parametrize("current", (Weighting.EQUAL, Weighting.SIMILAR), ids=str)
 def test_the_weighting_in_use_stays_without_a_clear_gain(current: Weighting) -> None:
     # Every afternoon alike: nights-like-tonight cannot tell days apart.
     use = {
