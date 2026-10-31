@@ -67,7 +67,10 @@
           "import_positive": "Grid power is positive when importing",
           "price": "Electricity price",
           "feed_in": "Feed-in tariff",
-          "price_entity": "Price entity (optional)"
+          "price_entity": "Price entity (optional)",
+          "outdoor_temperature": "Outdoor temperature (optional)",
+          "presence": "Presence (optional)",
+          "solar_energy": "Solar energy (optional)"
         },
         "data_description": {
           "nights": "How many recent nights the battery is tested against.",
@@ -77,7 +80,10 @@
           "import_positive": "Turn off if import shows as negative.",
           "price": "What a kWh bought costs, in cents.",
           "feed_in": "What a kWh exported earns, in cents.",
-          "price_entity": "For a dynamic tariff: overrides the electricity price while it has a value. Its current value applies to every hour ahead; nothing is timed to cheap hours. Read as cents if its unit starts with ct, else as your currency per kWh."
+          "price_entity": "For a dynamic tariff: overrides the electricity price while it has a value. Its current value applies to every hour ahead; nothing is timed to cheap hours. Read as cents if its unit starts with ct, else as your currency per kWh.",
+          "outdoor_temperature": "A thermometer with statistics. Nights that followed similar weather may then count more, but only if that predicts recent evenings better.",
+          "presence": "A sensor with statistics that counts who is home, such as a template counting people at home. Used the same way.",
+          "solar_energy": "A counter of what the panels made. With it, Solcast's morning forecasts are compared with what came, and a correction for this roof is used once it beats the raw forecast."
         }
       }
     }
@@ -111,6 +117,18 @@
               "sunset": "Sunset",
               "now": "Now"
             }
+          },
+          "full_battery_lasts": {
+            "name": "A full battery lasts"
+          },
+          "grid_even_when_full_kwh": {
+            "name": "From the grid even when full"
+          },
+          "grid_even_when_full_typical_kwh": {
+            "name": "From the grid even when full, typical night"
+          },
+          "typical_night": {
+            "name": "Typical night"
           }
         }
       },
@@ -118,7 +136,48 @@
         "name": "Solar surplus until sunset"
       },
       "night_error": {
-        "name": "Night prediction error"
+        "name": "Night prediction error",
+        "state_attributes": {
+          "weighting": {
+            "name": "Nights weighted"
+          },
+          "hidden_load_w": {
+            "name": "Hidden load"
+          },
+          "corrected_readings": {
+            "name": "Corrected battery readings"
+          },
+          "contested_evenings": {
+            "name": "Evenings that could have gone either way"
+          },
+          "evenings_scored": {
+            "name": "Evenings scored"
+          },
+          "lasts_right_pct": {
+            "name": "\"Lasts the night\" right"
+          },
+          "bias_kwh": {
+            "name": "Bias"
+          },
+          "bias_without_hidden_load_kwh": {
+            "name": "Bias without the hidden load"
+          },
+          "heavy_share_pct": {
+            "name": "Heavy night share"
+          },
+          "errors_by_weighting": {
+            "name": "Errors by weighting"
+          },
+          "live_nights": {
+            "name": "Answers scored"
+          },
+          "live_error_kwh": {
+            "name": "Error of answers given"
+          },
+          "live_lasts_right_pct": {
+            "name": "Answers given right"
+          }
+        }
       },
       "history_days": {
         "name": "Days of history"
@@ -138,8 +197,10 @@
           "price_source": {
             "name": "Price source",
             "state": {
-              "fixed": "Fixed",
-              "entity": "Entity"
+              "fixed": "Options",
+              "entity": "Entity",
+              "helper": "Dashboard helper",
+              "default": "Default"
             }
           }
         }
@@ -159,9 +220,41 @@
           "price_source": {
             "name": "Price source",
             "state": {
-              "fixed": "Fixed",
-              "entity": "Entity"
+              "fixed": "Options",
+              "entity": "Entity",
+              "helper": "Dashboard helper",
+              "default": "Default"
             }
+          }
+        }
+      },
+      "night_outlook": {
+        "name": "Night outlook",
+        "state": {
+          "lasts": "Lasts, even a heavy night",
+          "borderline": "Borderline: lasts unless it is a heavy night",
+          "grid": "Needs the grid"
+        }
+      },
+      "full_at_error": {
+        "name": "Full-at error",
+        "state_attributes": {
+          "days": {
+            "name": "Days scored"
+          },
+          "missed": {
+            "name": "Days full was wrong"
+          }
+        }
+      },
+      "forecast_correction": {
+        "name": "Solcast correction gain",
+        "state_attributes": {
+          "active": {
+            "name": "In use"
+          },
+          "days": {
+            "name": "Days learned from"
           }
         }
       }

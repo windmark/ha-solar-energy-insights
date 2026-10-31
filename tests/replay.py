@@ -18,10 +18,9 @@ from pathlib import Path
 from typing import Any
 
 from custom_components.solar_energy_insights.core.backtest import (
-    Score,
+    Calibration,
     Weighting,
-    choose,
-    score,
+    calibrate,
 )
 from custom_components.solar_energy_insights.core.plan import Plan, PlanInputs, plan
 from custom_components.solar_energy_insights.core.snapshot import (
@@ -43,15 +42,18 @@ def replay(path: Path) -> tuple[PlanInputs, Plan]:
     return inputs, plan(inputs)
 
 
-def replay_scores(path: Path) -> tuple[Weighting, dict[Weighting, Score]]:
-    """The backtest as it stood then: which weighting won, and each one's score."""
+def replay_calibration(path: Path, current: Weighting = Weighting.EQUAL) -> Calibration:
+    """What the recent evenings taught, as they stood then: the weighting, the
+    hidden load, and the scores."""
     data = load(path)
     inputs = from_snapshot(data)
-    evenings = evenings_from_snapshot(data)
-    return choose(
-        lambda weighting: score(
-            inputs.use, inputs.tz, evenings, inputs.battery, inputs.nights, weighting
-        )
+    return calibrate(
+        inputs.use,
+        inputs.tz,
+        evenings_from_snapshot(data),
+        inputs.battery,
+        inputs.nights,
+        current,
     )
 
 

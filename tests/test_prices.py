@@ -153,3 +153,18 @@ async def test_simulate_reports_what_the_extra_load_costs(
 
     assert dryer["costs"]["night_grid"] > alone["costs"]["night_grid"]
     assert dryer["costs"]["price"] == pytest.approx(0.40)
+
+
+async def test_until_options_are_saved_the_dashboards_price_helpers_are_used(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    home.states.async_set("input_number.electricity_price", "32")
+    home.states.async_set("input_number.feed_in_tariff", "7.9")
+
+    await evening_home(home, freezer, {})
+
+    cost = home.states.get(GRID_COST)
+    assert cost is not None
+    assert cost.attributes["price_source"] == "helper"
+    assert cost.attributes["price"] == pytest.approx(0.32)
+    assert cost.attributes["feed_in"] == pytest.approx(0.079)

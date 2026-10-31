@@ -253,3 +253,20 @@ def test_one_day_of_history_is_enough_for_an_answer() -> None:
     assert p.night is not None
     assert len(p.night.outcomes) == 1
     assert p.night.typical == p.night.heavy
+
+
+@pytest.mark.parametrize("house", HOUSES.values(), ids=lambda h: h.__name__)
+def test_a_hidden_load_never_makes_the_night_better(house) -> None:
+    use = history(WINTER.day, house)
+    now = at(WINTER.day, 20)
+    nights = [
+        plan(inputs(WINTER, now, peak_kw=0, use=use, soc=70, standby_kw=kw))
+        for kw in (0.0, 0.05, 0.1)
+    ]
+
+    shares = [p.night.share for p in nights if p.night]
+    spares = [p.night.typical.spare_kwh for p in nights if p.night]
+    needed = [(p.needed.heavy_pct or 101) for p in nights if p.needed]
+    assert shares == sorted(shares, reverse=True)
+    assert spares == sorted(spares, reverse=True)
+    assert needed == sorted(needed)

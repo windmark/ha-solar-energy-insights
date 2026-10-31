@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from custom_components.solar_energy_insights.core.backtest import (
     Evening,
     Weighting,
-    choose,
+    calibrate,
     score,
 )
 from custom_components.solar_energy_insights.core.battery import Battery, simulate
@@ -91,13 +91,14 @@ def test_the_backtest_picks_similarity_when_it_predicts_better() -> None:
     use = history(40, DAY)
     nights = evenings(use, 14)
 
-    chosen, results = choose(lambda w: score(use, TZ, nights, BATTERY, 14, w))
+    cal = calibrate(use, TZ, nights, BATTERY, 14)
 
-    assert chosen is Weighting.SIMILAR
-    equal, similar = results[Weighting.EQUAL], results[Weighting.SIMILAR]
-    assert similar.error_kwh is not None
-    assert equal.error_kwh is not None
-    assert similar.error_kwh < equal.error_kwh
+    assert cal.weighting is Weighting.SIMILAR
+    equal = cal.honest_error_kwh[Weighting.EQUAL]
+    similar = cal.honest_error_kwh[Weighting.SIMILAR]
+    assert similar is not None
+    assert equal is not None
+    assert similar < equal
 
 
 def test_equal_weights_stay_when_the_afternoon_misleads() -> None:
@@ -113,9 +114,9 @@ def test_equal_weights_stay_when_the_afternoon_misleads() -> None:
         for hour in range(24)
     }
 
-    chosen, _ = choose(lambda w: score(use, TZ, evenings(use, 14), BATTERY, 14, w))
+    cal = calibrate(use, TZ, evenings(use, 14), BATTERY, 14)
 
-    assert chosen is Weighting.EQUAL
+    assert cal.weighting is Weighting.EQUAL
 
 
 def test_equal_weights_stay_when_the_afternoon_says_nothing() -> None:
@@ -127,9 +128,9 @@ def test_equal_weights_stay_when_the_afternoon_says_nothing() -> None:
         for hour in range(24)
     }
 
-    chosen, _ = choose(lambda w: score(use, TZ, evenings(use, 14), BATTERY, 14, w))
+    cal = calibrate(use, TZ, evenings(use, 14), BATTERY, 14)
 
-    assert chosen is Weighting.EQUAL
+    assert cal.weighting is Weighting.EQUAL
 
 
 def test_scores_only_use_days_before_each_evening() -> None:

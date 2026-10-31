@@ -4,6 +4,31 @@
 
 ### Added
 
+- numpy: nights, battery levels and hidden loads are simulated in batches. The plan takes 7 ms instead of 21; calibration 25 ms instead of 444.
+- Up to 60 recent evenings are scored instead of 14.
+- More ways of weighting nights: the same kind of day, similar outdoor temperature, similar presence at home (the last two when configured). Each is used only if it predicts left-out evenings clearly better, and the simplest of near-equal options wins.
+- The heavy night is calibrated from where real nights fell among the replayed ones.
+- A small store keeps Solcast's morning forecast, the plan's own answers and the weighting in use. Full-at error and live night scores come from it.
+- An optional solar energy counter enables a per-hour Solcast correction for the roof, used once it beats raw Solcast on left-out days.
+
+### Added
+
+- Night outlook: lasts, borderline, or needs the grid.
+- A hidden load (such as the inverter's standby) is learned from recent evenings, kept only if it predicts left-out evenings better, and used in every simulation.
+
+### Changed
+
+- The night prediction error is measured on evenings that could have gone either way, and left out of any fitting.
+- The weighting in use changes only for a clear gain.
+- Prices fall back to `input_number.electricity_price` and `input_number.feed_in_tariff` until the options are saved.
+
+### Fixed
+
+- Battery readings below the floor (a glitch, or the battery asleep at its reserve) are corrected and counted, instead of scoring as nights that ran out.
+- Diagnostics replay the plan shown, not one made from readings taken at download.
+
+### Added
+
 - Diagnostics carry a replay snapshot of everything the plan was made from: battery, forecast, hourly use and scored evenings. A download can be replayed offline as a test.
 
 ### Fixed

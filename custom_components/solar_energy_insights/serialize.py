@@ -69,6 +69,7 @@ def plan_dict(
         if night is None
         else {
             "nights": len(night.outcomes),
+            "outlook": str(night.outlook),
             "lasting": night.lasting,
             "typical": _outcome(night.typical),
             "heavy": _outcome(night.heavy),
@@ -85,6 +86,8 @@ def plan_dict(
             "at": _iso(plan.needed.at),
             "heavy_pct": plan.needed.heavy_pct,
             "typical_pct": plan.needed.typical_pct,
+            "heavy_short_kwh": round(plan.needed.heavy_short_kwh, 2),
+            "typical_short_kwh": round(plan.needed.typical_short_kwh, 2),
         },
         "best_window": None
         if plan.best_window is None
