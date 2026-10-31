@@ -194,3 +194,32 @@ async def record_battery(
         rows,
     )
     await async_wait_recording_done(hass)
+
+
+async def record_energy(
+    hass: HomeAssistant,
+    entity_id: str,
+    days: list[date],
+    kwh_at: Callable[[date, int], float],
+) -> None:
+    """Record an energy counter's hourly statistics, kWh per (day, hour)."""
+    total = 0.0
+    rows: list[StatisticData] = []
+    for day in days:
+        for hour in range(24):
+            total += kwh_at(day, hour)
+            rows.append(StatisticData(start=local(day, hour), state=total, sum=total))
+    async_import_statistics(
+        hass,
+        {
+            "mean_type": StatisticMeanType.NONE,
+            "has_sum": True,
+            "name": None,
+            "source": "recorder",
+            "statistic_id": entity_id,
+            "unit_class": "energy",
+            "unit_of_measurement": "kWh",
+        },
+        rows,
+    )
+    await async_wait_recording_done(hass)

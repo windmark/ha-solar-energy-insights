@@ -75,7 +75,11 @@
           "outdoor_temperature": "Outdoor temperature (optional)",
           "presence": "Presence (optional)",
           "solar_energy": "Solar energy (optional)",
-          "max_charge": "Charge limit"
+          "max_charge": "Charge limit",
+          "achievements": "Achievements",
+          "grid_import_energy": "Grid import energy (optional)",
+          "grid_export_energy": "Grid export energy (optional)",
+          "solar_power": "Solar power (optional)"
         },
         "data_description": {
           "nights": "How many recent nights the battery is tested against.",
@@ -89,7 +93,11 @@
           "outdoor_temperature": "A thermometer with statistics. Nights that followed similar weather may then count more, but only if that predicts recent evenings better.",
           "presence": "A sensor with statistics that counts who is home, such as a template counting people at home. Used the same way.",
           "solar_energy": "A counter of what the panels made. With it, Solcast's morning forecasts are compared with what came, and a correction for this roof is used once it beats the raw forecast.",
-          "max_charge": "The level the battery charges to when no entity gives it: lower it if the app stops charging below 100 %. Full means reaching it."
+          "max_charge": "The level the battery charges to when no entity gives it: lower it if the app stops charging below 100 %. Full means reaching it.",
+          "achievements": "Score, levels, streaks, records, badges and quests, earned from your history. The first start replays the history the recorder holds.",
+          "grid_import_energy": "A counter of energy bought. With the export counter, unlocks self-sufficiency, grid-free days and the badges that use them.",
+          "grid_export_energy": "A counter of energy sold. Unlocks solar kept at home and export badges.",
+          "solar_power": "For the peak power record."
         }
       }
     }
@@ -266,6 +274,37 @@
             "name": "Days learned from"
           }
         }
+      },
+      "score_today": {
+        "name": "Solar score today"
+      },
+      "level": {
+        "name": "Solar level"
+      },
+      "rank": {
+        "name": "Solar rank",
+        "state": {
+          "bronze": "Bronze",
+          "silver": "Silver",
+          "gold": "Gold",
+          "platinum": "Platinum",
+          "diamond": "Diamond"
+        }
+      },
+      "streak_self_sufficient": {
+        "name": "Streak: self-sufficient days"
+      },
+      "streak_full": {
+        "name": "Streak: battery filled"
+      },
+      "streak_beat_forecast": {
+        "name": "Streak: beat the forecast"
+      },
+      "streak_grid_free_night": {
+        "name": "Streak: grid-free nights"
+      },
+      "quest": {
+        "name": "Quest"
       }
     },
     "binary_sensor": {

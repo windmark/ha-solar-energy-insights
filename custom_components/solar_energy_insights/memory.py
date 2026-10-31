@@ -34,8 +34,13 @@ class Memory:
     forecasts: dict[str, list[list[Any]]] = field(default_factory=dict)
     # Day → {"at": when, "full_at": time or None}, said in the morning.
     days: dict[str, dict[str, Any]] = field(default_factory=dict)
-    # Day → {"at": when, "spare_kwh": …, "lasts": …}, said at 21:00.
+    # Day → {"at": when, "spare_kwh": …, "lasts": …, "outlook": …}, said at 21:00.
     nights: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Achievements: each closed day's facts, the quests set, and what has been
+    # announced (so a restart or a rebuild does not announce it again).
+    facts: dict[str, dict[str, Any]] = field(default_factory=dict)
+    quests: dict[str, dict[str, Any]] = field(default_factory=dict)
+    announced: dict[str, Any] | None = None
 
     def prune(self, today: date) -> None:
         oldest = (today - timedelta(days=KEEP_DAYS)).isoformat()
@@ -49,6 +54,9 @@ class Memory:
             "forecasts": self.forecasts,
             "days": self.days,
             "nights": self.nights,
+            "facts": self.facts,
+            "quests": self.quests,
+            "announced": self.announced,
         }
 
     @classmethod
@@ -60,6 +68,9 @@ class Memory:
             forecasts=dict(data.get("forecasts") or {}),
             days=dict(data.get("days") or {}),
             nights=dict(data.get("nights") or {}),
+            facts=dict(data.get("facts") or {}),
+            quests=dict(data.get("quests") or {}),
+            announced=data.get("announced"),
         )
 
 

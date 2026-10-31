@@ -35,6 +35,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import EnergyConverter, PowerConverter
 
+from .achievements import Achievements
 from .const import (
     BACKTEST_EVENINGS,
     CONF_BATTERY_CAPACITY,
@@ -156,6 +157,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         self.correction = Correction.none()
         self.live_nights: NightScore | None = None
         self.live_full: FullScore | None = None
+        self.achievements = Achievements(self)
         # The inputs behind the plan shown, for an exact replay.
         self.last_inputs: PlanInputs | None = None
         # The last capacity reported, for a battery that reports none while asleep.
@@ -433,6 +435,10 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         )
         await self._async_calibrate(soc_hours, now)
         await self._async_score_live(rows, soc, now)
+        try:
+            await self.achievements.async_update()
+        except Exception:
+            _LOGGER.exception("Could not update achievements")
 
     def _evenings(self, lows: dict[datetime, float], now: datetime) -> list[Evening]:
         """What the battery did on recent nights, from its hourly lowest level."""
@@ -532,6 +538,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
                 "at": p.now.isoformat(),
                 "spare_kwh": p.night.typical.spare_kwh,
                 "lasts": p.night.typical.lasts,
+                "outlook": str(p.night.outlook),
             }
             changed = True
         if changed:

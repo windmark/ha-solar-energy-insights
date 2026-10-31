@@ -286,6 +286,8 @@ async def async_setup_entry(
     async_add_entities(InsightsSensor(coordinator, d) for d in SENSORS)
     async_add_entities(InsightsStatusSensor(coordinator, d) for d in STATUS)
     async_add_entities(InsightsCostSensor(coordinator, d) for d in COSTS)
+    if coordinator.achievements.enabled:
+        async_add_entities(GameSensor(coordinator, d) for d in GAME)
 
 
 class InsightsSensor(InsightsEntity, SensorEntity):
@@ -368,3 +370,126 @@ class InsightsCostSensor(InsightsEntity, SensorEntity):
             "feed_in": values["feed_in"],
             "price_source": self.coordinator.price_source,
         }
+
+
+# ── Achievements ──
+
+
+def _streak(key: str) -> Callable[[dict[str, Any]], dict[str, Any] | None]:
+    return lambda v: next((s for s in v.get("streaks", []) if s["id"] == key), None)
+
+
+def _open_quest(v: dict[str, Any]) -> dict[str, Any] | None:
+    open_ = [q for q in v.get("quests", []) if q.get("result") is None]
+    return open_[-1] if open_ else None
+
+
+def _quest_title(v: dict[str, Any]) -> StateType:
+    quest = _open_quest(v)
+    return str(quest["title"]) if quest else None
+
+
+STREAK_KEYS = ("self_sufficient", "full", "beat_forecast", "grid_free_night")
+
+
+@dataclass(frozen=True, kw_only=True)
+class GameDescription(SensorEntityDescription):
+    """A piece of the trophy room, from the achievements view."""
+
+    value_fn: Callable[[dict[str, Any]], StateType]
+    attrs_fn: Callable[[dict[str, Any]], dict[str, Any]] | None = None
+
+
+def _streak_description(key: str) -> GameDescription:
+    def current(v: dict[str, Any]) -> StateType:
+        streak = _streak(key)(v)
+        return int(streak["current"]) if streak else None
+
+    def attrs(v: dict[str, Any]) -> dict[str, Any]:
+        streak = _streak(key)(v) or {}
+        return {k: streak.get(k) for k in ("best", "shields", "personal_best")}
+
+    return GameDescription(
+        key=f"streak_{key}",
+        translation_key=f"streak_{key}",
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement="d",
+        value_fn=current,
+        attrs_fn=attrs,
+    )
+
+
+GAME: tuple[GameDescription, ...] = (
+    GameDescription(
+        key="score_today",
+        translation_key="score_today",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda v: v["today"]["score"],
+        attrs_fn=lambda v: {
+            "parts": v["today"]["parts"],
+            "last_day": v["last_day"],
+        },
+    ),
+    GameDescription(
+        key="level",
+        translation_key="level",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda v: v["level"]["level"],
+        attrs_fn=lambda v: {
+            "level_name": v["level"]["name"],
+            "xp": v["level"]["xp"],
+            "next_xp": v["level"]["next_xp"],
+            "progress": v["level"]["progress"],
+        },
+    ),
+    GameDescription(
+        key="rank",
+        translation_key="rank",
+        device_class=SensorDeviceClass.ENUM,
+        options=["bronze", "silver", "gold", "platinum", "diamond"],
+        value_fn=lambda v: v["rank"]["name"].lower(),
+        attrs_fn=lambda v: {
+            "average": v["rank"]["average"],
+            "next_rank": v["rank"]["next_name"],
+            "next_at": v["rank"]["next_at"],
+            "season_factor": v["rank"]["season_factor"],
+        },
+    ),
+    *(_streak_description(key) for key in STREAK_KEYS),
+    GameDescription(
+        key="quest",
+        translation_key="quest",
+        value_fn=_quest_title,
+        attrs_fn=lambda v: {
+            **(
+                {k: q[k] for k in ("reward", "day", "until", "kind")}
+                if (q := _open_quest(v))
+                else {}
+            ),
+            "recent": [
+                {"title": q["title"], "met": q["result"]}
+                for q in v.get("quests", [])
+                if q.get("result") is not None
+            ][-5:],
+        },
+    ),
+)
+
+
+class GameSensor(InsightsEntity, SensorEntity):
+    entity_description: GameDescription
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.achievements.view is not None
+
+    @property
+    def native_value(self) -> StateType:
+        view = self.coordinator.achievements.view
+        return self.entity_description.value_fn(view) if view else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        view = self.coordinator.achievements.view
+        attrs_fn = self.entity_description.attrs_fn
+        return attrs_fn(view) if view and attrs_fn else None

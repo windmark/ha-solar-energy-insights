@@ -26,6 +26,13 @@ async def async_get_config_entry_diagnostics(
         "backtest": backtest_dict(coordinator.calibration),
         "corrected_readings": coordinator.corrected_readings,
         "heavy_share": coordinator.heavy_share,
+        "achievements": None
+        if not coordinator.achievements.enabled
+        else {
+            "days": len(coordinator.memory.memory.facts),
+            "quests": len(coordinator.memory.memory.quests),
+            "view": coordinator.achievements.view,
+        },
         "memory": {
             "weighting": coordinator.memory.memory.weighting,
             "mornings": len(coordinator.memory.memory.forecasts),

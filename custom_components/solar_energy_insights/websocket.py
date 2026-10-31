@@ -18,6 +18,7 @@ from .services import coordinator_for
 def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_plan)
     websocket_api.async_register_command(hass, ws_backtest)
+    websocket_api.async_register_command(hass, ws_achievements)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/plan"})
@@ -79,3 +80,25 @@ def ws_backtest(
         for e in coordinator.evenings
     ]
     connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/achievements"})
+@callback
+def ws_achievements(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """The whole trophy room: score, level, rank, streaks, records, badges,
+    quests and monthly recaps."""
+    try:
+        coordinator = coordinator_for(hass)
+    except ServiceValidationError:
+        connection.send_error(
+            msg["id"], "not_loaded", "Solar Energy Insights is not loaded"
+        )
+        return
+    if not coordinator.achievements.enabled:
+        connection.send_error(
+            msg["id"], "disabled", "Achievements are off in the options"
+        )
+        return
+    connection.send_result(msg["id"], coordinator.achievements.view)
