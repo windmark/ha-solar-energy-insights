@@ -28,13 +28,9 @@ from .const import (
     CONF_ACHIEVEMENTS,
     CONF_ARRAY_KWP,
     CONF_BATTERY_CAPACITY,
-    CONF_BATTERY_CYCLES,
-    CONF_BATTERY_HEALTH,
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
     CONF_CHARGE_LIMIT,
-    CONF_CHARGE_POWER_LIMIT,
-    CONF_DISCHARGE_POWER_LIMIT,
     CONF_FEED_IN,
     CONF_GRID_EXPORT_ENERGY,
     CONF_GRID_IMPORT_ENERGY,
@@ -45,7 +41,6 @@ from .const import (
     CONF_MAX_POWER,
     CONF_MIN_RESERVE,
     CONF_NIGHTS,
-    CONF_PRESENCE,
     CONF_PRICE,
     CONF_PRICE_ENTITY,
     CONF_ROUND_TRIP,
@@ -53,7 +48,6 @@ from .const import (
     CONF_SOLAR_POWER,
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
-    CONF_TEMPERATURE,
     DEFAULT_FEED_IN_CT,
     DEFAULT_MAX_CHARGE_PCT,
     DEFAULT_MAX_POWER_KW,
@@ -89,11 +83,6 @@ def _sensor(device_class: SensorDeviceClass | None = None) -> EntitySelector:
     return EntitySelector(
         EntitySelectorConfig(domain="sensor", device_class=str(device_class))
     )
-
-
-def _sensors() -> EntitySelector:
-    """Several sensors: one per battery pack."""
-    return EntitySelector(EntitySelectorConfig(domain="sensor", multiple=True))
 
 
 def _number(low: float, high: float, step: float, unit: str) -> NumberSelector:
@@ -134,17 +123,11 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Optional(CONF_PRICE_ENTITY): EntitySelector(
             EntitySelectorConfig(domain=["sensor", "input_number"])
         ),
-        vol.Optional(CONF_TEMPERATURE): _sensor(SensorDeviceClass.TEMPERATURE),
-        vol.Optional(CONF_PRESENCE): _sensor(),
         vol.Optional(CONF_SOLAR_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Required(CONF_ACHIEVEMENTS, default=False): BooleanSelector(),
         vol.Optional(CONF_GRID_IMPORT_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Optional(CONF_GRID_EXPORT_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Optional(CONF_SOLAR_POWER): _sensor(SensorDeviceClass.POWER),
-        vol.Optional(CONF_BATTERY_CYCLES): _sensors(),
-        vol.Optional(CONF_BATTERY_HEALTH): _sensors(),
-        vol.Optional(CONF_CHARGE_POWER_LIMIT): _sensor(SensorDeviceClass.POWER),
-        vol.Optional(CONF_DISCHARGE_POWER_LIMIT): _sensor(SensorDeviceClass.POWER),
         vol.Optional(CONF_ARRAY_KWP): _number(0.1, 1000, 0.01, "kWp"),
         vol.Required(CONF_NIGHTS, default=DEFAULT_NIGHTS): _number(3, 60, 1, "nights"),
         vol.Required(CONF_MIN_RESERVE, default=DEFAULT_MIN_RESERVE_PCT): _number(
@@ -170,39 +153,7 @@ POWEROCEAN_OPTION_KEYS: dict[str, tuple[str, ...]] = {
     CONF_GRID_IMPORT_ENERGY: ("grid_import_total",),
     CONF_GRID_EXPORT_ENERGY: ("grid_export_total",),
     CONF_SOLAR_POWER: ("solar_power",),
-    # The battery management system's live limits.
-    CONF_CHARGE_POWER_LIMIT: ("battery_charge_power_limit",),
-    CONF_DISCHARGE_POWER_LIMIT: ("battery_discharge_power_limit",),
 }
-
-
-# The EcoFlow cloud integration reports each battery pack as
-# "<serial>_<report>_<key>": bpCycles is its cycle count, bpSoh its health.
-ECOFLOW_CLOUD = "powerocean"
-ECOFLOW_PLATFORMS = (ECOFLOW_CLOUD, "ecoflow_cloud", "ecoflow", POWEROCEAN)
-
-
-def _ecoflow_packs(hass: HomeAssistant) -> dict[str, list[str]]:
-    """Every battery pack's cycle count and state of health, from the EcoFlow
-    cloud integration (or, failing that, any EcoFlow sensor named for cycles)."""
-    cycles: list[str] = []
-    health: list[str] = []
-    named_cycles: list[str] = []
-    for entry in er.async_get(hass).entities.values():
-        if entry.domain != "sensor" or entry.platform not in ECOFLOW_PLATFORMS:
-            continue
-        if entry.platform == ECOFLOW_CLOUD and entry.unique_id.endswith("_bpCycles"):
-            cycles.append(entry.entity_id)
-        elif entry.platform == ECOFLOW_CLOUD and entry.unique_id.endswith("_bpSoh"):
-            health.append(entry.entity_id)
-        elif "cycle" in f"{entry.entity_id} {entry.unique_id}".lower():
-            named_cycles.append(entry.entity_id)
-    out: dict[str, list[str]] = {}
-    if cycles or named_cycles:
-        out[CONF_BATTERY_CYCLES] = sorted(cycles or named_cycles)
-    if health:
-        out[CONF_BATTERY_HEALTH] = sorted(health)
-    return out
 
 
 def _array_size(hass: HomeAssistant) -> dict[str, float]:
@@ -303,7 +254,6 @@ class InsightsOptionsFlow(OptionsFlow):
                 {
                     **self._helper_prices(),
                     **_powerocean(self.hass, POWEROCEAN_OPTION_KEYS),
-                    **_ecoflow_packs(self.hass),
                     **_array_size(self.hass),
                     **self.config_entry.options,
                 },

@@ -27,9 +27,6 @@ class Battery:
     # The level charging stops at: 100, or lower when the battery is set to
     # spare its cells. "Full" means reaching it.
     ceiling_pct: float = 100.0
-    # The battery's own limit on discharging, when it differs from charging;
-    # None means the same as max_power_kw.
-    max_discharge_kw: float | None = None
 
     @property
     def eta(self) -> float:
@@ -48,14 +45,6 @@ class Battery:
     def usable_kwh(self) -> float:
         """Energy above the reserve floor, as stored in the cells."""
         return max(self.stored_kwh - self.floor_kwh, 0.0)
-
-    @property
-    def discharge_kw(self) -> float:
-        return (
-            self.max_power_kw
-            if self.max_discharge_kw is None
-            else self.max_discharge_kw
-        )
 
     @property
     def ceiling_kwh(self) -> float:
@@ -162,7 +151,6 @@ def simulate(
     such as sunset.
     """
     cap, eta, p_max = battery.capacity_kwh, battery.eta, battery.max_power_kw
-    p_out = battery.discharge_kw
     floor = battery.floor_kwh
     top = battery.ceiling_kwh
     level = battery.stored_kwh
@@ -210,7 +198,7 @@ def simulate(
                 export_before += (net - charge_kw) * hours
         elif net < 0:
             need = -net * hours
-            out = max(min(need, p_out * hours, (level - floor) * eta), 0.0)
+            out = max(min(need, p_max * hours, (level - floor) * eta), 0.0)
             level -= out / eta
             if out < need - 1e-6:
                 grid += need - out

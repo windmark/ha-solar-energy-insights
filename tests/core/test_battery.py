@@ -97,21 +97,3 @@ def test_spare_tonight_ignores_this_mornings_low() -> None:
     )
 
     assert sim.spare_kwh > morning_low.usable_kwh
-
-
-def test_a_lower_discharge_limit_hands_over_to_the_grid_sooner() -> None:
-    day = date(2026, 12, 10)
-    full = Battery(capacity_kwh=10.0, soc_pct=90.0, floor_pct=5.0, max_power_kw=5.0)
-    throttled = Battery(
-        capacity_kwh=10.0,
-        soc_pct=90.0,
-        floor_pct=5.0,
-        max_power_kw=5.0,
-        max_discharge_kw=1.5,
-    )
-
-    a = simulate(full, at(day, 18), at(day, 20), lambda _t: 0.0, constant(3.0))
-    b = simulate(throttled, at(day, 18), at(day, 20), lambda _t: 0.0, constant(3.0))
-
-    assert a.grid_kwh == 0
-    assert b.grid_kwh > 2.5

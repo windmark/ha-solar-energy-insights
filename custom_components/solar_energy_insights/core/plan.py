@@ -5,7 +5,6 @@ Facts only; wording is left to whoever shows them."""
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, tzinfo
 from enum import StrEnum
@@ -45,7 +44,6 @@ class PlanInputs:
     # Load on top of the house's usual, such as an appliance started now.
     extra: Rate | None = None
     # How much each of the last nights counts, most recent first; None = equally.
-    weights: Sequence[float] | None = None
     # Load the house counter never sees, such as the inverter's own standby,
     # learned from how real nights ended.
     standby_kw: float = 0.0
@@ -67,7 +65,6 @@ class NightOutcome:
     """One past night's use, replayed from now to sunrise."""
 
     days_ago: int
-    weight: float
     lasts: bool
     reserve_at: datetime | None
     load_kwh: float
@@ -97,9 +94,8 @@ class Night:
 
     @property
     def share(self) -> float:
-        """The weighted share of nights the battery lasts."""
-        total = sum(o.weight for o in self.outcomes)
-        return sum(o.weight for o in self.outcomes if o.lasts) / total
+        """The share of nights the battery lasts."""
+        return sum(o.lasts for o in self.outcomes) / len(self.outcomes)
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,10 +203,8 @@ def _today(i: PlanInputs) -> date:
 
 def _days(i: PlanInputs) -> tuple[list[PastDay], Floats]:
     days = past_days(i.use, i.tz, i.nights, _today(i))
-    weights = np.asarray(i.weights[: len(days)] if i.weights else [], dtype=float)
-    if len(weights) != len(days) or weights.sum() <= 0:
-        weights = np.ones(len(days))
-    return days, weights
+    # Every recent night counts the same.
+    return days, np.ones(len(days))
 
 
 def _loads(i: PlanInputs, slices: Slices, days: list[PastDay]) -> Floats:
@@ -242,7 +236,6 @@ def _night(
     outcomes = tuple(
         NightOutcome(
             days_ago=day.days_ago,
-            weight=float(weights[k]),
             lasts=bool(runs.lasts[k]),
             reserve_at=runs.reserve_at[k],
             load_kwh=float(runs.load_kwh[k]),

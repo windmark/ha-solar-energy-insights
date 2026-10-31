@@ -38,7 +38,7 @@ Each badge is a rule over day facts, declared as data with what it needs and how
 
 | Capability  | Comes from                                       | Unlocks                                              |
 | ----------- | ------------------------------------------------ | ---------------------------------------------------- |
-| Battery     | State of charge and capacity (always configured) | Full battery, grid-free night, cycles                |
+| Battery     | State of charge and capacity (always configured) | Full battery, grid-free night                        |
 | House use   | House energy counter (always configured)         | Thriftiest day, thrifty week                         |
 | Solar yield | Optional solar energy counter                    | Yield, specific yield, beat the forecast, records    |
 | Grid flows  | Optional grid import and export counters         | Self-sufficiency, solar kept at home, off-grid hours |
@@ -85,30 +85,29 @@ Facts are kept in the integration's store, about 1 kB a day.
 
 ## Badge catalogue
 
-| Badge                    | Season      | Earned on a day when                                                        | Tiers           | Needs                          |
-| ------------------------ | ----------- | --------------------------------------------------------------------------- | --------------- | ------------------------------ |
-| Perfect day              | Any         | Grid-free, battery full, and the morning forecast beaten                    | 1 · 5 · 20      | Battery, grid, solar, forecast |
-| Every drop               | Any         | 95 % of the sun kept at home on a day at or above your median yield per kWp | 1 · 5 · 15      | Solar, grid                    |
-| Power plant              | Any         | Export at least 2 kWh per kWp                                               | 1 · 10 · 30     | Solar, grid                    |
-| Off-grid week            | Any         | 7 days in a row at least 95 % self-sufficient                               | 1 · 3 · 6 runs  | Grid                           |
-| Silver lining            | Any         | 1.5× a forecast among your gloomiest 20 % for the season                    | 1 · 5 · 15      | Solar, forecast                |
-| Harvest night            | Autumn      | A grid-free night                                                           | 1 · 10 · 30     | Battery                        |
-| Last light               | Late autumn | Battery full in the six weeks before the winter solstice                    | 1 · 10 · 25     | Battery                        |
-| Low-sun hero             | Winter      | Yield per kWp in your top 10 % of winter days                               | 1 · 3 · 8       | Solar                          |
-| Longest night            | Midwinter   | A grid-free night within ten days of the winter solstice                    | 1 · 3 · 7       | Battery                        |
-| Winter warrior           | Winter      | At least 80 % self-sufficient                                               | 1 · 10 · 30     | Grid                           |
-| Spring awakening         | Spring      | A grid-free spring day, counted once a year                                 | 1 · 3 · 5 years | Grid                           |
-| Early bird               | Spring      | Battery full earlier than four in five of your days                         | 1 · 10 · 30     | Battery                        |
-| Midsummer                | Midsummer   | Yield per kWp in your top 5 %, within ten days of the summer solstice       | 1 · 3 · 7       | Solar                          |
-| Island mode              | Summer      | 24 hours without the grid                                                   | 1 · 5 · 15      | Grid                           |
-| Steady hand              | Any         | A night the plan called borderline that lasted                              | 1 · 5 · 15      | Advice, battery                |
-| Forecast whisperer       | Any         | The morning's "full at" within 15 minutes of the real time                  | 1 · 10 · 30     | Advice, battery                |
-| Thrifty week             | Any         | A week's house use in your bottom 10 % for the season                       | 1 · 3 · 6 weeks | House use                      |
-| Night owl (hidden)       | Any         | A grid-free night after one of your dullest 10 % of days                    | 1               | Battery, solar                 |
-| Photo finish (hidden)    | Any         | A night that lasted with under 1 % of the battery to spare                  | 1               | Battery                        |
-| Equinox (hidden)         | Equinoxes   | Half the day's use from the sun, within 2 points                            | 1               | Grid                           |
-| MWh club (milestone)     | Lifetime    | Lifetime yield per 10 kWp of panels                                         | 1 · 5 · 10 MWh  | Solar                          |
-| Cycle master (milestone) | Lifetime    | Full battery cycles, as the battery counts them                             | 100 · 250 · 500 | Battery cycle count            |
+| Badge                 | Season      | Earned on a day when                                                        | Tiers           | Needs                          |
+| --------------------- | ----------- | --------------------------------------------------------------------------- | --------------- | ------------------------------ |
+| Perfect day           | Any         | Grid-free, battery full, and the morning forecast beaten                    | 1 · 5 · 20      | Battery, grid, solar, forecast |
+| Every drop            | Any         | 95 % of the sun kept at home on a day at or above your median yield per kWp | 1 · 5 · 15      | Solar, grid                    |
+| Power plant           | Any         | Export at least 2 kWh per kWp                                               | 1 · 10 · 30     | Solar, grid                    |
+| Off-grid week         | Any         | 7 days in a row at least 95 % self-sufficient                               | 1 · 3 · 6 runs  | Grid                           |
+| Silver lining         | Any         | 1.5× a forecast among your gloomiest 20 % for the season                    | 1 · 5 · 15      | Solar, forecast                |
+| Harvest night         | Autumn      | A grid-free night                                                           | 1 · 10 · 30     | Battery                        |
+| Last light            | Late autumn | Battery full in the six weeks before the winter solstice                    | 1 · 10 · 25     | Battery                        |
+| Low-sun hero          | Winter      | Yield per kWp in your top 10 % of winter days                               | 1 · 3 · 8       | Solar                          |
+| Longest night         | Midwinter   | A grid-free night within ten days of the winter solstice                    | 1 · 3 · 7       | Battery                        |
+| Winter warrior        | Winter      | At least 80 % self-sufficient                                               | 1 · 10 · 30     | Grid                           |
+| Spring awakening      | Spring      | A grid-free spring day, counted once a year                                 | 1 · 3 · 5 years | Grid                           |
+| Early bird            | Spring      | Battery full earlier than four in five of your days                         | 1 · 10 · 30     | Battery                        |
+| Midsummer             | Midsummer   | Yield per kWp in your top 5 %, within ten days of the summer solstice       | 1 · 3 · 7       | Solar                          |
+| Island mode           | Summer      | 24 hours without the grid                                                   | 1 · 5 · 15      | Grid                           |
+| Steady hand           | Any         | A night the plan called borderline that lasted                              | 1 · 5 · 15      | Advice, battery                |
+| Forecast whisperer    | Any         | The morning's "full at" within 15 minutes of the real time                  | 1 · 10 · 30     | Advice, battery                |
+| Thrifty week          | Any         | A week's house use in your bottom 10 % for the season                       | 1 · 3 · 6 weeks | House use                      |
+| Night owl (hidden)    | Any         | A grid-free night after one of your dullest 10 % of days                    | 1               | Battery, solar                 |
+| Photo finish (hidden) | Any         | A night that lasted with under 1 % of the battery to spare                  | 1               | Battery                        |
+| Equinox (hidden)      | Equinoxes   | Half the day's use from the sun, within 2 points                            | 1               | Grid                           |
+| MWh club (milestone)  | Lifetime    | Lifetime yield per 10 kWp of panels                                         | 1 · 5 · 10 MWh  | Solar                          |
 
 Hidden badges show a riddle until earned.
 
@@ -145,7 +144,7 @@ flowchart TD
 - **Tiers count earning days**, as the catalogue says; the percentile thresholds decide whether a day earns, from the days before it only.
 - **Quests too easy are set aside.** A measure at its ceiling (100 % self-sufficient on most sunny days) would make a quest most similar days meet anyway; options met on more than 80 % of similar days are skipped, falling back to the hardest.
 - **Counter jumps are dropped.** A counter that first reports 0 and then its lifetime total makes the recorder count the total as one hour. Hours above both 25 kWh and ten times the counter's typical hour are dropped before anything is learned; stored facts carry a version and are rebuilt quietly when it changes.
-- **Cycles come from the battery.** "Cycle master" reads an optional cycle counter and is not offered without one.
+- **Cycle master was dropped** with the EcoFlow cloud integration, the only source of a battery cycle count.
 - **Money in recaps** uses the integration's prices: sun kept at home at the electricity price, export at the feed-in tariff.
 - **A blueprint** (`blueprints/automation/solar_energy_insights/announce_achievements.yaml`) announces chosen kinds on a phone.
 - **Not built yet:** Sun chaser (needs appliance runs from plugs) and the yearly "Wrapped" card.

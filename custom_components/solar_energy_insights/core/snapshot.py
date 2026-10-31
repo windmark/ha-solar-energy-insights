@@ -47,11 +47,9 @@ def to_snapshot(i: PlanInputs, evenings: Sequence[Evening] = ()) -> dict[str, An
             "max_power_kw": i.battery.max_power_kw,
             "round_trip": i.battery.round_trip,
             "ceiling_pct": i.battery.ceiling_pct,
-            "max_discharge_kw": i.battery.max_discharge_kw,
         },
         "export_kw": i.export_kw,
         "nights": i.nights,
-        "weights": list(i.weights) if i.weights is not None else None,
         "standby_kw": i.standby_kw,
         "heavy_share": i.heavy_share,
         "forecast": [[_iso(s.start), s.p50, s.p10, s.p90] for s in i.pv.slots],
@@ -79,7 +77,6 @@ def from_snapshot(data: Mapping[str, Any]) -> PlanInputs:
     if version != VERSION:
         msg = f"Unsupported snapshot version {version!r}"
         raise ValueError(msg)
-    weights = s.get("weights")
     return PlanInputs(
         now=_time(s["now"]),
         tz=ZoneInfo(s["tz"]),
@@ -94,7 +91,6 @@ def from_snapshot(data: Mapping[str, Any]) -> PlanInputs:
         },
         nights=int(s["nights"]),
         export_kw=float(s["export_kw"]),
-        weights=[float(w) for w in weights] if weights is not None else None,
         # Absent in files saved before the hidden load was learned.
         standby_kw=float(s.get("standby_kw", 0.0)),
         heavy_share=float(s.get("heavy_share", 0.8)),

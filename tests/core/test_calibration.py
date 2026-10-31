@@ -1,5 +1,5 @@
 """Learning from recent evenings: clean history, honest scores, a hidden load
-only when it predicts better, and a weighting that does not flip."""
+only when it predicts better."""
 
 from __future__ import annotations
 
@@ -10,10 +10,9 @@ import pytest
 from custom_components.solar_energy_insights.core.backtest import (
     STANDBY_STEPS_W,
     Evening,
-    Features,
-    Weighting,
     calibrate,
     clean_lows,
+    score,
 )
 from custom_components.solar_energy_insights.core.battery import Battery, simulate
 from tests.core.helpers import TZ, at
@@ -90,7 +89,7 @@ def test_a_hidden_load_is_found_and_removes_the_optimism() -> None:
     assert cal.uncorrected.bias_kwh > 0.3
     assert cal.score.bias_kwh is not None
     assert abs(cal.score.bias_kwh) < 0.15
-    honest = cal.honest_error_kwh[cal.weighting]
+    honest = cal.honest_error_kwh
     assert honest is not None
     assert cal.uncorrected.error_kwh is not None
     assert honest < cal.uncorrected.error_kwh
@@ -121,28 +120,15 @@ def test_evenings_that_start_empty_do_not_count() -> None:
 
 
 # Afternoons are alike here, so similar afternoons weigh exactly like equal.
-@pytest.mark.parametrize("current", (Weighting.EQUAL, Weighting.SIMILAR), ids=str)
-def test_the_weighting_in_use_stays_without_a_clear_gain(current: Weighting) -> None:
-    # Every afternoon alike: nights-like-tonight cannot tell days apart.
-    use = {
-        (DAY - timedelta(days=n), hour): (0.4 if hour < 21 else 0.4 + (n % 4) * 0.3)
-        for n in range(41)
-        for hour in range(24)
-    }
-
-    cal = calibrate(use, TZ, lived(use, 14, 0.0, SOCS), BATTERY, 14, current)
-
-    assert cal.weighting is current
 
 
 def test_too_few_evenings_teach_nothing() -> None:
     use = use_for(40)
     evenings = lived(use, 3, hidden_kw=0.08, socs=[60.0, 75.0, 90.0])
 
-    cal = calibrate(use, TZ, evenings, BATTERY, 14, Weighting.EQUAL)
+    cal = calibrate(use, TZ, evenings, BATTERY, 14)
 
     assert cal.standby_kw == 0
-    assert cal.weighting is Weighting.EQUAL
 
 
 def test_the_hidden_load_searched_covers_a_typical_inverter() -> None:
@@ -182,53 +168,6 @@ def weekend_heavy(days: int) -> dict[tuple[date, int], float]:
     return out
 
 
-def test_weekday_or_weekend_is_used_when_the_nights_follow_it() -> None:
-    use = weekend_heavy(70)
-
-    cal = calibrate(use, TZ, lived(use, 45, 0.0, [55.0, 70.0, 85.0]), BATTERY, 14)
-
-    assert cal.weighting is Weighting.DAY_TYPE
-
-
-def test_temperature_is_used_when_the_nights_follow_the_weather() -> None:
-    def cold(day: date) -> float:
-        return 2.0 + 10.0 * ((day.toordinal() * 37) % 7) / 6
-
-    temperature = {
-        (DAY - timedelta(days=n), hour): cold(DAY - timedelta(days=n))
-        for n in range(71)
-        for hour in range(24)
-    }
-    use = {
-        (DAY - timedelta(days=n), hour): (
-            0.35
-            + (0.6 if hour >= 21 or hour < 7 else 0.0)
-            * (
-                12
-                - cold(
-                    (DAY - timedelta(days=n))
-                    if hour >= 12
-                    else DAY - timedelta(days=n + 1)
-                )
-            )
-            / 10
-        )
-        for n in range(71)
-        for hour in range(24)
-    }
-
-    cal = calibrate(
-        use,
-        TZ,
-        lived(use, 45, 0.0, [55.0, 70.0, 85.0]),
-        BATTERY,
-        14,
-        features=Features(temperature=temperature),
-    )
-
-    assert cal.weighting is Weighting.SIMILAR_TEMPERATURE
-
-
 def test_a_heavy_night_is_made_heavier_when_real_nights_often_exceed_it() -> None:
     use = use_for(70)
     # A third of real nights carry an extra load no past night had.
@@ -259,3 +198,17 @@ def test_sixty_evenings_take_well_under_a_second() -> None:
     calibrate(use, TZ, evenings, BATTERY, 14)
 
     assert time.perf_counter() - started < 2.0
+
+
+def test_scores_only_use_days_before_each_evening() -> None:
+    use = use_for(40)
+    nights = lived(use, 10, 0.0, SOCS)
+    # Change what happened after the scored evenings; the scores must not move.
+    later = {key: (99.0 if key[0] >= DAY else value) for key, value in use.items()}
+
+    first = score(use, TZ, nights, BATTERY, 14)
+    second = score(later, TZ, nights, BATTERY, 14)
+
+    assert [n.predicted_spare_kwh for n in first.nights] == [
+        n.predicted_spare_kwh for n in second.nights
+    ]

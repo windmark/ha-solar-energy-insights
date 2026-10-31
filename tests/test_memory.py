@@ -9,7 +9,6 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.solar_energy_insights import const
-from custom_components.solar_energy_insights.core.backtest import Weighting
 from tests.common import (
     DAY,
     local,
@@ -64,20 +63,6 @@ async def test_the_night_answer_is_kept_after_21(
     night = entry.runtime_data.memory.memory.nights[DAY.isoformat()]
     assert night["lasts"] in (True, False)
     assert night["spare_kwh"] >= 0
-
-
-async def test_the_weighting_survives_a_restart(home: HomeAssistant) -> None:
-    await record_house(home, recent(14), evening_load)
-    set_states(home)
-    entry = await setup_entry(home)
-    entry.runtime_data.weighting = Weighting.SIMILAR_DAY_TYPE
-    entry.runtime_data.memory.memory.weighting = str(Weighting.SIMILAR_DAY_TYPE)
-
-    assert await home.config_entries.async_reload(entry.entry_id)
-    await home.async_block_till_done(wait_background_tasks=True)
-
-    # Without enough evenings to judge, nothing replaces what was in use.
-    assert entry.runtime_data.weighting is Weighting.SIMILAR_DAY_TYPE
 
 
 async def test_the_mornings_full_at_is_scored_the_next_day(

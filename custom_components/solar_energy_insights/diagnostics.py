@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .coordinator import InsightsConfigEntry
 from .core.nights import days_covered
@@ -24,13 +23,12 @@ async def async_get_config_entry_diagnostics(
         "entities": dict(entry.data),
         "options": dict(entry.options),
         "days_of_history": days_covered(coordinator.use),
-        "weighting": str(coordinator.weighting),
         # The plan's inputs, to replay this moment as a test (tests/replay.py).
         "replay": coordinator.snapshot(),
         "backtest": backtest_dict(coordinator.calibration),
         "corrected_readings": coordinator.corrected_readings,
         "heavy_share": coordinator.heavy_share,
-        "read_from_devices": _devices(coordinator),
+        "array": _array(coordinator),
         "achievements": None
         if not coordinator.achievements.enabled
         else {
@@ -39,7 +37,6 @@ async def async_get_config_entry_diagnostics(
             "view": coordinator.achievements.view,
         },
         "memory": {
-            "weighting": coordinator.memory.memory.weighting,
             "mornings": len(coordinator.memory.memory.forecasts),
             "night_answers": len(coordinator.memory.memory.nights),
         },
@@ -75,26 +72,14 @@ async def async_get_config_entry_diagnostics(
     }
 
 
-def _devices(coordinator: InsightsCoordinator) -> dict[str, Any]:
-    """What was read from the battery and Solcast, as the plan uses it."""
+def _array(coordinator: InsightsCoordinator) -> dict[str, Any]:
+    """The array as read from Solcast's sites."""
     array = coordinator.array
-    try:
-        battery = coordinator.battery()
-        limits = {
-            "charge_kw": battery.max_power_kw,
-            "discharge_kw": battery.discharge_kw,
-        }
-    except UpdateFailed:
-        limits = {}
     return {
-        "array": {
-            "kwp": array.kwp,
-            "relative_yield": round(array.relative_yield, 3),
-            "planes": [
-                {"kwp": p.kwp, "compass": p.compass_deg, "tilt": p.tilt_deg}
-                for p in array.planes
-            ],
-        },
-        "battery_health": round(coordinator.health, 3),
-        **limits,
+        "kwp": array.kwp,
+        "relative_yield": round(array.relative_yield, 3),
+        "planes": [
+            {"kwp": p.kwp, "compass": p.compass_deg, "tilt": p.tilt_deg}
+            for p in array.planes
+        ],
     }

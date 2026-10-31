@@ -5,7 +5,6 @@
   correction for this roof learned.
 - The plan's own answers when they were given: the night at 21:00, "full at"
   in the morning, so live predictions are scored, not only replays.
-- The weighting in use, so "switch only for a clear gain" survives a restart.
 
 Everything else is still read from the recorder. Losing this file loses only
 history for the day side; the integration carries on without it.
@@ -29,7 +28,6 @@ SAVE_DELAY_S = 60
 
 @dataclass
 class Memory:
-    weighting: str | None = None
     # Day → [[start, p50, p10, p90], …], Solcast's half hours that morning.
     forecasts: dict[str, list[list[Any]]] = field(default_factory=dict)
     # Day → {"at": when, "full_at": time or None}, said in the morning.
@@ -52,7 +50,6 @@ class Memory:
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "weighting": self.weighting,
             "forecasts": self.forecasts,
             "days": self.days,
             "nights": self.nights,
@@ -67,7 +64,6 @@ class Memory:
         if not data:
             return cls()
         return cls(
-            weighting=data.get("weighting"),
             forecasts=dict(data.get("forecasts") or {}),
             days=dict(data.get("days") or {}),
             nights=dict(data.get("nights") or {}),

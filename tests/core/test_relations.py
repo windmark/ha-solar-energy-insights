@@ -174,16 +174,6 @@ def test_a_battery_below_its_floor_needs_the_grid_straight_away() -> None:
     assert night.typical.reserve_at == now
 
 
-def test_weights_that_say_nothing_count_as_equal() -> None:
-    use = history(WINTER.day, erratic)
-    now = at(WINTER.day, 21)
-
-    equal = night_of(WINTER, now, peak_kw=0, use=use, soc=50)
-    zeros = night_of(WINTER, now, peak_kw=0, use=use, soc=50, weights=[0.0] * 7)
-
-    assert zeros.share == equal.share
-
-
 @pytest.mark.parametrize(
     "night_start_utc",
     (

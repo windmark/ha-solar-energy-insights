@@ -33,7 +33,6 @@ def home(
 ) -> list[DayFacts]:
     """*days* closed days up to *end*, for a home of this size."""
     out = []
-    cycles = 0.0
     for n in range(days, 0, -1):
         day = end - timedelta(days=n - 1)
         sun = sunshine(day, southern)
@@ -53,8 +52,6 @@ def home(
             max(night_need - to_battery * 0.96, 0) + max(daytime_use - solar, 0), 2
         )
         full = to_battery >= battery_kwh * 0.9 - 1e-9
-        # The battery's own counter: a cycle per full battery's worth charged.
-        cycles += to_battery / battery_kwh
         f = DayFacts(
             day=day,
             house_kwh=round(use, 2),
@@ -77,7 +74,6 @@ def home(
                 solar / (0.85 + 0.3 * ((day.toordinal() * 7) % 10) / 10), 2
             ),
             peak_kw=round(kwp * 0.85 * sun, 2),
-            battery_cycles=round(cycles, 2),
         )
         out.append(tweak(f) if tweak else f)
     return out

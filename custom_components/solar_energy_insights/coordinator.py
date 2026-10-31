@@ -19,7 +19,6 @@ from homeassistant.const import (
     STATE_UNKNOWN,
     UnitOfEnergy,
     UnitOfPower,
-    UnitOfTemperature,
 )
 from homeassistant.core import (
     Event,
@@ -41,12 +40,9 @@ from .const import (
     BACKTEST_EVENINGS,
     CONF_ARRAY_KWP,
     CONF_BATTERY_CAPACITY,
-    CONF_BATTERY_HEALTH,
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
     CONF_CHARGE_LIMIT,
-    CONF_CHARGE_POWER_LIMIT,
-    CONF_DISCHARGE_POWER_LIMIT,
     CONF_FEED_IN,
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
@@ -55,14 +51,12 @@ from .const import (
     CONF_MAX_POWER,
     CONF_MIN_RESERVE,
     CONF_NIGHTS,
-    CONF_PRESENCE,
     CONF_PRICE,
     CONF_PRICE_ENTITY,
     CONF_ROUND_TRIP,
     CONF_SOLAR_ENERGY,
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
-    CONF_TEMPERATURE,
     DEFAULT_FEED_IN_CT,
     DEFAULT_MAX_CHARGE_PCT,
     DEFAULT_MAX_POWER_KW,
@@ -85,26 +79,19 @@ from .core import correction, live
 from .core.array import Array
 from .core.backtest import (
     EVENING,
-    NO_FEATURES,
     Calibration,
     Evening,
-    Features,
     Score,
-    Weighting,
     calibrate,
     clean_lows,
-    weights_for,
 )
 from .core.battery import Battery, Rate
 from .core.correction import Correction
 from .core.forecast import PvForecast, Slot
 from .core.live import FullScore, NightAnswer, NightScore
 from .core.nights import (
-    HourlySeries,
     HourlyUse,
-    hourly_means,
     hourly_use,
-    past_days,
     plausible,
 )
 from .core.plan import HEAVY_SHARE, Plan, PlanInputs, plan
@@ -147,8 +134,6 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         self.use: HourlyUse = {}
         self._use_until: datetime | None = None
         # The house counter at the end of the last recorded hour, and when that was.
-        self._counter_at: tuple[datetime, float] | None = None
-        self.weighting = Weighting.EQUAL
         self.calibration: Calibration | None = None
         self.evenings: list[Evening] = []
         # Hours of battery history that held impossible readings, now corrected.
@@ -157,8 +142,6 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         self.standby_kw = 0.0
         # Where a heavy night sits among the replayed nights, calibrated.
         self.heavy_share = HEAVY_SHARE
-        # Optional hourly series the weighting may use.
-        self.features = NO_FEATURES
         # What the recorder cannot give back: morning forecasts, own answers.
         self.memory = MemoryStore(hass, entry.entry_id)
         self.correction = Correction.none()
@@ -218,34 +201,6 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         )
         # No export reads as 0.0, not -0.0.
         return max(-imported, 0.0) + 0.0
-
-    def _house_reading(self) -> float | None:
-        state = self._state(CONF_HOUSE_ENERGY)
-        value = _number(state)
-        if value is None or state is None:
-            return None
-        unit = (
-            state.attributes.get("unit_of_measurement") or UnitOfEnergy.KILO_WATT_HOUR
-        )
-        try:
-            return EnergyConverter.convert(value, unit, UnitOfEnergy.KILO_WATT_HOUR)
-        except Exception:
-            return None
-
-    def _partial_kw(self, now: datetime) -> float | None:
-        """The house's average power since the last recorded hour ended."""
-        reading = self._house_reading()
-        if self._counter_at is None or reading is None:
-            return None
-        since, counter = self._counter_at
-        elapsed = now - since
-        if not MIN_PARTIAL_HOUR <= elapsed <= timedelta(hours=2):
-            return None
-        # A reading below the counter means it reset at midnight: all of it is new.
-        used = reading - counter if reading >= counter else reading
-        return used / (elapsed.total_seconds() / 3600)
-
-    # ── Prices ──
 
     def _entity_price(self) -> float | None:
         entity_id = self.config_entry.options.get(CONF_PRICE_ENTITY)
@@ -316,51 +271,14 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             # Some inverters report 0 % while the battery sleeps at its reserve;
             # it cannot be below a floor it never discharges past.
             soc = floor
-        fixed = self._option(CONF_MAX_POWER, DEFAULT_MAX_POWER_KW)
-        charge_kw = self._power_limit(CONF_CHARGE_POWER_LIMIT)
-        discharge_kw = self._power_limit(CONF_DISCHARGE_POWER_LIMIT)
         return Battery(
-            capacity_kwh=capacity * self.health,
+            capacity_kwh=capacity,
             soc_pct=soc,
             floor_pct=floor,
             ceiling_pct=self.charge_limit(floor),
-            max_power_kw=charge_kw if charge_kw is not None else fixed,
+            max_power_kw=self._option(CONF_MAX_POWER, DEFAULT_MAX_POWER_KW),
             round_trip=self._option(CONF_ROUND_TRIP, DEFAULT_ROUND_TRIP_PCT) / 100,
-            max_discharge_kw=discharge_kw if discharge_kw is not None else None,
         )
-
-    def entities(self, key: str) -> list[str]:
-        """An option holding one entity or several (one per battery pack)."""
-        value = self.config_entry.options.get(key)
-        if not value:
-            return []
-        return [value] if isinstance(value, str) else list(value)
-
-    @property
-    def health(self) -> float:
-        """The share of nominal capacity the battery still holds: the average
-        of its packs' state of health, when reported."""
-        readings = [
-            v
-            for entity_id in self.entities(CONF_BATTERY_HEALTH)
-            if (v := _number(self.hass.states.get(entity_id))) is not None
-            and 50 <= v <= 100
-        ]
-        return sum(readings) / len(readings) / 100 if readings else 1.0
-
-    def _power_limit(self, key: str) -> float | None:
-        """A live power limit from the battery, in kW, while it reports one."""
-        entity_id = self.config_entry.options.get(key)
-        state = self.hass.states.get(entity_id) if entity_id else None
-        value = _number(state)
-        if value is None or value <= 0 or state is None:
-            return None
-        unit = state.attributes.get("unit_of_measurement") or UnitOfPower.WATT
-        try:
-            kw = PowerConverter.convert(value, unit, UnitOfPower.KILO_WATT)
-        except Exception:
-            return None
-        return kw if 0.1 <= kw <= 100 else None
 
     @property
     def array(self) -> Array:
@@ -387,16 +305,6 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         self, extra: Rate | None = None, now: datetime | None = None
     ) -> PlanInputs:
         now = now or dt_util.utcnow()
-        days = past_days(self.use, self.tz, self.nights)
-        weights = weights_for(
-            self.weighting,
-            self.use,
-            self.tz,
-            now,
-            days,
-            self.features,
-            self._partial_kw(now),
-        )
         return PlanInputs(
             now=now,
             tz=self.tz,
@@ -408,7 +316,6 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             nights=self.nights,
             export_kw=self._export_kw(),
             extra=extra,
-            weights=weights,
             standby_kw=self.standby_kw,
             heavy_share=self.heavy_share,
         )
@@ -445,21 +352,15 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
     async def _async_read_history(self, now: datetime, hour: datetime) -> None:
         house = self.config_entry.data[CONF_HOUSE_ENERGY]
         soc = self.config_entry.data[CONF_BATTERY_SOC]
-        options = self.config_entry.options
-        temperature = options.get(CONF_TEMPERATURE) or None
-        presence = options.get(CONF_PRESENCE) or None
         start = hour - timedelta(days=self.nights + BACKTEST_EVENINGS + 2)
         rows = await get_instance(self.hass).async_add_executor_job(
             statistics_during_period,
             self.hass,
             start,
             hour,
-            {e for e in (house, soc, temperature, presence) if e},
+            {house, soc},
             "hour",
-            {
-                "energy": UnitOfEnergy.KILO_WATT_HOUR,
-                "temperature": UnitOfTemperature.CELSIUS,
-            },
+            {"energy": UnitOfEnergy.KILO_WATT_HOUR},
             {"change", "state", "min", "mean", "max"},
         )
         house_rows = rows.get(house, [])
@@ -469,20 +370,10 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             if (change := row.get("change")) is not None
         }
         self.use = hourly_use(changes, self.tz)
-        last = house_rows[-1] if house_rows else None
-        self._counter_at = (
-            (dt_util.utc_from_timestamp(last["end"]), last_state)
-            if last is not None and (last_state := last.get("state")) is not None
-            else None
-        )
         soc_hours = {
             dt_util.utc_from_timestamp(row["start"]): (row.get("min"), row.get("mean"))
             for row in rows.get(soc, [])
         }
-        self.features = Features(
-            temperature=self._means(rows, temperature),
-            presence=self._means(rows, presence),
-        )
         await self._async_calibrate(soc_hours, now)
         await self._async_score_live(rows, soc, now)
         try:
@@ -510,24 +401,12 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             out.append(Evening(day, before, sunrise, min(night)))
         return out
 
-    def _means(
-        self, rows: dict[str, Any], entity_id: str | None
-    ) -> HourlySeries | None:
-        if not entity_id:
-            return None
-        means = {
-            dt_util.utc_from_timestamp(row["start"]): mean
-            for row in rows.get(entity_id, [])
-            if (mean := row.get("mean")) is not None
-        }
-        return hourly_means(means, self.tz) or None
-
     async def _async_calibrate(
         self,
         soc_hours: dict[datetime, tuple[float | None, float | None]],
         now: datetime,
     ) -> None:
-        """Learn from recent evenings: the weighting, and the hidden load."""
+        """Learn from recent evenings: the hidden load and the heavy night."""
         try:
             battery = self.battery()
         except UpdateFailed:
@@ -542,23 +421,11 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             self.evenings,
             battery,
             self.nights,
-            self.weighting,
-            self.features,
         )
-        self.weighting = self.calibration.weighting
         self.standby_kw = self.calibration.standby_kw
         self.heavy_share = self.calibration.heavy_share
-        if self.memory.memory.weighting != str(self.weighting):
-            self.memory.memory.weighting = str(self.weighting)
-            self.memory.async_save_later()
 
     # ── Remembering and scoring the plan's own answers ──
-
-    def restore(self) -> None:
-        """Pick up what was remembered before a restart."""
-        saved = self.memory.memory.weighting
-        if saved in {str(w) for w in Weighting}:
-            self.weighting = Weighting(saved)
 
     def _remember(self, p: Plan) -> None:
         """Keep the morning forecast and "full at", and the 21:00 night answer."""
@@ -751,12 +618,6 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         ]
         if price_entity := self.config_entry.options.get(CONF_PRICE_ENTITY):
             entity_ids.append(price_entity)
-        entity_ids.extend(
-            entity_id
-            for key in (CONF_CHARGE_POWER_LIMIT, CONF_DISCHARGE_POWER_LIMIT)
-            if (entity_id := self.config_entry.options.get(key))
-        )
-        entity_ids.extend(self.entities(CONF_BATTERY_HEALTH))
         return async_track_state_change_event(
             self.hass, entity_ids, self._async_changed
         )

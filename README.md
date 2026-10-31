@@ -16,7 +16,7 @@ It reads entities you already have and never talks to a device. With [EF-PowerOc
 
 Cooking, the dishwasher and a cold night's heat pump are already in those nights, metered or not, so nothing has to be classified. A day the recorder mostly missed is skipped rather than replayed, and the day's usual load comes from the same recent days, not from months back.
 
-**Nights like tonight count more, once that has proved better.** Today's last six hours, including the hour in progress, are compared with the same hours on each past day, and similar days weigh more. After a big dinner, nights that followed big dinners dominate; if the evening turns heavy at 22:00, the weights follow within the hour. This weighting is only used when it beats weighting every night equally on your own recent evenings.
+**Every recent night counts the same.** Weighting nights by how today looked (the afternoon so far, weekday or weekend, temperature, presence) was built and measured: on a month of real evenings it predicted no better than counting them equally, so it was taken out.
 
 **The score needs no stored predictions.** Each hour, the integration replays each of the recent evenings as it would have at 21:00, using only the days before it, and compares the result with the lowest level the battery actually reached before sunrise. Three things keep that honest:
 
@@ -24,18 +24,9 @@ Cooking, the dishwasher and a cold night's heat pump are already in those nights
 - **Clean history.** A battery can't go below its floor. A reading under it is either a glitch (the hour otherwise sat well above) or the battery asleep at its reserve; both are corrected and counted.
 - **The hidden load.** The house counter doesn't see everything the battery feeds, such as the inverter's own standby. One constant is learned from the evenings and kept only if it predicts evenings it wasn't fitted on better. On the first real installation it was 50 W, and it took the predictions from 0.5 kWh optimistic to unbiased.
 
-**The last 30 evenings** are scored: about a month, enough to learn from and recent enough to follow the season. Each is replayed once against every past night and every hidden-load candidate, as arrays (numpy). Ways of weighting the nights only change how much each counts, so they're tried on the same runs:
+**The last 30 evenings** are scored: about a month, enough to learn from and recent enough to follow the season. Each is replayed once against every past night and every hidden-load candidate, as arrays (numpy). **How heavy "a heavy night" is** is calibrated too: where real nights fell among the replayed ones decides it, so it's exceeded about as often as intended.
 
-- equal;
-- similar afternoons;
-- the same kind of day (weekday or weekend);
-- similar afternoons and the same kind of day;
-- similar afternoons and similar outdoor temperature (if configured);
-- similar afternoons and similar presence at home (if configured).
-
-The one in use changes only for a clear gain (10 %), and among near-equal options the simplest wins. **How heavy "a heavy night" is** is calibrated too: where real nights fell among the replayed ones decides it, so it's exceeded about as often as intended.
-
-**What the recorder can't give back is kept** in `.storage`: Solcast's forecast each morning, the plan's own answers (the night at 21:00, "full at" in the morning), and the weighting in use, so it survives a restart. The answers are scored against what happened. With a solar energy counter configured, the morning forecasts are compared with what the panels made, and a correction per clock hour is used once it beats raw Solcast on left-out days (after at least 14 days).
+**What the recorder can't give back is kept** in `.storage`: Solcast's forecast each morning, the plan's own answers (the night at 21:00, "full at" in the morning), so they survive a restart. The answers are scored against what happened. With a solar energy counter configured, the morning forecasts are compared with what the panels made, and a correction per clock hour is used once it beats raw Solcast on left-out days (after at least 14 days).
 
 **The day** runs Solcast's expected and cloudy case against the house's typical use at each hour. Both runs account for the battery's power limit, round-trip losses and reserve.
 
@@ -62,7 +53,7 @@ Requires Home Assistant 2025.12 or newer and the recorder.
 **Options:**
 
 - **Prices:** the electricity price and feed-in tariff, in cents per kWh. Until they're saved here, `input_number.electricity_price` and `input_number.feed_in_tariff` are used if you have them. For a dynamic tariff, an optional price entity overrides the price while it has a value.
-- **Optional inputs:** an outdoor temperature sensor and a presence sensor (each with statistics) for telling nights apart, and a solar energy counter for learning a Solcast correction. Each is used only if it predicts better.
+- **Optional inputs:** a solar energy counter, for learning a Solcast correction (used only once it predicts better) and for achievements.
 - **The night test:** how many nights to replay (default 14), and the lowest state of charge the inverter discharges to by itself (5 %).
 - **The battery:** its charge limit when no entity gives one (100 %), its power limit (5 kW), round-trip efficiency (92 %), and which sign of grid power means importing.
 
@@ -74,7 +65,7 @@ Prices only turn kWh into money. They never change the plan: a price entity's cu
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Battery full at               | Expected; attributes: the cloudy case, and peak % in both                                                                                                                                                                                                                                                 |
 | Battery at sunset             | %                                                                                                                                                                                                                                                                                                         |
-| Nights covered                | % of recent nights the battery would last, weighted; attributes: nights, lasting                                                                                                                                                                                                                          |
+| Nights covered                | % of recent nights the battery would last; attributes: nights, lasting                                                                                                                                                                                                                                    |
 | Reserve reached at            | On a typical recent night; attribute: on a heavy one                                                                                                                                                                                                                                                      |
 | Spare at sunrise              | kWh above the reserve on a typical night; attributes: a heavy night, grid kWh                                                                                                                                                                                                                             |
 | Charge needed for the night   | The lowest level from which even a heavy night lasts: at sunset during the day (compare it with "Battery at sunset"), now at night; attributes: for when, a typical night                                                                                                                                 |
@@ -110,25 +101,22 @@ response_variable: with_dryer
 await hass.callWS({ type: "solar_energy_insights/plan" });
 ```
 
-returns the whole plan: each replayed night with its weight and battery curve, the typical and heavy one, and the battery curve until sunset.
+returns the whole plan: each replayed night with its battery curve, the typical and heavy one, and the battery curve until sunset.
 
 ```js
 await hass.callWS({ type: "solar_energy_insights/backtest" });
 ```
 
-returns every scored evening (predicted and actual spare, whether it was contested), what was learned (weighting, hidden load, heavy share, each weighting's error), and how the plan's own answers did.
+returns every scored evening (predicted and actual spare, whether it was contested), what was learned (hidden load, heavy share, honest error), and how the plan's own answers did.
 
 ## Read from your devices
 
 Where the information exists, it is read rather than asked for or guessed, and the options come prefilled:
 
-| What                                         | From                                                   | Used for                                                                      |
-| -------------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| The array's size, and where each plane faces | Solcast's rooftop sites (DC capacity, direction, tilt) | Badges measured per kWp, scaled for planes facing away from the sun           |
-| Each battery pack's state of health          | EcoFlow cloud integration (`bpSoh`)                    | The plan uses nominal capacity times health                                   |
-| Each pack's cycle count                      | EcoFlow cloud integration (`bpCycles`)                 | "Cycle master"                                                                |
-| The live charge and discharge limits         | EF-PowerOcean-TcpModbus                                | The plan, charging and discharging separately; lower when the battery is cold |
-| Energy counters, solar power                 | EF-PowerOcean-TcpModbus                                | Achievements, the Solcast correction                                          |
+| What                                         | From                                                   | Used for                                                            |
+| -------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------- |
+| The array's size, and where each plane faces | Solcast's rooftop sites (DC capacity, direction, tilt) | Badges measured per kWp, scaled for planes facing away from the sun |
+| Energy counters, solar power                 | EF-PowerOcean-TcpModbus                                | Achievements, the Solcast correction                                |
 
 An east–west roof makes less per kWp in a year than one facing the equator. A sun model over the whole year gives each plane's yield against the best plane at your latitude (east or west at 30°: about 0.81 in central Europe; north: about 0.6), and per-kWp thresholds scale with it.
 
@@ -146,7 +134,7 @@ To be told on your phone, import the blueprint and pick what to announce:
 
 [![Open your Home Assistant instance and show the blueprint import dialog.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fwindmark%2Fha-solar-energy-insights%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fsolar_energy_insights%2Fannounce_achievements.yaml)
 
-The monthly recap says what the sun kept at home was worth at your price. "Cycle master" needs the battery's own cycle count, such as from the EcoFlow cloud integration; without one it is not offered.
+The monthly recap says what the sun kept at home was worth at your price.
 
 ## Reporting something that looks wrong
 
