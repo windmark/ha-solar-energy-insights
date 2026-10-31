@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from custom_components.solar_energy_insights.const import BACKTEST_EVENINGS
 from custom_components.solar_energy_insights.core.backtest import (
     Calibration,
     Weighting,
@@ -47,10 +48,12 @@ def replay_calibration(path: Path, current: Weighting = Weighting.EQUAL) -> Cali
     hidden load, and the scores."""
     data = load(path)
     inputs = from_snapshot(data)
+    # The evenings the integration scores now: a file may hold more.
+    evenings = evenings_from_snapshot(data)[-BACKTEST_EVENINGS:]
     return calibrate(
         inputs.use,
         inputs.tz,
-        evenings_from_snapshot(data),
+        evenings,
         inputs.battery,
         inputs.nights,
         current,
