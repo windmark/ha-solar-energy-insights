@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+
+- During the day, the night answers now start at sunset. Reaching the reserve this morning, before the sun takes over, no longer counts as a failed night.
+- A heavy night can no longer show more spare energy than a typical one. Nights are ranked by how they end, not by their load including today.
+- Charge needed is for sunset during the day, instead of the floor because the sun will come.
+- Free power no longer shows an empty "until" time (displayed as 01:00).
+
 ### Added
 
 - When the battery fills, in the expected and the cloudy case, and its level at sunset.
