@@ -4,6 +4,11 @@
 
 ### Added
 
+- The array is read from Solcast's rooftop sites: its size, and where each plane faces. Per-kWp badges scale with a plane's yearly yield against an ideal roof, so east–west and north-facing arrays earn them at their own pace. The array's size is no longer estimated from output.
+- Battery state of health and cycle counts from the EcoFlow cloud integration, one per pack, averaged; the plan uses nominal capacity times health.
+- Live charge and discharge power limits from the battery, simulated separately.
+- The options prefill everything found in the EcoFlow integrations and Solcast.
+- A blueprint that announces achievements on your phone, and the value of the sun kept at home in each monthly recap.
 - Achievements, optional: a daily score, XP and named levels, ranks that follow the season, four streaks with a weather shield, records, 22 badges relative to the home and seasonal by hemisphere, daily and weekly quests sized from your own days, monthly recaps, and an achievement event. Backfilled from the history on first start. Design: docs/achievements.md.
 
 - The battery's answers: when it fills (expected and cloudy), its level at sunset, the best window for heavy loads, and free power with until when.
@@ -20,6 +25,9 @@
 - Setup prefilled from EF-PowerOcean-TcpModbus and Solcast.
 
 ### Fixed
+
+- A counter that first reports 0 and then its lifetime total no longer counts as one enormous hour. Records showed it as the best day and the most exported, and the array's size learned from it made every per-kWp badge unreachable; stored achievement facts are rebuilt once, quietly. The Solcast correction, reading the same counter, is protected too.
+- "Cycle master" counts the battery's own cycles from an optional entity, and is not offered without one, instead of estimating them.
 
 - During the day, the night is measured from sunset: this morning's reserve is not a failed night, and a heavy night never ends better than a typical one.
 - The day's usual load and the fill-in for missing hours come from the recent days replayed, not the whole history read for scoring.

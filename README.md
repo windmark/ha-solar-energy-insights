@@ -118,6 +118,20 @@ await hass.callWS({ type: "solar_energy_insights/backtest" });
 
 returns every scored evening (predicted and actual spare, whether it was contested), what was learned (weighting, hidden load, heavy share, each weighting's error), and how the plan's own answers did.
 
+## Read from your devices
+
+Where the information exists, it is read rather than asked for or guessed, and the options come prefilled:
+
+| What                                         | From                                                   | Used for                                                                      |
+| -------------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| The array's size, and where each plane faces | Solcast's rooftop sites (DC capacity, direction, tilt) | Badges measured per kWp, scaled for planes facing away from the sun           |
+| Each battery pack's state of health          | EcoFlow cloud integration (`bpSoh`)                    | The plan uses nominal capacity times health                                   |
+| Each pack's cycle count                      | EcoFlow cloud integration (`bpCycles`)                 | "Cycle master"                                                                |
+| The live charge and discharge limits         | EF-PowerOcean-TcpModbus                                | The plan, charging and discharging separately; lower when the battery is cold |
+| Energy counters, solar power                 | EF-PowerOcean-TcpModbus                                | Achievements, the Solcast correction                                          |
+
+An east–west roof makes less per kWp in a year than one facing the equator. A sun model over the whole year gives each plane's yield against the best plane at your latitude (east or west at 30°: about 0.81 in central Europe; north: about 0.6), and per-kWp thresholds scale with it.
+
 ## Achievements
 
 Switch them on in the options. The integration then replays your history and keeps a trophy room in the spirit of a game, computed only from closed days:
@@ -127,6 +141,12 @@ Switch them on in the options. The integration then replays your history and kee
 - **A quest** each evening for the next day, sized from your days with a similar forecast, and one each Monday for the week.
 
 Thresholds are relative to your home: per kWp of panels, per kWh of battery, or percentiles of your own days. Badges whose data your home cannot supply are not offered; adding the grid import and export counters and a solar counter in the options unlocks more. Earning a tier, breaking a record, levelling up, completing a quest or closing a month fires `solar_energy_insights_achievement` with a ready-made message. The design is in [docs/achievements.md](docs/achievements.md).
+
+To be told on your phone, import the blueprint and pick what to announce:
+
+[![Open your Home Assistant instance and show the blueprint import dialog.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fwindmark%2Fha-solar-energy-insights%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fsolar_energy_insights%2Fannounce_achievements.yaml)
+
+The monthly recap says what the sun kept at home was worth at your price. "Cycle master" needs the battery's own cycle count, such as from the EcoFlow cloud integration; without one it is not offered.
 
 ## Reporting something that looks wrong
 

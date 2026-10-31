@@ -118,11 +118,17 @@ def test_capabilities_come_from_what_was_measured() -> None:
     assert {Capability.BATTERY, Capability.HOUSE} <= bare.capabilities
 
 
-@pytest.mark.parametrize("kwp", (4.0, 10.0, 15.0))
-def test_the_arrays_size_is_seen_from_its_best_hours(kwp: float) -> None:
-    profile = profile_of(home(60, DAY, kwp=kwp), 10.0, 48.4)
+def test_the_arrays_size_is_never_guessed() -> None:
+    days = home(60, DAY, kwp=15.0)
 
-    assert profile.kwp == pytest.approx(kwp, rel=0.1)
+    unknown = profile_of(days, 10.0, 48.4)
+    known = profile_of(days, 10.0, 48.4, kwp=15.2, relative_yield=0.81)
+
+    assert unknown.kwp is None
+    assert Capability.ARRAY not in unknown.capabilities
+    assert known.kwp == 15.2
+    assert known.relative_yield == 0.81
+    assert Capability.ARRAY in known.capabilities
 
 
 def test_seasons_follow_the_hemisphere() -> None:

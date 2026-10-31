@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .coordinator import InsightsConfigEntry
 from .core.nights import days_covered
 from .serialize import backtest_dict, plan_dict
+
+if TYPE_CHECKING:
+    from .coordinator import InsightsCoordinator
 
 
 async def async_get_config_entry_diagnostics(
@@ -26,6 +30,7 @@ async def async_get_config_entry_diagnostics(
         "backtest": backtest_dict(coordinator.calibration),
         "corrected_readings": coordinator.corrected_readings,
         "heavy_share": coordinator.heavy_share,
+        "read_from_devices": _devices(coordinator),
         "achievements": None
         if not coordinator.achievements.enabled
         else {
@@ -67,4 +72,29 @@ async def async_get_config_entry_diagnostics(
         )
         if current is not None
         else None,
+    }
+
+
+def _devices(coordinator: InsightsCoordinator) -> dict[str, Any]:
+    """What was read from the battery and Solcast, as the plan uses it."""
+    array = coordinator.array
+    try:
+        battery = coordinator.battery()
+        limits = {
+            "charge_kw": battery.max_power_kw,
+            "discharge_kw": battery.discharge_kw,
+        }
+    except UpdateFailed:
+        limits = {}
+    return {
+        "array": {
+            "kwp": array.kwp,
+            "relative_yield": round(array.relative_yield, 3),
+            "planes": [
+                {"kwp": p.kwp, "compass": p.compass_deg, "tilt": p.tilt_deg}
+                for p in array.planes
+            ],
+        },
+        "battery_health": round(coordinator.health, 3),
+        **limits,
     }

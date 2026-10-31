@@ -18,6 +18,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     BACKFILL_DAYS,
     CONF_ACHIEVEMENTS,
+    CONF_BATTERY_CYCLES,
     CONF_BATTERY_SOC,
     CONF_GRID_EXPORT_ENERGY,
     CONF_GRID_IMPORT_ENERGY,
@@ -36,12 +37,17 @@ from .core.achievements.quests import Quest
 from .core.achievements.trophies import Trophies, as_dict, compute
 from .core.backtest import EVENING, Evening, clean_lows
 from .core.forecast import PvForecast
-from .core.nights import hourly_means, hourly_use
+from .core.nights import hourly_means, hourly_use, plausible
 
 if TYPE_CHECKING:
     from .coordinator import InsightsCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+# Raised whenever stored facts would come out differently from the same history:
+# they are then rebuilt from the recorder, and nothing is announced for it.
+# 2: implausible counter jumps dropped; battery cycles from the battery's own count.
+FACTS_VERSION = 2
 
 
 class Achievements:
@@ -87,7 +93,8 @@ class Achievements:
         }
         soc = self._entity(CONF_BATTERY_SOC)
         power = self._entity(CONF_SOLAR_POWER)
-        ids = {e for e in (*energy.values(), soc, power) if e}
+        cycles = self.c.entities(CONF_BATTERY_CYCLES)
+        ids = {e for e in (*energy.values(), soc, power, *cycles) if e}
         recorder = get_instance(self.c.hass)
         rows = await recorder.async_add_executor_job(
             statistics_during_period,
@@ -97,7 +104,7 @@ class Achievements:
             ids,
             "hour",
             {"energy": UnitOfEnergy.KILO_WATT_HOUR, "power": UnitOfPower.KILO_WATT},
-            {"change", "min", "max", "mean"},
+            {"change", "min", "max", "mean", "state"},
         )
 
         def changes(
@@ -110,7 +117,7 @@ class Achievements:
                 for r in rows[entity_id]
                 if (v := r.get("change")) is not None
             }
-            return hourly_use(raw, tz, max_kwh=limit) or None
+            return hourly_use(plausible(raw), tz, max_kwh=limit) or None
 
         def field(entity_id: str | None, name: str) -> dict[datetime, float]:
             if not entity_id:
@@ -153,6 +160,12 @@ class Achievements:
             soc_min=hourly_means(lows, tz) or None,
             solar_peak=hourly_means(field(power, "max"), tz) or None,
             soc_fine=fine or None,
+            # One counter per pack, averaged; each a measurement (its maximum)
+            # or a total (its state).
+            cycles=_average(
+                [hourly_means(field(e, "max") or field(e, "state"), tz) for e in cycles]
+            )
+            or None,
         )
         return series, lows
 
@@ -199,6 +212,12 @@ class Achievements:
         except UpdateFailed:
             return
         memory = self.memory
+        if memory.facts_version != FACTS_VERSION:
+            memory.facts.clear()
+            memory.announced = None
+            memory.facts_version = FACTS_VERSION
+            self._built_for = None
+            self._computed_key = None
         if self._built_for != today or not memory.facts:
             first = date.fromisoformat(min(memory.facts)) if memory.facts else None
             start_day = (
@@ -239,7 +258,14 @@ class Achievements:
             min_hours=1,
         )
         history = [DayFacts.from_dict(v) for _, v in sorted(memory.facts.items())]
-        profile = profile_of(history, battery.capacity_kwh, self.c.hass.config.latitude)
+        array = self.c.array
+        profile = profile_of(
+            history,
+            battery.capacity_kwh,
+            self.c.hass.config.latitude,
+            kwp=array.kwp,
+            relative_yield=array.relative_yield,
+        )
         self._set_quests(history, profile, local)
         quests = []
         for raw in sorted(memory.quests.values(), key=lambda q: (q["day"], q["id"])):
@@ -383,7 +409,9 @@ class Achievements:
                         f"{m.nights_lasted} of {m.nights} "
                         f"nights without the grid"
                         + (
-                            f", {m.kept_kwh:g} kWh of sun kept at home"
+                            f", {m.kept_kwh:g} kWh of sun kept at home, worth "
+                            f"{m.kept_kwh * self.c.price:.2f} "
+                            f"{self.c.hass.config.currency}"
                             if m.kept_kwh is not None
                             else ""
                         )
@@ -403,4 +431,16 @@ class Achievements:
             dt_util.as_local(dt_util.utcnow()).date(),
             self.live,
             self.c.battery().floor_pct,
+            (self.c.price, self.c.feed_in),
         )
+
+
+def _average(
+    series: list[dict[tuple[date, int], float]],
+) -> dict[tuple[date, int], float]:
+    """Hour by hour, the average of the series that have that hour."""
+    out: dict[tuple[date, int], list[float]] = {}
+    for one in series:
+        for key, value in one.items():
+            out.setdefault(key, []).append(value)
+    return {key: sum(v) / len(v) for key, v in out.items()}

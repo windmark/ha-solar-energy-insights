@@ -41,6 +41,8 @@ class Memory:
     facts: dict[str, dict[str, Any]] = field(default_factory=dict)
     quests: dict[str, dict[str, Any]] = field(default_factory=dict)
     announced: dict[str, Any] | None = None
+    # Which way the stored facts were built; an older one is rebuilt.
+    facts_version: int = 0
 
     def prune(self, today: date) -> None:
         oldest = (today - timedelta(days=KEEP_DAYS)).isoformat()
@@ -57,6 +59,7 @@ class Memory:
             "facts": self.facts,
             "quests": self.quests,
             "announced": self.announced,
+            "facts_version": self.facts_version,
         }
 
     @classmethod
@@ -71,6 +74,7 @@ class Memory:
             facts=dict(data.get("facts") or {}),
             quests=dict(data.get("quests") or {}),
             announced=data.get("announced"),
+            facts_version=int(data.get("facts_version") or 0),
         )
 
 

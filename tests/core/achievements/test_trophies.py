@@ -78,3 +78,22 @@ def test_the_room_says_what_season_it_is_where_you_live() -> None:
 
     assert as_dict(t, END)["profile"]["season"] == "autumn"
     assert as_dict(south, END)["profile"]["season"] == "spring"
+
+
+def test_with_prices_a_month_says_what_the_sun_was_worth() -> None:
+    _, t = room()
+
+    month = as_dict(t, END, prices=(0.32, 0.08))["months"][-2]
+
+    assert month["saved"] == round(month["kept_kwh"] * 0.32, 2)
+    assert month["earned"] == round(month["export_kwh"] * 0.08, 2)
+    assert "saved" not in as_dict(t, END)["months"][-2]
+
+
+def test_cycle_master_reads_the_batterys_own_count() -> None:
+    _, t = room()
+
+    badge = next(b for b in t.badges if b.badge.id == "cycle_master")
+    assert badge.count == max(
+        f.battery_cycles or 0 for f in home(200, END, varied=True)
+    )

@@ -1,0 +1,54 @@
+blueprint:
+  name: Announce solar achievements
+  description: >-
+    Sends a notification when Solar Energy Insights reports something new:
+    a level reached, a badge tier earned, a record broken, a quest met, or a
+    month's recap. Each event already carries a title and a message.
+  domain: automation
+  source_url: https://github.com/windmark/ha-solar-energy-insights/blob/main/blueprints/automation/solar_energy_insights/announce_achievements.yaml
+  input:
+    notify_device:
+      name: Phone
+      description: A device with the Home Assistant app to send to.
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
+    kinds:
+      name: What to announce
+      default: [level, badge, record, quest, recap]
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: A level reached
+              value: level
+            - label: A badge tier earned
+              value: badge
+            - label: A record broken
+              value: record
+            - label: A quest met
+              value: quest
+            - label: A month's recap
+              value: recap
+
+mode: queued
+max: 10
+
+variables:
+  kinds: !input kinds
+
+triggers:
+  - trigger: event
+    event_type: solar_energy_insights_achievement
+
+conditions:
+  - condition: template
+    value_template: "{{ trigger.event.data.kind in kinds }}"
+
+actions:
+  - domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    title: "{{ trigger.event.data.title }}"
+    message: "{{ trigger.event.data.message }}"

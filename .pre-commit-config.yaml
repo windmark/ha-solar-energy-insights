@@ -4,6 +4,9 @@ repos:
     hooks:
       - id: check-json
       - id: check-yaml
+        # Blueprints use Home Assistant's !input tag; tests/test_blueprint.py
+        # validates them with Home Assistant's own parser.
+        exclude: ^blueprints/
       - id: end-of-file-fixer
       - id: mixed-line-ending
         args: [--fix=lf]

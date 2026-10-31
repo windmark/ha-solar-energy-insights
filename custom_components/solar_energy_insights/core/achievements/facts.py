@@ -45,6 +45,8 @@ class DayFacts:
     # Solcast's forecast for the day, as saved that morning.
     forecast_kwh: float | None = None
     peak_kw: float | None = None
+    # The battery's own count of full cycles, at the end of the day.
+    battery_cycles: float | None = None
     # What the plan said: "full at" that morning, the night outlook that evening.
     said_full_at: datetime | None = None
     said_full: bool | None = None
@@ -122,6 +124,8 @@ class Series:
     solar_peak: Hourly | None = None
     # The highest state of charge per five minutes, where still kept.
     soc_fine: Mapping[datetime, float] | None = None
+    # The battery's cycle count, per hour.
+    cycles: Hourly | None = None
 
 
 def _day(
@@ -179,6 +183,9 @@ def build(
             if hour is not None:
                 full_at = datetime(day.year, day.month, day.day, hour, tzinfo=tz)
     peaks = _day(s.solar_peak, day, min_hours)
+    cycles = [
+        s.cycles[(day, h)] for h in range(24) if s.cycles and (day, h) in s.cycles
+    ]
     said = said or {}
     said_full_at = said.get("full_at")
     return DayFacts(
@@ -200,6 +207,7 @@ def build(
         else round(max(evening.lowest_soc - floor_pct, 0) / 100 * capacity_kwh, 3),
         forecast_kwh=forecast_kwh,
         peak_kw=None if peaks is None else round(max(peaks), 3),
+        battery_cycles=round(max(cycles), 2) if cycles else None,
         said_full_at=datetime.fromisoformat(said_full_at) if said_full_at else None,
         said_full=None if "full_at" not in said else said_full_at is not None,
         said_outlook=said.get("outlook"),

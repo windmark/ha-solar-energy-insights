@@ -36,12 +36,17 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import EnergyConverter, PowerConverter
 
 from .achievements import Achievements
+from .array import array_of
 from .const import (
     BACKTEST_EVENINGS,
+    CONF_ARRAY_KWP,
     CONF_BATTERY_CAPACITY,
+    CONF_BATTERY_HEALTH,
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
     CONF_CHARGE_LIMIT,
+    CONF_CHARGE_POWER_LIMIT,
+    CONF_DISCHARGE_POWER_LIMIT,
     CONF_FEED_IN,
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
@@ -77,6 +82,7 @@ from .const import (
     SHORT_TERM_DAYS,
 )
 from .core import correction, live
+from .core.array import Array
 from .core.backtest import (
     EVENING,
     NO_FEATURES,
@@ -99,6 +105,7 @@ from .core.nights import (
     hourly_means,
     hourly_use,
     past_days,
+    plausible,
 )
 from .core.plan import HEAVY_SHARE, Plan, PlanInputs, plan
 from .core.snapshot import to_snapshot
@@ -309,14 +316,57 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             # Some inverters report 0 % while the battery sleeps at its reserve;
             # it cannot be below a floor it never discharges past.
             soc = floor
+        fixed = self._option(CONF_MAX_POWER, DEFAULT_MAX_POWER_KW)
+        charge_kw = self._power_limit(CONF_CHARGE_POWER_LIMIT)
+        discharge_kw = self._power_limit(CONF_DISCHARGE_POWER_LIMIT)
         return Battery(
-            capacity_kwh=capacity,
+            capacity_kwh=capacity * self.health,
             soc_pct=soc,
             floor_pct=floor,
             ceiling_pct=self.charge_limit(floor),
-            max_power_kw=self._option(CONF_MAX_POWER, DEFAULT_MAX_POWER_KW),
+            max_power_kw=charge_kw if charge_kw is not None else fixed,
             round_trip=self._option(CONF_ROUND_TRIP, DEFAULT_ROUND_TRIP_PCT) / 100,
+            max_discharge_kw=discharge_kw if discharge_kw is not None else None,
         )
+
+    def entities(self, key: str) -> list[str]:
+        """An option holding one entity or several (one per battery pack)."""
+        value = self.config_entry.options.get(key)
+        if not value:
+            return []
+        return [value] if isinstance(value, str) else list(value)
+
+    @property
+    def health(self) -> float:
+        """The share of nominal capacity the battery still holds: the average
+        of its packs' state of health, when reported."""
+        readings = [
+            v
+            for entity_id in self.entities(CONF_BATTERY_HEALTH)
+            if (v := _number(self.hass.states.get(entity_id))) is not None
+            and 50 <= v <= 100
+        ]
+        return sum(readings) / len(readings) / 100 if readings else 1.0
+
+    def _power_limit(self, key: str) -> float | None:
+        """A live power limit from the battery, in kW, while it reports one."""
+        entity_id = self.config_entry.options.get(key)
+        state = self.hass.states.get(entity_id) if entity_id else None
+        value = _number(state)
+        if value is None or value <= 0 or state is None:
+            return None
+        unit = state.attributes.get("unit_of_measurement") or UnitOfPower.WATT
+        try:
+            kw = PowerConverter.convert(value, unit, UnitOfPower.KILO_WATT)
+        except Exception:
+            return None
+        return kw if 0.1 <= kw <= 100 else None
+
+    @property
+    def array(self) -> Array:
+        """The array as Solcast's sites describe it, or its size set by hand."""
+        kwp = self.config_entry.options.get(CONF_ARRAY_KWP)
+        return array_of(self.hass, float(kwp) if kwp else None)
 
     def forecast(self) -> PvForecast:
         """Solcast, with this roof's correction once it has earned its place."""
@@ -631,11 +681,14 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             {"change"},
         )
         hourly = hourly_use(
-            {
-                dt_util.utc_from_timestamp(row["start"]): change
-                for row in made.get(solar, [])
-                if (change := row.get("change")) is not None
-            },
+            # The same counter jumps the achievements guard against.
+            plausible(
+                {
+                    dt_util.utc_from_timestamp(row["start"]): change
+                    for row in made.get(solar, [])
+                    if (change := row.get("change")) is not None
+                }
+            ),
             self.tz,
             # A large array can make more than a house uses in an hour.
             max_kwh=None,
@@ -698,6 +751,12 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         ]
         if price_entity := self.config_entry.options.get(CONF_PRICE_ENTITY):
             entity_ids.append(price_entity)
+        entity_ids.extend(
+            entity_id
+            for key in (CONF_CHARGE_POWER_LIMIT, CONF_DISCHARGE_POWER_LIMIT)
+            if (entity_id := self.config_entry.options.get(key))
+        )
+        entity_ids.extend(self.entities(CONF_BATTERY_HEALTH))
         return async_track_state_change_event(
             self.hass, entity_ids, self._async_changed
         )

@@ -25,6 +25,26 @@ MAX_HOURLY_KWH = 15.0
 type HourlyUse = Mapping[tuple[date, int], float]
 
 
+# An hour's energy above this, and far above the counter's usual hour, is a
+# glitch: typically a counter that first reported 0 and then its lifetime total.
+JUMP_FLOOR_KWH = 25.0
+JUMP_FACTOR = 10.0
+
+
+def plausible(rows: Mapping[datetime, float]) -> dict[datetime, float]:
+    """The counter's hourly changes without impossible ones.
+
+    A counter that comes back after reporting 0 (or appears for the first time)
+    makes the recorder count its whole total as one hour. Hours above both 25
+    kWh and ten times the counter's typical hour are dropped; a big array's
+    real best hours are kept.
+    """
+    positive = sorted(v for v in rows.values() if v > 0)
+    typical_hour = positive[len(positive) // 2] if positive else 0.0
+    limit = max(JUMP_FLOOR_KWH, JUMP_FACTOR * typical_hour)
+    return {t: v for t, v in rows.items() if 0 <= v <= limit}
+
+
 def hourly_use(
     rows: Mapping[datetime, float],
     tz: tzinfo,

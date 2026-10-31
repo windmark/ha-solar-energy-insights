@@ -46,7 +46,7 @@ Each badge is a rule over day facts, declared as data with what it needs and how
 | Advice      | The plan's own saved answers                     | Steady hand, forecast whisperer                      |
 | Seasons     | Latitude at least 15° from the equator           | Every seasonal badge                                 |
 
-**2. Thresholds scale with the system.** Energy is measured per kWp of panels and per kWh of battery. Array size is learned from the history: the 99th percentile of the best hour's yield, divided by 0.85.
+**2. Thresholds scale with the system.** Energy is measured per kWp of panels and per kWh of battery. The array's size is read from Solcast's rooftop sites, never guessed; badges ranking days against your own history need no size at all. Absolute per-kWp thresholds (Power plant, MWh club) scale with the array's relative yield: a sun model over a year gives each plane's yield against the best plane at your latitude, so an east–west roof (about 0.81) earns them at its own pace. Without a known size, those two badges are not offered.
 
 **3. Difficulty comes from your own days.** Thresholds that describe a good day are percentiles of the days before the one judged. Rarity is the share of your days that earned a badge: common, rare (under 10 %) or legendary (under 2 %).
 
@@ -108,7 +108,7 @@ Facts are kept in the integration's store, about 1 kB a day.
 | Photo finish (hidden)    | Any         | A night that lasted with under 1 % of the battery to spare                  | 1               | Battery                        |
 | Equinox (hidden)         | Equinoxes   | Half the day's use from the sun, within 2 points                            | 1               | Grid                           |
 | MWh club (milestone)     | Lifetime    | Lifetime yield per 10 kWp of panels                                         | 1 · 5 · 10 MWh  | Solar                          |
-| Cycle master (milestone) | Lifetime    | Full battery cycles, estimated from daily swings                            | 100 · 250 · 500 | Battery                        |
+| Cycle master (milestone) | Lifetime    | Full battery cycles, as the battery counts them                             | 100 · 250 · 500 | Battery cycle count            |
 
 Hidden badges show a riddle until earned.
 
@@ -144,7 +144,11 @@ flowchart TD
 - **The first start replays up to 400 days**, and announces nothing for them: the room is already earned. Closed days are rebuilt three days back each day, since a night's outcome is only known the next morning.
 - **Tiers count earning days**, as the catalogue says; the percentile thresholds decide whether a day earns, from the days before it only.
 - **Quests too easy are set aside.** A measure at its ceiling (100 % self-sufficient on most sunny days) would make a quest most similar days meet anyway; options met on more than 80 % of similar days are skipped, falling back to the hardest.
-- **Not built yet:** Sun chaser (needs appliance runs from plugs), money in recaps, the yearly "Wrapped" card and the notification blueprint.
+- **Counter jumps are dropped.** A counter that first reports 0 and then its lifetime total makes the recorder count the total as one hour. Hours above both 25 kWh and ten times the counter's typical hour are dropped before anything is learned; stored facts carry a version and are rebuilt quietly when it changes.
+- **Cycles come from the battery.** "Cycle master" reads an optional cycle counter and is not offered without one.
+- **Money in recaps** uses the integration's prices: sun kept at home at the electricity price, export at the feed-in tariff.
+- **A blueprint** (`blueprints/automation/solar_energy_insights/announce_achievements.yaml`) announces chosen kinds on a phone.
+- **Not built yet:** Sun chaser (needs appliance runs from plugs) and the yearly "Wrapped" card.
 
 ## Open questions
 

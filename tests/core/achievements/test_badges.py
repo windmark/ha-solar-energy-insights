@@ -17,8 +17,8 @@ END = date(2026, 10, 31)
 BERLIN, SYDNEY = 52.5, -33.9
 
 
-def states(days, latitude=BERLIN, battery=10.0):
-    profile = profile_of(days, battery, latitude)
+def states(days, latitude=BERLIN, battery=10.0, kwp=10.0, relative_yield=1.0):
+    profile = profile_of(days, battery, latitude, kwp, relative_yield)
     return {b.badge.id: b for b in evaluate(days, profile, TZ)}, profile
 
 
@@ -45,12 +45,12 @@ def test_a_home_without_a_solar_counter_sees_no_yield_badges() -> None:
 
 
 def test_power_plant_scales_with_the_array() -> None:
-    small = states(home(200, END, kwp=4.0, house_kwh=3.6, battery_kwh=4.0))[0][
+    small = states(home(200, END, kwp=4.0, house_kwh=3.6, battery_kwh=4.0), kwp=4.0)[0][
         "power_plant"
     ]
-    large = states(home(200, END, kwp=15.0, house_kwh=13.5, battery_kwh=15.0))[0][
-        "power_plant"
-    ]
+    large = states(
+        home(200, END, kwp=15.0, house_kwh=13.5, battery_kwh=15.0), kwp=15.0
+    )[0]["power_plant"]
 
     # The same home scaled up earns it on the same days.
     assert small.earned_on == large.earned_on
@@ -59,10 +59,12 @@ def test_power_plant_scales_with_the_array() -> None:
 
 def test_homes_of_any_size_earn_their_tiers_at_a_similar_pace() -> None:
     small, _ = states(
-        home(365, END, kwp=4.0, house_kwh=3.6, battery_kwh=4.0), battery=4.0
+        home(365, END, kwp=4.0, house_kwh=3.6, battery_kwh=4.0), battery=4.0, kwp=4.0
     )
     large, _ = states(
-        home(365, END, kwp=15.0, house_kwh=13.5, battery_kwh=15.0), battery=15.0
+        home(365, END, kwp=15.0, house_kwh=13.5, battery_kwh=15.0),
+        battery=15.0,
+        kwp=15.0,
     )
 
     for badge_id in (
@@ -129,3 +131,24 @@ def test_tiers_record_the_day_they_were_reached() -> None:
     for state in got.values():
         assert len(state.tier_days) == state.tier
         assert list(state.tier_days) == sorted(state.tier_days)
+
+
+def test_without_a_known_array_no_per_kwp_badge_is_offered() -> None:
+    got, _ = states(home(200, END), kwp=None)
+
+    assert "power_plant" not in got
+    assert "mwh_club" not in got
+    # Badges ranking days against your own history need no size.
+    assert "every_drop" in got
+    assert "midsummer" in got
+
+
+def test_a_roof_facing_away_from_the_sun_earns_power_plant_at_its_own_pace() -> None:
+    # Exporting 1.8 kWh per kWp: short of an ideal roof's 2, a lot for east–west.
+    days = [replace(f, export_kwh=18.0) for f in home(60, END)]
+
+    south, _ = states(days, kwp=10.0, relative_yield=1.0)
+    east_west, _ = states(days, kwp=10.0, relative_yield=0.81)
+
+    assert south["power_plant"].count == 0
+    assert east_west["power_plant"].count == 60

@@ -7,12 +7,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from enum import StrEnum
 
-import numpy as np
-
 from .facts import DayFacts
 
-# A sunny hour makes about this share of the array's rating.
-BEST_HOUR_SHARE = 0.85
 # Near the equator, seasons hardly differ: seasonal badges are not offered.
 TROPICS_DEG = 15.0
 
@@ -25,6 +21,9 @@ class Capability(StrEnum):
     FORECAST = "forecast"
     ADVICE = "advice"
     PEAK = "peak"
+    CYCLES = "cycles"
+    # The array's size is known (from Solcast's sites or set by hand).
+    ARRAY = "array"
     SEASONS = "seasons"
 
 
@@ -41,6 +40,8 @@ class Profile:
     kwp: float | None
     battery_kwh: float
     latitude: float
+    # A year's yield per kWp against an ideal roof's, from where the planes face.
+    relative_yield: float = 1.0
 
     @property
     def southern(self) -> bool:
@@ -55,8 +56,9 @@ def profile_of(
     battery_kwh: float,
     latitude: float,
     kwp: float | None = None,
+    relative_yield: float = 1.0,
 ) -> Profile:
-    """What the history shows this home can measure, and how big its array is."""
+    """What the history shows this home can measure, with the array as configured."""
     caps = {Capability.BATTERY, Capability.HOUSE}
     if any(f.solar_kwh is not None for f in facts):
         caps.add(Capability.SOLAR)
@@ -70,13 +72,14 @@ def profile_of(
         caps.add(Capability.ADVICE)
     if any(f.peak_kw is not None for f in facts):
         caps.add(Capability.PEAK)
+    if any(f.battery_cycles is not None for f in facts):
+        caps.add(Capability.CYCLES)
     if abs(latitude) >= TROPICS_DEG:
         caps.add(Capability.SEASONS)
-    if kwp is None:
-        best = [f.solar_best_hour_kwh for f in facts if f.solar_best_hour_kwh]
-        if len(best) >= 7:
-            kwp = round(float(np.quantile(best, 0.99)) / BEST_HOUR_SHARE, 1)
-    return Profile(frozenset(caps), kwp, battery_kwh, latitude)
+    # The array's size is read from its configuration, never guessed from output.
+    if kwp:
+        caps.add(Capability.ARRAY)
+    return Profile(frozenset(caps), kwp or None, battery_kwh, latitude, relative_yield)
 
 
 # Astronomical dates, close enough for badges: equinoxes and solstices.
