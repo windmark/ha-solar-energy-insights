@@ -21,6 +21,8 @@ async def async_get_config_entry_diagnostics(
         "options": dict(entry.options),
         "days_of_history": days_covered(coordinator.use),
         "weighting": str(coordinator.weighting),
+        # The plan's inputs, to replay this moment as a test (tests/replay.py).
+        "replay": coordinator.snapshot(),
         "backtest": {
             str(weighting): {
                 "error_kwh": result.error_kwh,

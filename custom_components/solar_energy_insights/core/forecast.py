@@ -90,6 +90,11 @@ class PvForecast:
     def __len__(self) -> int:
         return len(self._slots)
 
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, PvForecast) and self._slots == other._slots
+
+    __hash__ = None  # type: ignore[assignment]
+
     @property
     def slots(self) -> tuple[Slot, ...]:
         return tuple(self._slots)

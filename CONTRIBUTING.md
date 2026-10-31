@@ -33,4 +33,13 @@ The Home Assistant tests run against a real Home Assistant and recorder from [py
 
 Besides tests of single situations, `tests/core/test_invariants.py` checks properties that must hold across a grid of seasons, skies, houses, battery levels and times of day, and `tests/core/test_relations.py` checks how plans relate (more charge never hurts, nothing jumps at sunset or midnight). A new answer should get both kinds of test.
 
+### Replaying a real moment
+
+When the dashboard shows something that looks wrong, download diagnostics (Settings → Devices & services → Solar Energy Insights → ⋮ → Download diagnostics). The file holds everything the plan was made from: the battery, Solcast's forecast, the house's hourly use and the scored evenings.
+
+1. Save it in `tests/fixtures/` under a name that says what looked wrong. From then on, `tests/test_replays.py` replays it and runs every check on it.
+2. To pin down the fix, add a test that loads it with `tests/replay.py` and asserts what the answer should have been. The test fails first, then passes once the fix is in.
+
+The file holds your own energy data and entity ids, and nothing else.
+
 Keep it this size. A new input or model earns its place only by fixing a miss the current answers show. Tests state what the integration does (a cloudier day fills the battery later), not how.
