@@ -110,3 +110,22 @@ async def test_prices_are_prefilled_from_existing_helpers(home: HomeAssistant) -
 
     assert suggested(result, const.CONF_PRICE) == 32.4
     assert suggested(result, const.CONF_FEED_IN) == 7.9
+
+
+async def test_options_suggest_powerocean_counters_for_achievements(
+    home: HomeAssistant,
+) -> None:
+    set_states(home)
+    registry = er.async_get(home)
+    imported = registry.async_get_or_create(
+        "sensor", "ef_powerocean_tcpmodbus", "abc_grid_import_total"
+    )
+    solar = registry.async_get_or_create(
+        "sensor", "ef_powerocean_tcpmodbus", "abc_solar_total"
+    )
+    entry = await setup_entry(home)
+
+    result = await home.config_entries.options.async_init(entry.entry_id)
+
+    assert suggested(result, const.CONF_GRID_IMPORT_ENERGY) == imported.entity_id
+    assert suggested(result, const.CONF_SOLAR_ENERGY) == solar.entity_id
