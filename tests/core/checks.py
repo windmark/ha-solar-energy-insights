@@ -45,13 +45,12 @@ def nights_are_consistent(name: str, i: PlanInputs, p: Plan) -> None:
         assert o.load_kwh >= 0, name
 
 
-def shares_and_counts_agree(name: str, i: PlanInputs, p: Plan) -> None:
+def shares_and_counts_agree(name: str, _i: PlanInputs, p: Plan) -> None:
     if p.night is None:
         return
     assert 0 <= p.night.share <= 1, name
     assert 0 <= p.night.lasting <= len(p.night.outcomes), name
-    if i.weights is None:
-        assert abs(p.night.share - p.night.lasting / len(p.night.outcomes)) < EPS, name
+    assert abs(p.night.share - p.night.lasting / len(p.night.outcomes)) < EPS, name
 
 
 def charge_needed_is_a_level(name: str, i: PlanInputs, p: Plan) -> None:

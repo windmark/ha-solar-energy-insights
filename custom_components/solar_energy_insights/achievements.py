@@ -18,7 +18,6 @@ from homeassistant.util import dt as dt_util
 from .const import (
     BACKFILL_DAYS,
     CONF_ACHIEVEMENTS,
-    CONF_BATTERY_CYCLES,
     CONF_BATTERY_SOC,
     CONF_GRID_EXPORT_ENERGY,
     CONF_GRID_IMPORT_ENERGY,
@@ -46,8 +45,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # Raised whenever stored facts would come out differently from the same history:
 # they are then rebuilt from the recorder, and nothing is announced for it.
-# 2: implausible counter jumps dropped; battery cycles from the battery's own count.
-FACTS_VERSION = 2
+# 2: implausible counter jumps dropped. 3: no battery cycle counts.
+FACTS_VERSION = 3
 
 
 class Achievements:
@@ -93,8 +92,7 @@ class Achievements:
         }
         soc = self._entity(CONF_BATTERY_SOC)
         power = self._entity(CONF_SOLAR_POWER)
-        cycles = self.c.entities(CONF_BATTERY_CYCLES)
-        ids = {e for e in (*energy.values(), soc, power, *cycles) if e}
+        ids = {e for e in (*energy.values(), soc, power) if e}
         recorder = get_instance(self.c.hass)
         rows = await recorder.async_add_executor_job(
             statistics_during_period,
@@ -104,7 +102,7 @@ class Achievements:
             ids,
             "hour",
             {"energy": UnitOfEnergy.KILO_WATT_HOUR, "power": UnitOfPower.KILO_WATT},
-            {"change", "min", "max", "mean", "state"},
+            {"change", "min", "max", "mean"},
         )
 
         def changes(
@@ -160,12 +158,6 @@ class Achievements:
             soc_min=hourly_means(lows, tz) or None,
             solar_peak=hourly_means(field(power, "max"), tz) or None,
             soc_fine=fine or None,
-            # One counter per pack, averaged; each a measurement (its maximum)
-            # or a total (its state).
-            cycles=_average(
-                [hourly_means(field(e, "max") or field(e, "state"), tz) for e in cycles]
-            )
-            or None,
         )
         return series, lows
 
@@ -433,14 +425,3 @@ class Achievements:
             self.c.battery().floor_pct,
             (self.c.price, self.c.feed_in),
         )
-
-
-def _average(
-    series: list[dict[tuple[date, int], float]],
-) -> dict[tuple[date, int], float]:
-    """Hour by hour, the average of the series that have that hour."""
-    out: dict[tuple[date, int], list[float]] = {}
-    for one in series:
-        for key, value in one.items():
-            out.setdefault(key, []).append(value)
-    return {key: sum(v) / len(v) for key, v in out.items()}

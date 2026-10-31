@@ -139,24 +139,6 @@ def test_free_power_says_until_when() -> None:
     assert at(DAY, 12) < result.free_until <= at(DAY, 21, 20)
 
 
-def test_weights_lean_the_night_towards_similar_days() -> None:
-    use = {
-        **house_use(14, lambda _h: 0.3, DAY),
-        **{
-            (DAY - timedelta(days=n), h): 1.6
-            for n in (3, 6, 9, 12)
-            for h in (22, 23, 0, 1, 2, 3)
-        },
-    }
-    equal = plan(inputs(21, 45, use=use))
-    heavy_like = [10.0 if n in (3, 6, 9, 12) else 0.1 for n in range(1, 15)]
-    leaning = plan(inputs(21, 45, use=use, weights=heavy_like))
-
-    assert equal.night is not None
-    assert leaning.night is not None
-    assert leaning.night.share < equal.night.share
-
-
 def test_when_even_a_full_battery_is_short_it_says_by_how_much() -> None:
     hungry = house_use(14, lambda _h: 3.0, DAY)
 

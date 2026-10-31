@@ -70,33 +70,6 @@ async def test_a_meter_total_read_as_one_hour_breaks_no_record(
     assert r["profile"]["kwp"] is None
 
 
-async def test_cycle_master_needs_a_cycles_sensor(
-    home: HomeAssistant, hass_ws_client: WebSocketGenerator
-) -> None:
-    await history(home, DAYS)
-    set_states(home)
-    await setup_entry(home, ON)
-
-    r = await room(home, hass_ws_client)
-
-    assert "cycle_master" not in {b["id"] for b in r["badges"]}
-
-
-async def test_cycle_master_counts_the_batterys_own_cycles(
-    home: HomeAssistant, hass_ws_client: WebSocketGenerator
-) -> None:
-    await history(home, DAYS)
-    cycles = "sensor.battery_cycles"
-    await record_energy(home, cycles, DAYS, lambda _d, h: 1.0 if h == 18 else 0.0)
-    set_states(home)
-    await setup_entry(home, {**ON, const.CONF_BATTERY_CYCLES: cycles})
-
-    r = await room(home, hass_ws_client)
-
-    badge = next(b for b in r["badges"] if b["id"] == "cycle_master")
-    assert badge["count"] == len(DAYS)
-
-
 async def test_stored_facts_from_an_older_version_are_rebuilt_quietly(
     home: HomeAssistant,
 ) -> None:

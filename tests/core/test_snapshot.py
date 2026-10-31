@@ -8,10 +8,9 @@ import pytest
 
 from custom_components.solar_energy_insights.core.backtest import (
     Evening,
-    Weighting,
     score,
 )
-from custom_components.solar_energy_insights.core.plan import plan
+from custom_components.solar_energy_insights.core.plan import PlanInputs, plan
 from custom_components.solar_energy_insights.core.snapshot import (
     evenings_from_snapshot,
     from_snapshot,
@@ -24,18 +23,15 @@ SUMMER, WINTER = SEASONS
 
 
 def sample() -> list:
-    """A spread of the grid, with and without weights."""
-    out = []
+    """A spread of the grid."""
+    out: list[PlanInputs] = []
     for season in SEASONS:
-        for n, (house, peak) in enumerate(
-            zip(HOUSES.values(), SKIES.values(), strict=True)
-        ):
+        for house, peak in zip(HOUSES.values(), SKIES.values(), strict=True):
             use = history(season.day, house)
-            for now in moments(season)[::3]:
-                weights = [1.0 + k / 3 for k in range(7)] if n % 2 else None
-                out.append(
-                    inputs(season, now, peak_kw=peak, use=use, soc=35, weights=weights)
-                )
+            out.extend(
+                inputs(season, now, peak_kw=peak, use=use, soc=35)
+                for now in moments(season)[::3]
+            )
     return out
 
 
@@ -64,10 +60,9 @@ def test_the_scored_evenings_replay_too() -> None:
     restored = from_snapshot(data)
 
     assert evenings_from_snapshot(data) == evenings
-    for weighting in Weighting:
-        assert score(
-            restored.use, restored.tz, evenings, restored.battery, 7, weighting
-        ) == score(use, original.tz, evenings, original.battery, 7, weighting)
+    assert score(restored.use, restored.tz, evenings, restored.battery, 7) == score(
+        use, original.tz, evenings, original.battery, 7
+    )
 
 
 def test_a_whole_diagnostics_download_is_accepted() -> None:

@@ -16,7 +16,6 @@ def _iso(t: datetime | None) -> str | None:
 def _outcome(o: NightOutcome) -> dict[str, Any]:
     return {
         "days_ago": o.days_ago,
-        "weight": round(o.weight, 3),
         "lasts": o.lasts,
         "reserve_at": _iso(o.reserve_at),
         "load_kwh": round(o.load_kwh, 2),
@@ -127,15 +126,14 @@ def plan_dict(
 
 
 def backtest_dict(cal: Calibration | None) -> dict[str, Any] | None:
-    """What the recent evenings taught: the weighting, the hidden load, and how
-    each evening went, so a surprise can be traced to one night."""
+    """What the recent evenings taught: the hidden load, and how each evening
+    went, so a surprise can be traced to one night."""
     if cal is None:
         return None
     contested = cal.score.contested_days
     return {
-        "weighting": str(cal.weighting),
         "hidden_load_w": round(cal.standby_kw * 1000),
-        "honest_error_kwh": {str(w): e for w, e in cal.honest_error_kwh.items()},
+        "honest_error_kwh": cal.honest_error_kwh,
         "bias_kwh": cal.score.bias_kwh,
         "bias_without_hidden_load_kwh": cal.uncorrected.bias_kwh,
         "lasts_right": cal.score.agreement,

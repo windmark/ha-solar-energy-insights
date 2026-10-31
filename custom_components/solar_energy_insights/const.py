@@ -28,10 +28,6 @@ CONF_IMPORT_POSITIVE: Final = "import_positive"
 CONF_PRICE: Final = "price"
 CONF_FEED_IN: Final = "feed_in"
 CONF_PRICE_ENTITY: Final = "price_entity"
-# Optional hourly series that may tell nights apart; each is used only if it
-# predicts recent evenings better.
-CONF_TEMPERATURE: Final = "outdoor_temperature"
-CONF_PRESENCE: Final = "presence"
 # Optional: what the panels made, to learn a correction to Solcast for this roof.
 CONF_SOLAR_ENERGY: Final = "solar_energy"
 
@@ -40,16 +36,6 @@ CONF_ACHIEVEMENTS: Final = "achievements"
 CONF_GRID_IMPORT_ENERGY: Final = "grid_import_energy"
 CONF_GRID_EXPORT_ENERGY: Final = "grid_export_energy"
 CONF_SOLAR_POWER: Final = "solar_power"
-# Optional: the battery's own cycle count, for "Cycle master"; one entity per
-# pack, averaged.
-CONF_BATTERY_CYCLES: Final = "battery_cycles"
-# Optional: the battery's state of health, %, one per pack; usable capacity is
-# the nominal capacity times their average.
-CONF_BATTERY_HEALTH: Final = "battery_health"
-# Optional: the battery's live charge and discharge power limits (W or kW), as
-# its management system sets them; else the fixed power limit option.
-CONF_CHARGE_POWER_LIMIT: Final = "charge_power_limit"
-CONF_DISCHARGE_POWER_LIMIT: Final = "discharge_power_limit"
 # Optional: the array's DC size, kWp, when Solcast's sites do not say it.
 CONF_ARRAY_KWP: Final = "array_kwp"
 EVENT_ACHIEVEMENT: Final = f"{DOMAIN}_achievement"

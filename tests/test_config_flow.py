@@ -129,15 +129,3 @@ async def test_options_suggest_powerocean_counters_for_achievements(
 
     assert suggested(result, const.CONF_GRID_IMPORT_ENERGY) == imported.entity_id
     assert suggested(result, const.CONF_SOLAR_ENERGY) == solar.entity_id
-
-
-async def test_options_suggest_an_ecoflow_cycle_counter(home: HomeAssistant) -> None:
-    set_states(home)
-    cycles = er.async_get(home).async_get_or_create(
-        "sensor", "powerocean", "hj32abc_bpcycles", suggested_object_id="battery_cycles"
-    )
-    entry = await setup_entry(home)
-
-    result = await home.config_entries.options.async_init(entry.entry_id)
-
-    assert suggested(result, const.CONF_BATTERY_CYCLES) == [cycles.entity_id]

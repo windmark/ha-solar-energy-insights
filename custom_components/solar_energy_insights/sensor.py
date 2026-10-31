@@ -178,7 +178,6 @@ def _r(value: float | None, digits: int = 2) -> float | None:
 
 def _score_attrs(c: InsightsCoordinator) -> dict[str, Any]:
     attrs: dict[str, Any] = {
-        "weighting": str(c.weighting),
         "hidden_load_w": round(c.standby_kw * 1000),
         "heavy_share_pct": round(c.heavy_share * 100),
         "corrected_readings": c.corrected_readings,
@@ -189,9 +188,7 @@ def _score_attrs(c: InsightsCoordinator) -> dict[str, Any]:
         agreement = score.agreement
         attrs.update(
             {
-                "errors_by_weighting": {
-                    str(w): _r(e) for w, e in cal.honest_error_kwh.items()
-                },
+                "honest_error_kwh": _r(cal.honest_error_kwh),
                 "evenings_scored": len(score.nights),
                 "contested_evenings": len(score.contested),
                 "lasts_right_pct": None

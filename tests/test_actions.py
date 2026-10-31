@@ -127,7 +127,6 @@ async def test_the_backtest_is_served_for_drawing(
     assert {"day", "contested", "predicted_spare_kwh", "actual_spare_kwh"} <= set(
         result["nights"][0]
     )
-    assert result["weighting"]
     assert "live" in result
     # Every scored evening is one of the evenings; one without an earlier day
     # to replay (the first in the history) is not scored.

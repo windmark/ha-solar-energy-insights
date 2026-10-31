@@ -263,12 +263,6 @@ def _mwh_per_10kwp(days: Sequence[DayFacts], c: Context) -> float:
     return total / 1000 / (c.profile.kwp / 10 * c.profile.relative_yield)
 
 
-def _cycles(days: Sequence[DayFacts], _c: Context) -> float:
-    """The battery's own count of full cycles, as last reported."""
-    counts = [f.battery_cycles for f in days if f.battery_cycles is not None]
-    return max(counts) if counts else 0.0
-
-
 CATALOGUE: tuple[Badge, ...] = (
     Badge(
         "perfect_day",
@@ -476,15 +470,6 @@ CATALOGUE: tuple[Badge, ...] = (
         (Cap.SOLAR, Cap.ARRAY),
         (1, 5, 10),
         count=_mwh_per_10kwp,
-    ),
-    Badge(
-        "cycle_master",
-        "Cycle master",
-        "mdi:battery-sync",
-        "Full battery cycles, as the battery counts them",
-        (Cap.CYCLES,),
-        (100, 250, 500),
-        count=_cycles,
     ),
 )
 

@@ -82,7 +82,6 @@ async def test_the_night_answer_is_scored_on_recent_nights(home: HomeAssistant) 
     assert float(error.state) >= 0
     assert error.attributes["evenings_scored"] > 0
     assert error.attributes["contested_evenings"] <= error.attributes["evenings_scored"]
-    assert error.attributes["weighting"] in ("equal", "similar")
     assert int(state(home, f"sensor.{PREFIX}days_of_history")) >= 20
 
 

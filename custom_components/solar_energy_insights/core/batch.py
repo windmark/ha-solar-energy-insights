@@ -90,7 +90,6 @@ def run(
     socs = np.asarray(socs, dtype=float)
     count = len(socs)
     cap, eta, p_max = battery.capacity_kwh, battery.eta, battery.max_power_kw
-    p_out = battery.discharge_kw
     floor = battery.floor_kwh
     top = battery.ceiling_kwh
     level = cap * socs / 100
@@ -113,7 +112,7 @@ def run(
         need = np.maximum(-net, 0.0) * hours
         out = np.clip(
             np.minimum.reduce(
-                [need, np.full(count, p_out * hours), (level - floor) * eta]
+                [need, np.full(count, p_max * hours), (level - floor) * eta]
             ),
             0.0,
             None,

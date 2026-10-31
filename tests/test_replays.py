@@ -22,7 +22,6 @@ def test_a_saved_moments_backtest_replays(path: Path) -> None:
     cal = replay_calibration(path)
 
     assert cal.standby_kw >= 0
-    for error in cal.honest_error_kwh.values():
-        assert error is None or error >= 0
+    assert cal.honest_error_kwh is None or cal.honest_error_kwh >= 0
     # Only evenings that could have gone either way are scored.
     assert set(cal.score.contested) <= set(cal.score.nights)
