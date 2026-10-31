@@ -50,6 +50,37 @@
       },
       "forecast_correction": {
         "default": "mdi:tune-variant"
+      },
+      "score_today": {
+        "default": "mdi:star-circle-outline"
+      },
+      "level": {
+        "default": "mdi:star-shooting"
+      },
+      "rank": {
+        "default": "mdi:shield-star",
+        "state": {
+          "bronze": "mdi:shield-outline",
+          "silver": "mdi:shield-half-full",
+          "gold": "mdi:shield-star",
+          "platinum": "mdi:shield-crown",
+          "diamond": "mdi:diamond-stone"
+        }
+      },
+      "streak_self_sufficient": {
+        "default": "mdi:home-lightning-bolt"
+      },
+      "streak_full": {
+        "default": "mdi:battery-check"
+      },
+      "streak_beat_forecast": {
+        "default": "mdi:weather-sunny-alert"
+      },
+      "streak_grid_free_night": {
+        "default": "mdi:weather-night"
+      },
+      "quest": {
+        "default": "mdi:flag-variant-outline"
       }
     },
     "binary_sensor": {

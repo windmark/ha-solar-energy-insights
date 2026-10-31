@@ -35,6 +35,19 @@ CONF_PRESENCE: Final = "presence"
 # Optional: what the panels made, to learn a correction to Solcast for this roof.
 CONF_SOLAR_ENERGY: Final = "solar_energy"
 
+# Achievements: switched on in the options; more counters unlock more of them.
+CONF_ACHIEVEMENTS: Final = "achievements"
+CONF_GRID_IMPORT_ENERGY: Final = "grid_import_energy"
+CONF_GRID_EXPORT_ENERGY: Final = "grid_export_energy"
+CONF_SOLAR_POWER: Final = "solar_power"
+EVENT_ACHIEVEMENT: Final = f"{DOMAIN}_achievement"
+# How far back the first start looks for history to replay.
+BACKFILL_DAYS: Final = 400
+# Closed days are rebuilt this far back each day: last night ends this morning.
+REBUILD_DAYS: Final = 3
+# The next day's quest is set from this hour.
+QUEST_HOUR: Final = 20
+
 # The morning forecast and "full at" are kept from the first plan after sunrise,
 # if it comes before this hour; the night answer from the first after this one.
 MORNING_UNTIL_HOUR: Final = 11

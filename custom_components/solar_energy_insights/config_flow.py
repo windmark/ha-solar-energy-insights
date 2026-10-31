@@ -24,11 +24,14 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_ACHIEVEMENTS,
     CONF_BATTERY_CAPACITY,
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
     CONF_CHARGE_LIMIT,
     CONF_FEED_IN,
+    CONF_GRID_EXPORT_ENERGY,
+    CONF_GRID_IMPORT_ENERGY,
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
     CONF_IMPORT_POSITIVE,
@@ -41,6 +44,7 @@ from .const import (
     CONF_PRICE_ENTITY,
     CONF_ROUND_TRIP,
     CONF_SOLAR_ENERGY,
+    CONF_SOLAR_POWER,
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
     CONF_TEMPERATURE,
@@ -122,6 +126,10 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Optional(CONF_TEMPERATURE): _sensor(SensorDeviceClass.TEMPERATURE),
         vol.Optional(CONF_PRESENCE): _sensor(),
         vol.Optional(CONF_SOLAR_ENERGY): _sensor(SensorDeviceClass.ENERGY),
+        vol.Required(CONF_ACHIEVEMENTS, default=False): BooleanSelector(),
+        vol.Optional(CONF_GRID_IMPORT_ENERGY): _sensor(SensorDeviceClass.ENERGY),
+        vol.Optional(CONF_GRID_EXPORT_ENERGY): _sensor(SensorDeviceClass.ENERGY),
+        vol.Optional(CONF_SOLAR_POWER): _sensor(SensorDeviceClass.POWER),
         vol.Required(CONF_NIGHTS, default=DEFAULT_NIGHTS): _number(3, 60, 1, "nights"),
         vol.Required(CONF_MIN_RESERVE, default=DEFAULT_MIN_RESERVE_PCT): _number(
             0, 50, 1, "%"
@@ -138,6 +146,34 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Required(CONF_IMPORT_POSITIVE, default=True): BooleanSelector(),
     }
 )
+
+
+# Options: the counters that unlock more achievements and the Solcast correction.
+POWEROCEAN_OPTION_KEYS: dict[str, tuple[str, ...]] = {
+    CONF_SOLAR_ENERGY: ("solar_total",),
+    CONF_GRID_IMPORT_ENERGY: ("grid_import_total",),
+    CONF_GRID_EXPORT_ENERGY: ("grid_export_total",),
+    CONF_SOLAR_POWER: ("solar_power",),
+}
+
+
+def _powerocean(
+    hass: HomeAssistant, keys: dict[str, tuple[str, ...]]
+) -> dict[str, str]:
+    """Entities of EF-PowerOcean-TcpModbus for these fields, by unique id."""
+    found: dict[str, str] = {}
+    for entry in er.async_get(hass).entities.values():
+        if entry.platform != POWEROCEAN or entry.domain not in ("sensor", "number"):
+            continue
+        for options in keys.values():
+            for key in options:
+                if entry.unique_id.endswith(f"_{key}"):
+                    found[key] = entry.entity_id
+    return {
+        field: next(found[key] for key in options if key in found)
+        for field, options in keys.items()
+        if any(key in found for key in options)
+    }
 
 
 def suggested_entities(hass: HomeAssistant) -> dict[str, Any]:
@@ -209,7 +245,12 @@ class InsightsOptionsFlow(OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
-                OPTIONS_SCHEMA, {**self._helper_prices(), **self.config_entry.options}
+                OPTIONS_SCHEMA,
+                {
+                    **self._helper_prices(),
+                    **_powerocean(self.hass, POWEROCEAN_OPTION_KEYS),
+                    **self.config_entry.options,
+                },
             ),
         )
 

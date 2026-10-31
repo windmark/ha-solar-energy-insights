@@ -124,11 +124,13 @@ class Series:
     soc_fine: Mapping[datetime, float] | None = None
 
 
-def _day(series: Hourly | None, day: date) -> list[float] | None:
+def _day(
+    series: Hourly | None, day: date, min_hours: int = MIN_HOURS
+) -> list[float] | None:
     if series is None:
         return None
     values = [series[(day, h)] for h in range(24) if (day, h) in series]
-    return values if len(values) >= MIN_HOURS else None
+    return values if values and len(values) >= min_hours else None
 
 
 def build(
@@ -142,17 +144,19 @@ def build(
     evening: Evening | None = None,
     forecast_kwh: float | None = None,
     said: Mapping[str, Any] | None = None,
+    min_hours: int = MIN_HOURS,
 ) -> DayFacts | None:
-    """The facts of one closed day, or None if the house's use is mostly missing."""
-    house = _day(s.house, day)
+    """The facts of one closed day, or None if the house's use is mostly missing.
+
+    With a lower *min_hours*, the day so far: for today's live score.
+    """
+    house = _day(s.house, day, min_hours)
     if house is None:
         return None
-    solar, imported, exported = (
-        _day(s.solar, day),
-        _day(s.imported, day),
-        _day(s.exported, day),
-    )
-    highs, lows = _day(s.soc_max, day), _day(s.soc_min, day)
+    solar = _day(s.solar, day, min_hours)
+    imported = _day(s.imported, day, min_hours)
+    exported = _day(s.exported, day, min_hours)
+    highs, lows = _day(s.soc_max, day, min_hours), _day(s.soc_min, day, min_hours)
     full_pct = ceiling_pct - FULL_MARGIN_PCT
     full_at = None
     if highs is not None:
@@ -174,7 +178,7 @@ def build(
             )
             if hour is not None:
                 full_at = datetime(day.year, day.month, day.day, hour, tzinfo=tz)
-    peaks = _day(s.solar_peak, day)
+    peaks = _day(s.solar_peak, day, min_hours)
     said = said or {}
     said_full_at = said.get("full_at")
     return DayFacts(

@@ -118,6 +118,16 @@ await hass.callWS({ type: "solar_energy_insights/backtest" });
 
 returns every scored evening (predicted and actual spare, whether it was contested), what was learned (weighting, hidden load, heavy share, each weighting's error), and how the plan's own answers did.
 
+## Achievements
+
+Switch them on in the options. The integration then replays your history and keeps a trophy room in the spirit of a game, computed only from closed days:
+
+- **A daily score** (self-sufficiency, solar kept at home, battery put to work, performance against the morning forecast), **XP and named levels**, and **a rank** from the 30-day average that follows the season.
+- **Four streaks** with a weather shield, **records** with the season's best, and **22 badges**: seasonal by your hemisphere, some hidden until earned, each with a rarity measured in your own days.
+- **A quest** each evening for the next day, sized from your days with a similar forecast, and one each Monday for the week.
+
+Thresholds are relative to your home: per kWp of panels, per kWh of battery, or percentiles of your own days. Badges whose data your home cannot supply are not offered; adding the grid import and export counters and a solar counter in the options unlocks more. Earning a tier, breaking a record, levelling up, completing a quest or closing a month fires `solar_energy_insights_achievement` with a ready-made message. The design is in [docs/achievements.md](docs/achievements.md).
+
 ## Reporting something that looks wrong
 
 Download diagnostics (Settings → Devices & services → Solar Energy Insights → ⋮ → Download diagnostics) at the moment it looks wrong, and attach the file with a screenshot. The file replays that exact moment as a test (see CONTRIBUTING.md). It holds your energy data and entity ids, nothing else.

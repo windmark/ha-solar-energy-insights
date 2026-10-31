@@ -4,6 +4,8 @@
 
 ### Added
 
+- Achievements, optional: a daily score, XP and named levels, ranks that follow the season, four streaks with a weather shield, records, 22 badges relative to the home and seasonal by hemisphere, daily and weekly quests sized from your own days, monthly recaps, and an achievement event. Backfilled from the history on first start. Design: docs/achievements.md.
+
 - The battery's answers: when it fills (expected and cloudy), its level at sunset, the best window for heavy loads, and free power with until when.
 - The night, by replaying the house's recent nights from the recorder: nights covered, reserve time and spare energy on a typical and a heavy night, a three-way outlook (lasts, borderline, needs the grid), and the charge needed for the night (at sunset in the day, now at night; 100 % with the shortfall when even full is not enough).
 - Nights like tonight weigh more: by similar afternoons, the same kind of day, and optionally outdoor temperature or presence. Each way is used only if it predicts left-out evenings clearly better, and the simplest of near-equal options wins.
