@@ -118,6 +118,20 @@ await hass.callWS({ type: "solar_energy_insights/backtest" });
 
 returns every scored evening (predicted and actual spare, whether it was contested), what was learned (weighting, hidden load, heavy share, each weighting's error), and how the plan's own answers did.
 
+## Read from your devices
+
+Where the information exists, it is read rather than asked for or guessed, and the options come prefilled:
+
+| What                                         | From                                                   | Used for                                                                      |
+| -------------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| The array's size, and where each plane faces | Solcast's rooftop sites (DC capacity, direction, tilt) | Badges measured per kWp, scaled for planes facing away from the sun           |
+| Each battery pack's state of health          | EcoFlow cloud integration (`bpSoh`)                    | The plan uses nominal capacity times health                                   |
+| Each pack's cycle count                      | EcoFlow cloud integration (`bpCycles`)                 | "Cycle master"                                                                |
+| The live charge and discharge limits         | EF-PowerOcean-TcpModbus                                | The plan, charging and discharging separately; lower when the battery is cold |
+| Energy counters, solar power                 | EF-PowerOcean-TcpModbus                                | Achievements, the Solcast correction                                          |
+
+An east–west roof makes less per kWp in a year than one facing the equator. A sun model over the whole year gives each plane's yield against the best plane at your latitude (east or west at 30°: about 0.81 in central Europe; north: about 0.6), and per-kWp thresholds scale with it.
+
 ## Achievements
 
 Switch them on in the options. The integration then replays your history and keeps a trophy room in the spirit of a game, computed only from closed days:

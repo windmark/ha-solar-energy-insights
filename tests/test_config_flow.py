@@ -140,4 +140,4 @@ async def test_options_suggest_an_ecoflow_cycle_counter(home: HomeAssistant) -> 
 
     result = await home.config_entries.options.async_init(entry.entry_id)
 
-    assert suggested(result, const.CONF_BATTERY_CYCLES) == cycles.entity_id
+    assert suggested(result, const.CONF_BATTERY_CYCLES) == [cycles.entity_id]

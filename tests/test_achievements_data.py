@@ -65,9 +65,9 @@ async def test_a_meter_total_read_as_one_hour_breaks_no_record(
     records = {x["id"]: x for x in r["records"]}
     assert records["best_day"]["value"] < 50
     assert records["export"]["value"] < 50
-    # The array's size comes from real hours, not the jump.
-    assert r["profile"]["kwp"] is not None
-    assert r["profile"]["kwp"] < 20
+    # Nothing is learned from the jump: without Solcast's sites, the array's
+    # size is simply unknown.
+    assert r["profile"]["kwp"] is None
 
 
 async def test_cycle_master_needs_a_cycles_sensor(

@@ -219,6 +219,7 @@ def as_dict(
         "profile": {
             "capabilities": sorted(str(c) for c in t.profile.capabilities),
             "kwp": t.profile.kwp,
+            "relative_yield": round(t.profile.relative_yield, 3),
             "battery_kwh": t.profile.battery_kwh,
             "hemisphere": "southern" if southern else "northern",
             "season": str(season_of(today, southern)),

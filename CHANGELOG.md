@@ -4,6 +4,10 @@
 
 ### Added
 
+- The array is read from Solcast's rooftop sites: its size, and where each plane faces. Per-kWp badges scale with a plane's yearly yield against an ideal roof, so east–west and north-facing arrays earn them at their own pace. The array's size is no longer estimated from output.
+- Battery state of health and cycle counts from the EcoFlow cloud integration, one per pack, averaged; the plan uses nominal capacity times health.
+- Live charge and discharge power limits from the battery, simulated separately.
+- The options prefill everything found in the EcoFlow integrations and Solcast.
 - A blueprint that announces achievements on your phone, and the value of the sun kept at home in each monthly recap.
 - Achievements, optional: a daily score, XP and named levels, ranks that follow the season, four streaks with a weather shield, records, 22 badges relative to the home and seasonal by hemisphere, daily and weekly quests sized from your own days, monthly recaps, and an achievement event. Backfilled from the history on first start. Design: docs/achievements.md.
 

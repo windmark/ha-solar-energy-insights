@@ -93,8 +93,8 @@ class Achievements:
         }
         soc = self._entity(CONF_BATTERY_SOC)
         power = self._entity(CONF_SOLAR_POWER)
-        cycles = self._entity(CONF_BATTERY_CYCLES)
-        ids = {e for e in (*energy.values(), soc, power, cycles) if e}
+        cycles = self.c.entities(CONF_BATTERY_CYCLES)
+        ids = {e for e in (*energy.values(), soc, power, *cycles) if e}
         recorder = get_instance(self.c.hass)
         rows = await recorder.async_add_executor_job(
             statistics_during_period,
@@ -160,8 +160,11 @@ class Achievements:
             soc_min=hourly_means(lows, tz) or None,
             solar_peak=hourly_means(field(power, "max"), tz) or None,
             soc_fine=fine or None,
-            # A cycle counter may be a measurement (its maximum) or a total (its state).
-            cycles=hourly_means(field(cycles, "max") or field(cycles, "state"), tz)
+            # One counter per pack, averaged; each a measurement (its maximum)
+            # or a total (its state).
+            cycles=_average(
+                [hourly_means(field(e, "max") or field(e, "state"), tz) for e in cycles]
+            )
             or None,
         )
         return series, lows
@@ -255,7 +258,14 @@ class Achievements:
             min_hours=1,
         )
         history = [DayFacts.from_dict(v) for _, v in sorted(memory.facts.items())]
-        profile = profile_of(history, battery.capacity_kwh, self.c.hass.config.latitude)
+        array = self.c.array
+        profile = profile_of(
+            history,
+            battery.capacity_kwh,
+            self.c.hass.config.latitude,
+            kwp=array.kwp,
+            relative_yield=array.relative_yield,
+        )
         self._set_quests(history, profile, local)
         quests = []
         for raw in sorted(memory.quests.values(), key=lambda q: (q["day"], q["id"])):
@@ -423,3 +433,14 @@ class Achievements:
             self.c.battery().floor_pct,
             (self.c.price, self.c.feed_in),
         )
+
+
+def _average(
+    series: list[dict[tuple[date, int], float]],
+) -> dict[tuple[date, int], float]:
+    """Hour by hour, the average of the series that have that hour."""
+    out: dict[tuple[date, int], list[float]] = {}
+    for one in series:
+        for key, value in one.items():
+            out.setdefault(key, []).append(value)
+    return {key: sum(v) / len(v) for key, v in out.items()}

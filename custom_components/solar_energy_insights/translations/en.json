@@ -80,7 +80,11 @@
           "grid_import_energy": "Grid import energy (optional)",
           "grid_export_energy": "Grid export energy (optional)",
           "solar_power": "Solar power (optional)",
-          "battery_cycles": "Battery cycles (optional)"
+          "battery_cycles": "Battery cycles (optional)",
+          "battery_health": "Battery health (optional)",
+          "charge_power_limit": "Charge power limit (optional)",
+          "discharge_power_limit": "Discharge power limit (optional)",
+          "array_kwp": "Array size (optional)"
         },
         "data_description": {
           "nights": "How many recent nights the battery is tested against.",
@@ -99,7 +103,11 @@
           "grid_import_energy": "A counter of energy bought. With the export counter, unlocks self-sufficiency, grid-free days and the badges that use them.",
           "grid_export_energy": "A counter of energy sold. Unlocks solar kept at home and export badges.",
           "solar_power": "For the peak power record.",
-          "battery_cycles": "The battery's own count of full cycles, such as from the EcoFlow cloud integration. Without it, \"Cycle master\" is not offered."
+          "battery_cycles": "Each battery pack's own count of full cycles, averaged; from the EcoFlow cloud integration when installed. Without it, \"Cycle master\" is not offered.",
+          "battery_health": "Each pack's state of health, %. The plan uses the nominal capacity times their average.",
+          "charge_power_limit": "The battery's live charge limit, as its management system sets it (lower when cold). Replaces the fixed power limit for charging while it reports.",
+          "discharge_power_limit": "The battery's live discharge limit, the same way for discharging.",
+          "array_kwp": "The panels' DC size. Read from Solcast's rooftop sites, with where each one faces; set it here only if Solcast's sites do not give it."
         }
       }
     }

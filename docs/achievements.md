@@ -46,7 +46,7 @@ Each badge is a rule over day facts, declared as data with what it needs and how
 | Advice      | The plan's own saved answers                     | Steady hand, forecast whisperer                      |
 | Seasons     | Latitude at least 15° from the equator           | Every seasonal badge                                 |
 
-**2. Thresholds scale with the system.** Energy is measured per kWp of panels and per kWh of battery. Array size is learned from the history: the 99th percentile of the best hour's yield, divided by 0.85.
+**2. Thresholds scale with the system.** Energy is measured per kWp of panels and per kWh of battery. The array's size is read from Solcast's rooftop sites, never guessed; badges ranking days against your own history need no size at all. Absolute per-kWp thresholds (Power plant, MWh club) scale with the array's relative yield: a sun model over a year gives each plane's yield against the best plane at your latitude, so an east–west roof (about 0.81) earns them at its own pace. Without a known size, those two badges are not offered.
 
 **3. Difficulty comes from your own days.** Thresholds that describe a good day are percentiles of the days before the one judged. Rarity is the share of your days that earned a badge: common, rare (under 10 %) or legendary (under 2 %).
 
