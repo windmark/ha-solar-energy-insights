@@ -30,6 +30,12 @@
       },
       "history_days": {
         "default": "mdi:calendar-range"
+      },
+      "night_grid_cost": {
+        "default": "mdi:transmission-tower-import"
+      },
+      "surplus_saving": {
+        "default": "mdi:piggy-bank-outline"
       }
     },
     "binary_sensor": {

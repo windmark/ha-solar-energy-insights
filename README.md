@@ -41,24 +41,32 @@ Requires Home Assistant 2025.12 or newer and the recorder.
 | Grid power (optional)      | To tell when a full battery is exporting                                                                |
 | Solcast today and tomorrow | The forecast sensors, with `detailedForecast`                                                           |
 
-**Options:** how many nights to replay (default 14), the lowest state of charge the inverter discharges to by itself (5 %), the battery's power limit (5 kW), round-trip efficiency (92 %), and which sign means importing.
+**Options:**
+
+- **Prices:** the electricity price and feed-in tariff, in cents per kWh. They're prefilled from `input_number.electricity_price` and `input_number.feed_in_tariff` if you have them. For a dynamic tariff, an optional price entity overrides the fixed price while it has a value.
+- **The night test:** how many nights to replay (default 14), and the lowest state of charge the inverter discharges to by itself (5 %).
+- **The battery:** its power limit (5 kW), round-trip efficiency (92 %), and which sign of grid power means importing.
+
+Prices only turn kWh into money. They never change the plan: a price entity's current value applies to every hour ahead, and nothing is timed to cheap hours.
 
 ## Entities
 
-| Entity                      |                                                                                                                                                                         |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Battery full at             | Expected; attributes: the cloudy case, and peak % in both                                                                                                               |
-| Battery at sunset           | %                                                                                                                                                                       |
-| Nights covered              | % of recent nights the battery would last, weighted; attributes: nights, lasting                                                                                        |
-| Reserve reached at          | On a typical recent night; attribute: on a heavy one                                                                                                                    |
-| Spare at sunrise            | kWh above the reserve on a typical night; attributes: a heavy night, grid kWh                                                                                           |
-| Charge needed for the night | The lowest state of charge now from which even a heavy night lasts; for topping up from the grid at a cheap hour                                                        |
-| Solar surplus until sunset  | kWh the battery can't take, for an EV, water heater or dryer; attributes: after full, while charging (power-limited), cloudy case                                       |
-| Best window for heavy loads | Its start; attributes: end, spare kWh                                                                                                                                   |
-| Night prediction error      | How far off "spare at sunrise" would have been on recent evenings, kWh; attributes: the weighting in use, each weighting's error, how often "lasts the night" was right |
-| Days of history             | Diagnostic: days of house use the recorder holds                                                                                                                        |
-| Battery lasts the night     | On when a typical recent night lasts                                                                                                                                    |
-| Free power                  | On when the battery is full and exporting; attribute: until when; the `solar_energy_insights_free_power` event fires when it turns on                                   |
+| Entity                        |                                                                                                                                                                         |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Battery full at               | Expected; attributes: the cloudy case, and peak % in both                                                                                                               |
+| Battery at sunset             | %                                                                                                                                                                       |
+| Nights covered                | % of recent nights the battery would last, weighted; attributes: nights, lasting                                                                                        |
+| Reserve reached at            | On a typical recent night; attribute: on a heavy one                                                                                                                    |
+| Spare at sunrise              | kWh above the reserve on a typical night; attributes: a heavy night, grid kWh                                                                                           |
+| Charge needed for the night   | The lowest state of charge now from which even a heavy night lasts; for topping up from the grid at a cheap hour                                                        |
+| Solar surplus until sunset    | kWh the battery can't take, for an EV, water heater or dryer; attributes: after full, while charging (power-limited), cloudy case                                       |
+| Best window for heavy loads   | Its start; attributes: end, spare kWh                                                                                                                                   |
+| Grid cost until sunrise       | The typical night's grid energy at the current price; attributes: a heavy night, the price, where it came from                                                          |
+| Saving from using the surplus | What using the surplus at home saves instead of exporting it (price minus feed-in); attribute: what exporting it earns                                                  |
+| Night prediction error        | How far off "spare at sunrise" would have been on recent evenings, kWh; attributes: the weighting in use, each weighting's error, how often "lasts the night" was right |
+| Days of history               | Diagnostic: days of house use the recorder holds                                                                                                                        |
+| Battery lasts the night       | On when a typical recent night lasts                                                                                                                                    |
+| Free power                    | On when the battery is full and exporting; attribute: until when; the `solar_energy_insights_free_power` event fires when it turns on                                   |
 
 The entities hold facts, not sentences: word them in your dashboard.
 

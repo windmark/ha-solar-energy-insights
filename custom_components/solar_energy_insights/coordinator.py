@@ -38,18 +38,23 @@ from .const import (
     CONF_BATTERY_CAPACITY,
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
+    CONF_FEED_IN,
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
     CONF_IMPORT_POSITIVE,
     CONF_MAX_POWER,
     CONF_MIN_RESERVE,
     CONF_NIGHTS,
+    CONF_PRICE,
+    CONF_PRICE_ENTITY,
     CONF_ROUND_TRIP,
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
+    DEFAULT_FEED_IN_CT,
     DEFAULT_MAX_POWER_KW,
     DEFAULT_MIN_RESERVE_PCT,
     DEFAULT_NIGHTS,
+    DEFAULT_PRICE_CT,
     DEFAULT_ROUND_TRIP_PCT,
     DOMAIN,
     EVENT_FREE_POWER,
@@ -176,6 +181,40 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         # A reading below the counter means it reset at midnight: all of it is new.
         used = reading - counter if reading >= counter else reading
         return used / (elapsed.total_seconds() / 3600)
+
+    # ── Prices ──
+
+    def _entity_price(self) -> float | None:
+        entity_id = self.config_entry.options.get(CONF_PRICE_ENTITY)
+        state = self.hass.states.get(entity_id) if entity_id else None
+        value = _number(state)
+        if value is None or state is None or value < 0:
+            return None
+        unit = str(state.attributes.get("unit_of_measurement") or "").lower()
+        # Cents per kWh (ct/kWh, c/kWh, cent/kWh), else a currency per kWh.
+        return value / 100 if unit.startswith(("ct", "c/", "cent")) else value
+
+    @property
+    def price_source(self) -> str:
+        """Where the price comes from: the entity while it has a value, else fixed."""
+        return "entity" if self._entity_price() is not None else "fixed"
+
+    @property
+    def price(self) -> float:
+        """What a kWh bought costs now, in currency per kWh.
+
+        A price entity is read as it stands now and applied to every hour ahead;
+        nothing is timed to cheap hours.
+        """
+        from_entity = self._entity_price()
+        if from_entity is not None:
+            return from_entity
+        return self._option(CONF_PRICE, DEFAULT_PRICE_CT) / 100
+
+    @property
+    def feed_in(self) -> float:
+        """What a kWh exported earns, in currency per kWh."""
+        return self._option(CONF_FEED_IN, DEFAULT_FEED_IN_CT) / 100
 
     def battery(self) -> Battery:
         soc = _number(self._state(CONF_BATTERY_SOC))
@@ -338,6 +377,8 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             )
             if (entity_id := self.config_entry.data.get(key))
         ]
+        if price_entity := self.config_entry.options.get(CONF_PRICE_ENTITY):
+            entity_ids.append(price_entity)
         return async_track_state_change_event(
             self.hass, entity_ids, self._async_changed
         )

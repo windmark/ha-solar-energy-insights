@@ -25,12 +25,16 @@ def ws_plan(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
     try:
-        current = coordinator_for(hass).plan
+        coordinator = coordinator_for(hass)
     except ServiceValidationError:
         connection.send_error(
             msg["id"], "not_loaded", "Solar Energy Insights is not loaded"
         )
         return
+    current = coordinator.plan
     connection.send_result(
-        msg["id"], plan_dict(current) if current is not None else None
+        msg["id"],
+        plan_dict(current, prices=(coordinator.price, coordinator.feed_in))
+        if current is not None
+        else None,
     )

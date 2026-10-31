@@ -27,20 +27,27 @@ from .const import (
     CONF_BATTERY_CAPACITY,
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
+    CONF_FEED_IN,
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
     CONF_IMPORT_POSITIVE,
     CONF_MAX_POWER,
     CONF_MIN_RESERVE,
     CONF_NIGHTS,
+    CONF_PRICE,
+    CONF_PRICE_ENTITY,
     CONF_ROUND_TRIP,
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
+    DEFAULT_FEED_IN_CT,
     DEFAULT_MAX_POWER_KW,
     DEFAULT_MIN_RESERVE_PCT,
     DEFAULT_NIGHTS,
+    DEFAULT_PRICE_CT,
     DEFAULT_ROUND_TRIP_PCT,
     DOMAIN,
+    FEED_IN_HELPER,
+    PRICE_HELPER,
 )
 
 POWEROCEAN = "ef_powerocean_tcpmodbus"
@@ -92,6 +99,15 @@ SCHEMA = vol.Schema(
 
 OPTIONS_SCHEMA = vol.Schema(
     {
+        vol.Required(CONF_PRICE, default=DEFAULT_PRICE_CT): _number(
+            0, 500, 0.01, "ct/kWh"
+        ),
+        vol.Required(CONF_FEED_IN, default=DEFAULT_FEED_IN_CT): _number(
+            0, 500, 0.01, "ct/kWh"
+        ),
+        vol.Optional(CONF_PRICE_ENTITY): EntitySelector(
+            EntitySelectorConfig(domain=["sensor", "input_number"])
+        ),
         vol.Required(CONF_NIGHTS, default=DEFAULT_NIGHTS): _number(3, 60, 1, "nights"),
         vol.Required(CONF_MIN_RESERVE, default=DEFAULT_MIN_RESERVE_PCT): _number(
             0, 50, 1, "%"
@@ -176,6 +192,22 @@ class InsightsOptionsFlow(OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
-                OPTIONS_SCHEMA, self.config_entry.options
+                OPTIONS_SCHEMA, {**self._helper_prices(), **self.config_entry.options}
             ),
         )
+
+    def _helper_prices(self) -> dict[str, float]:
+        """Prefill the prices from existing helpers, until they are set here."""
+        out: dict[str, float] = {}
+        for field, entity_id in (
+            (CONF_PRICE, PRICE_HELPER),
+            (CONF_FEED_IN, FEED_IN_HELPER),
+        ):
+            state = self.hass.states.get(entity_id)
+            if state is None:
+                continue
+            try:
+                out[field] = float(state.state)
+            except ValueError:
+                continue
+        return out

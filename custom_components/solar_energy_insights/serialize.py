@@ -24,7 +24,33 @@ def _outcome(o: NightOutcome) -> dict[str, Any]:
     }
 
 
-def plan_dict(plan: Plan, *, detail: bool = True) -> dict[str, Any]:
+def costs(plan: Plan, price: float, feed_in: float) -> dict[str, Any]:
+    """The plan in money, at a price per kWh bought and a tariff per kWh exported.
+
+    The price applies to every hour ahead as it is now: nothing is timed.
+    """
+    night = plan.night
+    surplus = plan.surplus.total_kwh
+    return {
+        "price": round(price, 4),
+        "feed_in": round(feed_in, 4),
+        "night_grid": None
+        if night is None
+        else round(night.typical.grid_kwh * price, 2),
+        "night_grid_heavy": None
+        if night is None
+        else round(night.heavy.grid_kwh * price, 2),
+        "surplus_saving": round(surplus * max(price - feed_in, 0.0), 2),
+        "surplus_export_value": round(surplus * feed_in, 2),
+    }
+
+
+def plan_dict(
+    plan: Plan,
+    *,
+    detail: bool = True,
+    prices: tuple[float, float] | None = None,
+) -> dict[str, Any]:
     night = plan.night
     data: dict[str, Any] = {
         "at": _iso(plan.now),
@@ -69,6 +95,8 @@ def plan_dict(plan: Plan, *, detail: bool = True) -> dict[str, Any]:
         "free_power": plan.free_power,
         "free_until": _iso(plan.free_until),
     }
+    if prices is not None:
+        data["costs"] = costs(plan, *prices)
     if detail:
         if night is not None:
             data["night"]["each"] = [_outcome(o) for o in night.outcomes]

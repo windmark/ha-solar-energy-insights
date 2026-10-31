@@ -38,5 +38,10 @@ async def async_get_config_entry_diagnostics(
             }
             for weighting, result in coordinator.scores.items()
         },
-        "plan": plan_dict(current, detail=False) if current is not None else None,
+        "price_source": coordinator.price_source,
+        "plan": plan_dict(
+            current, detail=False, prices=(coordinator.price, coordinator.feed_in)
+        )
+        if current is not None
+        else None,
     }
