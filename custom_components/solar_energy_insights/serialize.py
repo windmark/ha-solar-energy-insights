@@ -111,6 +111,18 @@ def plan_dict(
                 "levels": [list(row) for row in night.levels],
             }
         data["curve"] = [[t.isoformat(), round(pct, 1)] for t, pct in plan.curve]
+        if plan.day is not None:
+            data["day"] = {
+                "pv_kwh": round(plan.day.pv_kwh, 2),
+                "load_kwh": round(plan.day.load_kwh, 2),
+                "reserve_at": _iso(plan.day.reserve_at),
+                "curve_cloudy": [
+                    [t.isoformat(), round(pct, 1)] for t, pct in plan.day.curve_cloudy
+                ],
+                # Half hours until sunset: start, expected solar kW, house kW.
+                "slots": [[t.isoformat(), pv, load] for t, pv, load in plan.day.slots],
+            }
+        data["charge_limit_pct"] = plan.charge_limit_pct
     return data
 
 

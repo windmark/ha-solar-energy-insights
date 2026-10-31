@@ -134,3 +134,23 @@ async def test_the_backtest_is_served_for_drawing(
     assert {n["day"] for n in result["nights"]} <= {
         e["day"] for e in result["evenings"]
     }
+
+
+async def test_the_plan_shows_the_days_working(
+    home: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    await record_house(home, recent(10), evening)
+    set_states(home, soc=40, peak_kw=8)
+    await setup_entry(home)
+    client = await hass_ws_client(home)
+
+    await client.send_json_auto_id({"type": f"{const.DOMAIN}/plan"})
+    result = (await client.receive_json())["result"]
+
+    day = result["day"]
+    assert day["pv_kwh"] > 0
+    assert day["load_kwh"] > 0
+    assert day["curve_cloudy"]
+    assert day["slots"]
+    assert all(len(slot) == 3 for slot in day["slots"])
+    assert result["charge_limit_pct"] == 100

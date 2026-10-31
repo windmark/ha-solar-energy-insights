@@ -11,6 +11,7 @@
 - Battery readings below the floor (a glitch, or a battery asleep at its reserve) are cleaned and counted.
 - A small store keeps Solcast's morning forecast, the plan's own answers and the weighting in use. It gives a live full-at error, live night scores, and, with a solar energy counter, a per-hour Solcast correction for the roof once it beats raw Solcast on left-out days.
 - Prices: a fixed price and feed-in tariff (falling back to the dashboard's helpers until saved), with an optional price entity for dynamic tariffs; grid cost until sunrise and the saving from using the surplus. Prices never change the plan.
+- The plan reply shows the day's working for dashboards: solar and house use until sunset, the cloudy curve, any reserve time before sunset, and expected solar and house power per half hour.
 - The `simulate` action for an extra load; WebSocket commands `plan` (with each replayed night's battery curve) and `backtest`; diagnostics that replay the exact moment offline.
 - numpy batches every replay: a plan takes about 7 ms, calibration about 25 ms.
 - A charge limit, from an entity (PowerOcean's Charge Limit SOC is found at setup) or the options. Charging stops there and "full" means reaching it, for the day, charge needed, free power and the full-at score; what the battery no longer takes counts as surplus.
