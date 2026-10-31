@@ -79,6 +79,9 @@ class Night:
     outcomes: tuple[NightOutcome, ...]
     typical: NightOutcome
     heavy: NightOutcome
+    # Each replayed night's battery level in %, at these moments: for drawing.
+    times: tuple[datetime, ...] = field(default=(), repr=False, compare=False)
+    levels: tuple[tuple[float, ...], ...] = field(default=(), repr=False, compare=False)
 
     @property
     def lasting(self) -> int:
@@ -211,6 +214,7 @@ def _night(
         slices,
         slices.sample(sun),
         _loads(i, slices, days),
+        record=True,
     )
     outcomes = tuple(
         NightOutcome(
@@ -234,8 +238,13 @@ def _night(
         k = int(np.argmin(np.abs(badness - target) - weights * 1e-9))
         return outcomes[k]
 
+    assert runs.levels_pct is not None
     return Night(
-        outcomes=outcomes, typical=at(i.typical_share), heavy=at(i.heavy_share)
+        outcomes=outcomes,
+        typical=at(i.typical_share),
+        heavy=at(i.heavy_share),
+        times=(*slices.starts, i.sunrise),
+        levels=tuple(tuple(round(float(v), 1) for v in row) for row in runs.levels_pct),
     )
 
 

@@ -109,7 +109,13 @@ response_variable: with_dryer
 await hass.callWS({ type: "solar_energy_insights/plan" });
 ```
 
-returns the whole plan: each replayed night, the typical and heavy one, and the battery curve until sunset.
+returns the whole plan: each replayed night with its weight and battery curve, the typical and heavy one, and the battery curve until sunset.
+
+```js
+await hass.callWS({ type: "solar_energy_insights/backtest" });
+```
+
+returns every scored evening (predicted and actual spare, whether it was contested), what was learned (weighting, hidden load, heavy share, each weighting's error), and how the plan's own answers did.
 
 ## Reporting something that looks wrong
 

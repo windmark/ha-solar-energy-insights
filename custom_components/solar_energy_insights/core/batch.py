@@ -69,6 +69,9 @@ class Runs:
     spare_kwh: Floats
     # When the battery first handed over to the grid at night; NaT-like: None.
     reserve_at: tuple[datetime | None, ...]
+    # The level in % at the start and after each slice: (runs, slices + 1).
+    # Only kept when asked for, to draw the runs.
+    levels_pct: Floats | None = None
 
 
 def run(
@@ -77,8 +80,13 @@ def run(
     slices: Slices,
     sun: Floats,
     loads: Floats,
+    *,
+    record: bool = False,
 ) -> Runs:
-    """Step every run through the slices. *loads* is (runs, slices) kW."""
+    """Step every run through the slices. *loads* is (runs, slices) kW.
+
+    With *record*, the level of every run after every slice is kept too.
+    """
     socs = np.asarray(socs, dtype=float)
     count = len(socs)
     cap, eta, p_max = battery.capacity_kwh, battery.eta, battery.max_power_kw
@@ -90,6 +98,7 @@ def run(
     # The lowest level in the night, counting the level as the night begins.
     low = np.where(slices.night[0], level, np.inf) if len(slices) else level.copy()
     elapsed = 0.0
+    trace = [level * 100 / cap] if record else []
     for k in range(len(slices)):
         hours = slices.hours[k]
         use = np.maximum(loads[:, k], 0.0)
@@ -120,6 +129,8 @@ def run(
             # The level at the mark itself.
             low = np.minimum(low, level)
         elapsed += hours
+        if record:
+            trace.append(level * 100 / cap)
     start = slices.starts[0] if len(slices) else None
     reserve_at = tuple(
         None if np.isnan(h) or start is None else start + timedelta(hours=float(h))
@@ -131,6 +142,7 @@ def run(
         load_kwh=load_total,
         spare_kwh=np.maximum(np.where(np.isinf(low), level, low) - floor, 0.0),
         reserve_at=reserve_at,
+        levels_pct=np.stack(trace, axis=1) if record else None,
     )
 
 

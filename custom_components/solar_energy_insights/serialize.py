@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from .core.backtest import Calibration
 from .core.plan import NightOutcome, Plan
 
 
@@ -104,5 +105,38 @@ def plan_dict(
     if detail:
         if night is not None:
             data["night"]["each"] = [_outcome(o) for o in night.outcomes]
+            # Each replayed night's battery level, in the same order as "each".
+            data["night"]["curves"] = {
+                "times": [t.isoformat() for t in night.times],
+                "levels": [list(row) for row in night.levels],
+            }
         data["curve"] = [[t.isoformat(), round(pct, 1)] for t, pct in plan.curve]
     return data
+
+
+def backtest_dict(cal: Calibration | None) -> dict[str, Any] | None:
+    """What the recent evenings taught: the weighting, the hidden load, and how
+    each evening went, so a surprise can be traced to one night."""
+    if cal is None:
+        return None
+    contested = cal.score.contested_days
+    return {
+        "weighting": str(cal.weighting),
+        "hidden_load_w": round(cal.standby_kw * 1000),
+        "honest_error_kwh": {str(w): e for w, e in cal.honest_error_kwh.items()},
+        "bias_kwh": cal.score.bias_kwh,
+        "bias_without_hidden_load_kwh": cal.uncorrected.bias_kwh,
+        "lasts_right": cal.score.agreement,
+        "contested": len(cal.score.contested),
+        "nights": [
+            {
+                "day": n.day.isoformat(),
+                "contested": n.day in contested,
+                "predicted_spare_kwh": round(n.predicted_spare_kwh, 2),
+                "actual_spare_kwh": round(n.actual_spare_kwh, 2),
+                "predicted_lasts": n.predicted_lasts,
+                "actual_lasts": n.actual_lasts,
+            }
+            for n in cal.score.nights
+        ],
+    }

@@ -16,11 +16,13 @@ from tests.common import (
     DAY,
     local,
     recent,
+    record_battery,
     record_house,
     set_states,
     setup_entry,
     state,
 )
+from tests.test_answers import draining
 
 
 def evening(hour: int) -> float:
@@ -88,3 +90,43 @@ async def test_diagnostics_say_how_much_history_is_used(
 
     assert diagnostics["days_of_history"] >= 5
     assert diagnostics["plan"]["night"]["nights"] == 5
+
+
+async def test_the_plan_draws_every_replayed_night(
+    home: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    await record_house(home, recent(10), evening)
+    set_states(home)
+    await setup_entry(home, {const.CONF_NIGHTS: 7})
+    client = await hass_ws_client(home)
+
+    await client.send_json_auto_id({"type": f"{const.DOMAIN}/plan"})
+    night = (await client.receive_json())["result"]["night"]
+
+    curves = night["curves"]
+    assert len(curves["levels"]) == len(night["each"]) == 7
+    assert all(len(row) == len(curves["times"]) for row in curves["levels"])
+    assert all(0 <= v <= 100 for row in curves["levels"] for v in row)
+
+
+async def test_the_backtest_is_served_for_drawing(
+    home: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    await record_house(home, recent(20), evening)
+    await record_battery(home, recent(20), draining)
+    set_states(home)
+    await setup_entry(home)
+    client = await hass_ws_client(home)
+
+    await client.send_json_auto_id({"type": f"{const.DOMAIN}/backtest"})
+    reply = await client.receive_json()
+
+    assert reply["success"]
+    result = reply["result"]
+    assert result["nights"]
+    assert {"day", "contested", "predicted_spare_kwh", "actual_spare_kwh"} <= set(
+        result["nights"][0]
+    )
+    assert result["weighting"]
+    assert "live" in result
+    assert len(result["evenings"]) == len(result["nights"])
