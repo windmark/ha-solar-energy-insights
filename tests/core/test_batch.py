@@ -77,3 +77,30 @@ def test_weighted_quantiles_follow_the_weights() -> None:
     assert weighted_quantile(values, np.ones(3), 0.5) == 2.0
     assert weighted_quantile(values, np.array([0.0, 0.0, 1.0]), 0.5) == 2.0
     assert weighted_quantile(values, np.array([8.0, 1.0, 1.0]), 0.8) == 3.0
+
+
+def test_recorded_levels_match_the_single_run_curve() -> None:
+    season = SEASONS[1]
+    start = at(season.day, 20)
+    sunrise = season.sunrise_after(start)
+    battery = Battery(capacity_kwh=10.0, soc_pct=60.0, floor_pct=5.0)
+    slices = Slices.between(start, sunrise, None)
+    use = history(season.day, HOUSES["erratic"], count=2)
+
+    def rate(t):
+        local = t.astimezone(season.sunrise_after(t).tzinfo)
+        return use.get((local.date() - timedelta(days=1), local.hour), 0.4)
+
+    runs = run(
+        battery,
+        [60.0],
+        slices,
+        np.zeros(len(slices)),
+        np.array([slices.sample(rate)]),
+        record=True,
+    )
+    one = simulate(battery, start, sunrise, lambda _t: 0.0, rate)
+
+    assert runs.levels_pct is not None
+    assert runs.levels_pct.shape == (1, len(slices) + 1)
+    assert list(runs.levels_pct[0]) == pytest.approx([pct for _, pct in one.points])

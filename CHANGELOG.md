@@ -4,6 +4,11 @@
 
 ### Added
 
+- The `plan` WebSocket reply carries each replayed night's battery curve.
+- A `backtest` WebSocket command returns every scored evening and what was learned, for dashboards.
+
+### Added
+
 - numpy: nights, battery levels and hidden loads are simulated in batches. The plan takes 7 ms instead of 21; calibration 25 ms instead of 444.
 - Up to 60 recent evenings are scored instead of 14.
 - More ways of weighting nights: the same kind of day, similar outdoor temperature, similar presence at home (the last two when configured). Each is used only if it predicts left-out evenings clearly better, and the simplest of near-equal options wins.
