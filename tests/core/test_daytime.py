@@ -81,7 +81,7 @@ def test_reserve_and_grid_tonight_are_counted_from_sunset() -> None:
     # The reserve is reached at breakfast and again in the night; only the
     # night's counts.
     heavy_night = days(
-        lambda n, hour: (
+        lambda _n, hour: (
             6.0 if hour in (8, 9) else 1.8 if hour >= 17 or hour < 7 else 0.3
         )
     )
