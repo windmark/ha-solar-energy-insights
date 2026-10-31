@@ -297,7 +297,13 @@ class InsightsSensor(InsightsEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         attrs_fn = self.entity_description.attrs_fn
-        return attrs_fn(self.current) if attrs_fn else None
+        attrs = attrs_fn(self.current) if attrs_fn else None
+        if self.entity_description.key == "nights_covered" and attrs is not None:
+            # The share is a replay from the battery as it is now; next to it,
+            # what really happened, so an empty battery at 1 am does not read
+            # as "no night ever lasts".
+            attrs = {**attrs, **self.coordinator.recent_nights()}
+        return attrs
 
 
 class InsightsStatusSensor(InsightsEntity, SensorEntity):

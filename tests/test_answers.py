@@ -173,3 +173,30 @@ async def test_a_night_no_battery_covers_reads_100_and_says_how_short(
     assert float(needed.state) == 100
     assert needed.attributes["full_battery_lasts"] is False
     assert needed.attributes["grid_even_when_full_kwh"] > 0
+
+
+async def test_an_empty_battery_at_night_still_shows_the_nights_that_lasted(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """At 1 am with the battery at its reserve, no replayed night lasts from
+    here; the nights that really lasted are shown beside that."""
+    days = recent(20)
+    await record_house(home, days, evening_load)
+    await record_battery(home, days, draining)
+    freezer.move_to(local(DAY, 1))
+    set_states(home, soc=5)
+
+    entry = await setup_entry(home)
+
+    covered = home.states.get(f"sensor.{PREFIX}nights_covered")
+    assert covered is not None
+    assert covered.state == "0"
+    real = sorted(entry.runtime_data.calibration.score.nights, key=lambda n: n.day)[
+        -14:
+    ]
+    assert covered.attributes["recent_nights"] == len(real)
+    assert covered.attributes["recent_nights_lasted"] == sum(
+        n.actual_lasts for n in real
+    )
+    assert covered.attributes["recent_nights_lasted"] > 0
+    assert covered.attributes["last_night_lasted"] is real[-1].actual_lasts
