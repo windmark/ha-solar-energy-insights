@@ -24,6 +24,19 @@ CONF_IMPORT_POSITIVE: Final = "import_positive"
 CONF_PRICE: Final = "price"
 CONF_FEED_IN: Final = "feed_in"
 CONF_PRICE_ENTITY: Final = "price_entity"
+# Optional hourly series that may tell nights apart; each is used only if it
+# predicts recent evenings better.
+CONF_TEMPERATURE: Final = "outdoor_temperature"
+CONF_PRESENCE: Final = "presence"
+# Optional: what the panels made, to learn a correction to Solcast for this roof.
+CONF_SOLAR_ENERGY: Final = "solar_energy"
+
+# The morning forecast and "full at" are kept from the first plan after sunrise,
+# if it comes before this hour; the night answer from the first after this one.
+MORNING_UNTIL_HOUR: Final = 11
+NIGHT_ANSWER_HOUR: Final = 21
+# Recent days with 5-minute statistics, for when the battery got full.
+SHORT_TERM_DAYS: Final = 9
 
 DEFAULT_NIGHTS: Final = 14
 # The lowest state of charge an inverter discharges to by itself, as a floor under
@@ -39,7 +52,7 @@ PRICE_HELPER: Final = "input_number.electricity_price"
 FEED_IN_HELPER: Final = "input_number.feed_in_tariff"
 
 # Recent evenings the night answer is scored on, to choose how nights are weighted.
-BACKTEST_EVENINGS: Final = 14
+BACKTEST_EVENINGS: Final = 60
 
 # Minutes past the hour the recorder has compiled the hour before.
 HISTORY_MINUTE: Final = 5

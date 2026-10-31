@@ -7,9 +7,10 @@ restart: the house's hourly use over the last nights, re-read once an hour.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, tzinfo
+from datetime import date, datetime, timedelta, tzinfo
 from typing import Any
 
+import numpy as np
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.config_entries import ConfigEntry
@@ -18,6 +19,7 @@ from homeassistant.const import (
     STATE_UNKNOWN,
     UnitOfEnergy,
     UnitOfPower,
+    UnitOfTemperature,
 )
 from homeassistant.core import (
     Event,
@@ -45,11 +47,14 @@ from .const import (
     CONF_MAX_POWER,
     CONF_MIN_RESERVE,
     CONF_NIGHTS,
+    CONF_PRESENCE,
     CONF_PRICE,
     CONF_PRICE_ENTITY,
     CONF_ROUND_TRIP,
+    CONF_SOLAR_ENERGY,
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
+    CONF_TEMPERATURE,
     DEFAULT_FEED_IN_CT,
     DEFAULT_MAX_POWER_KW,
     DEFAULT_MIN_RESERVE_PCT,
@@ -62,22 +67,38 @@ from .const import (
     HISTORY_MINUTE,
     LIVE_COOLDOWN_S,
     LIVE_INTERVAL_MIN,
+    MORNING_UNTIL_HOUR,
+    NIGHT_ANSWER_HOUR,
     PRICE_HELPER,
+    SHORT_TERM_DAYS,
 )
+from .core import correction, live
 from .core.backtest import (
     EVENING,
+    NO_FEATURES,
     Calibration,
     Evening,
+    Features,
     Score,
     Weighting,
     calibrate,
     clean_lows,
+    weights_for,
 )
 from .core.battery import Battery, Rate
-from .core.forecast import PvForecast
-from .core.nights import HourlyUse, hourly_use, past_days, similarity_weights
-from .core.plan import Plan, PlanInputs, plan
+from .core.correction import Correction
+from .core.forecast import PvForecast, Slot
+from .core.live import FullScore, NightAnswer, NightScore
+from .core.nights import (
+    HourlySeries,
+    HourlyUse,
+    hourly_means,
+    hourly_use,
+    past_days,
+)
+from .core.plan import HEAVY_SHARE, Plan, PlanInputs, plan
 from .core.snapshot import to_snapshot
+from .memory import MemoryStore
 
 # The hour in progress counts towards "today so far" once this much of it is seen.
 MIN_PARTIAL_HOUR = timedelta(minutes=15)
@@ -121,6 +142,15 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         self.corrected_readings = 0
         # What the house counter does not see, learned from real nights.
         self.standby_kw = 0.0
+        # Where a heavy night sits among the replayed nights, calibrated.
+        self.heavy_share = HEAVY_SHARE
+        # Optional hourly series the weighting may use.
+        self.features = NO_FEATURES
+        # What the recorder cannot give back: morning forecasts, own answers.
+        self.memory = MemoryStore(hass, entry.entry_id)
+        self.correction = Correction.none()
+        self.live_nights: NightScore | None = None
+        self.live_full: FullScore | None = None
         # The inputs behind the plan shown, for an exact replay.
         self.last_inputs: PlanInputs | None = None
         # The last capacity reported, for a battery that reports none while asleep.
@@ -269,6 +299,10 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         )
 
     def forecast(self) -> PvForecast:
+        """Solcast, with this roof's correction once it has earned its place."""
+        return self.correction.apply(self.raw_forecast(), self.tz)
+
+    def raw_forecast(self) -> PvForecast:
         return PvForecast.from_solcast(
             *(
                 state.attributes.get("detailedForecast") if state else None
@@ -281,12 +315,16 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
 
     def inputs(self, extra: Rate | None = None) -> PlanInputs:
         now = dt_util.utcnow()
-        weights = None
-        if self.weighting is Weighting.SIMILAR:
-            days = past_days(self.use, self.tz, self.nights)
-            weights = similarity_weights(
-                self.use, self.tz, now, days, self._partial_kw(now)
-            )
+        days = past_days(self.use, self.tz, self.nights)
+        weights = weights_for(
+            self.weighting,
+            self.use,
+            self.tz,
+            now,
+            days,
+            self.features,
+            self._partial_kw(now),
+        )
         return PlanInputs(
             now=now,
             tz=self.tz,
@@ -300,6 +338,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             extra=extra,
             weights=weights,
             standby_kw=self.standby_kw,
+            heavy_share=self.heavy_share,
         )
 
     # ── History ──
@@ -314,16 +353,22 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             return
         house = self.config_entry.data[CONF_HOUSE_ENERGY]
         soc = self.config_entry.data[CONF_BATTERY_SOC]
+        options = self.config_entry.options
+        temperature = options.get(CONF_TEMPERATURE) or None
+        presence = options.get(CONF_PRESENCE) or None
         start = hour - timedelta(days=self.nights + BACKTEST_EVENINGS + 2)
         rows = await get_instance(self.hass).async_add_executor_job(
             statistics_during_period,
             self.hass,
             start,
             hour,
-            {house, soc},
+            {e for e in (house, soc, temperature, presence) if e},
             "hour",
-            {"energy": UnitOfEnergy.KILO_WATT_HOUR},
-            {"change", "state", "min", "mean"},
+            {
+                "energy": UnitOfEnergy.KILO_WATT_HOUR,
+                "temperature": UnitOfTemperature.CELSIUS,
+            },
+            {"change", "state", "min", "mean", "max"},
         )
         house_rows = rows.get(house, [])
         changes = {
@@ -342,7 +387,12 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             dt_util.utc_from_timestamp(row["start"]): (row.get("min"), row.get("mean"))
             for row in rows.get(soc, [])
         }
+        self.features = Features(
+            temperature=self._means(rows, temperature),
+            presence=self._means(rows, presence),
+        )
         await self._async_calibrate(soc_hours, now)
+        await self._async_score_live(rows, soc, now)
         self._use_until = hour
 
     def _evenings(self, lows: dict[datetime, float], now: datetime) -> list[Evening]:
@@ -365,6 +415,18 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             out.append(Evening(day, before, sunrise, min(night)))
         return out
 
+    def _means(
+        self, rows: dict[str, Any], entity_id: str | None
+    ) -> HourlySeries | None:
+        if not entity_id:
+            return None
+        means = {
+            dt_util.utc_from_timestamp(row["start"]): mean
+            for row in rows.get(entity_id, [])
+            if (mean := row.get("mean")) is not None
+        }
+        return hourly_means(means, self.tz) or None
+
     async def _async_calibrate(
         self,
         soc_hours: dict[datetime, tuple[float | None, float | None]],
@@ -386,9 +448,156 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             battery,
             self.nights,
             self.weighting,
+            self.features,
         )
         self.weighting = self.calibration.weighting
         self.standby_kw = self.calibration.standby_kw
+        self.heavy_share = self.calibration.heavy_share
+        if self.memory.memory.weighting != str(self.weighting):
+            self.memory.memory.weighting = str(self.weighting)
+            self.memory.async_save_later()
+
+    # ── Remembering and scoring the plan's own answers ──
+
+    def restore(self) -> None:
+        """Pick up what was remembered before a restart."""
+        saved = self.memory.memory.weighting
+        if saved in {str(w) for w in Weighting}:
+            self.weighting = Weighting(saved)
+
+    def _remember(self, p: Plan) -> None:
+        """Keep the morning forecast and "full at", and the 21:00 night answer."""
+        memory = self.memory.memory
+        local = dt_util.as_local(p.now)
+        day = local.date().isoformat()
+        changed = False
+        daytime = p.sunset < p.sunrise
+        if daytime and local.hour < MORNING_UNTIL_HOUR and day not in memory.days:
+            memory.forecasts[day] = [
+                [s.start.isoformat(), s.p50, s.p10, s.p90]
+                for s in self.raw_forecast().slots
+                if dt_util.as_local(s.start).date() == local.date()
+            ]
+            full_at = p.charge.full_at
+            memory.days[day] = {
+                "at": p.now.isoformat(),
+                "full_at": full_at.isoformat() if full_at else None,
+            }
+            changed = True
+        if (
+            local.hour >= NIGHT_ANSWER_HOUR
+            and day not in memory.nights
+            and p.night is not None
+        ):
+            memory.nights[day] = {
+                "at": p.now.isoformat(),
+                "spare_kwh": p.night.typical.spare_kwh,
+                "lasts": p.night.typical.lasts,
+            }
+            changed = True
+        if changed:
+            memory.prune(local.date())
+            self.memory.async_save_later()
+
+    async def _async_score_live(
+        self, rows: dict[str, Any], soc: str, now: datetime
+    ) -> None:
+        """Score what the plan said against what happened, and learn this roof's
+        correction to Solcast."""
+        memory = self.memory.memory
+        today = dt_util.as_local(now).date()
+        try:
+            battery = self.battery()
+        except UpdateFailed:
+            return
+        # The night answers, against the same evenings the backtest uses.
+        floor, cap = battery.floor_pct, battery.capacity_kwh
+        spare = {
+            e.day: max(e.lowest_soc - floor, 0.0) / 100 * cap for e in self.evenings
+        }
+        lasted = {e.day: e.lowest_soc > floor + 1.0 for e in self.evenings}
+        answers = {
+            date.fromisoformat(day): NightAnswer(a["spare_kwh"], a["lasts"])
+            for day, a in memory.nights.items()
+        }
+        self.live_nights = live.score_nights(answers, spare, lasted)
+        # "Full at", to five minutes where the recorder still has it.
+        highest = {
+            dt_util.utc_from_timestamp(row["start"]): value
+            for row in rows.get(soc, [])
+            if (value := row.get("max")) is not None
+        }
+        fine = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            now - timedelta(days=SHORT_TERM_DAYS),
+            now,
+            {soc},
+            "5minute",
+            None,
+            {"max"},
+        )
+        fine_days = set()
+        for row in fine.get(soc, []):
+            if (value := row.get("max")) is not None:
+                start = dt_util.utc_from_timestamp(row["start"])
+                fine_days.add(dt_util.as_local(start).date())
+        highest = {
+            t: v
+            for t, v in highest.items()
+            if dt_util.as_local(t).date() not in fine_days
+        } | {
+            dt_util.utc_from_timestamp(row["start"]): value
+            for row in fine.get(soc, [])
+            if (value := row.get("max")) is not None
+        }
+        actual_full = {
+            day: t
+            for day, t in live.full_times(highest, self.tz).items()
+            if day < today
+        }
+        predicted_full = {
+            date.fromisoformat(day): (
+                datetime.fromisoformat(a["full_at"]) if a.get("full_at") else None
+            )
+            for day, a in memory.days.items()
+        }
+        self.live_full = live.score_full(predicted_full, actual_full)
+        # This roof's correction, from the saved mornings and what the panels made.
+        solar = self.config_entry.options.get(CONF_SOLAR_ENERGY)
+        if not solar:
+            self.correction = Correction.none()
+            return
+        made = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            now - timedelta(days=len(memory.forecasts) + 1),
+            now,
+            {solar},
+            "hour",
+            {"energy": UnitOfEnergy.KILO_WATT_HOUR},
+            {"change"},
+        )
+        hourly = hourly_use(
+            {
+                dt_util.utc_from_timestamp(row["start"]): change
+                for row in made.get(solar, [])
+                if (change := row.get("change")) is not None
+            },
+            self.tz,
+        )
+        forecasts, actual = {}, {}
+        for day_key, slots in memory.forecasts.items():
+            day = date.fromisoformat(day_key)
+            if day >= today or not all((day, h) in hourly for h in range(24)):
+                continue
+            saved = PvForecast(
+                Slot(datetime.fromisoformat(t), p50, p10, p90)
+                for t, p50, p10, p90 in slots
+            )
+            forecasts[day] = np.array(saved.hourly(day, self.tz))
+            actual[day] = np.array([hourly[(day, h)] for h in range(24)])
+        self.correction = correction.learn(forecasts, actual)
 
     @property
     def score(self) -> Score | None:
@@ -402,6 +611,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         previous: Plan | None = self.data
         self.last_inputs = self.inputs()
         result = plan(self.last_inputs)
+        self._remember(result)
         if result.free_power and not (previous is not None and previous.free_power):
             self.hass.bus.async_fire(EVENT_FREE_POWER, {})
         return result

@@ -15,7 +15,9 @@
   "loggers": [
     "custom_components.solar_energy_insights"
   ],
-  "requirements": [],
+  "requirements": [
+    "numpy>=2.0"
+  ],
   "single_config_entry": true,
   "version": "0.1.0"
 }

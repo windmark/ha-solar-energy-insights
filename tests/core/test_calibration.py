@@ -10,6 +10,7 @@ import pytest
 from custom_components.solar_energy_insights.core.backtest import (
     STANDBY_STEPS_W,
     Evening,
+    Features,
     Weighting,
     calibrate,
     clean_lows,
@@ -147,3 +148,114 @@ def test_too_few_evenings_teach_nothing() -> None:
 def test_the_hidden_load_searched_covers_a_typical_inverter() -> None:
     assert min(STANDBY_STEPS_W) == 0
     assert max(STANDBY_STEPS_W) >= 100
+
+
+def lived_with(use, count, socs, extra_at) -> list[Evening]:
+    """Like lived(), with an extra load per evening: extra_at(day) kW."""
+    out = []
+    for k, n in enumerate(range(count, 0, -1)):
+        day = DAY - timedelta(days=n)
+        start, sunrise = at(day, 21), at(day + timedelta(days=1), 7)
+        extra = extra_at(day)
+
+        def load(t: datetime, extra=extra) -> float:
+            local = t.astimezone(TZ)
+            return use.get((local.date(), local.hour), 0.0) + extra
+
+        battery = Battery(capacity_kwh=10.0, soc_pct=socs[k % len(socs)], floor_pct=5.0)
+        sim = simulate(battery, start, sunrise, lambda _t: 0.0, load)
+        out.append(
+            Evening(day, battery.soc_pct, sunrise, min(p for _, p in sim.points))
+        )
+    return out
+
+
+def weekend_heavy(days: int) -> dict[tuple[date, int], float]:
+    """Afternoons alike every day; nights after a weekend evening are heavier."""
+    out = {}
+    for n in range(days + 1):
+        day = DAY - timedelta(days=n)
+        for hour in range(24):
+            evening = day if hour >= 12 else day - timedelta(days=1)
+            heavy = evening.weekday() >= 5 and (hour >= 21 or hour < 7)
+            out[(day, hour)] = 0.9 if heavy else 0.35
+    return out
+
+
+def test_weekday_or_weekend_is_used_when_the_nights_follow_it() -> None:
+    use = weekend_heavy(70)
+
+    cal = calibrate(use, TZ, lived(use, 45, 0.0, [55.0, 70.0, 85.0]), BATTERY, 14)
+
+    assert cal.weighting is Weighting.DAY_TYPE
+
+
+def test_temperature_is_used_when_the_nights_follow_the_weather() -> None:
+    def cold(day: date) -> float:
+        return 2.0 + 10.0 * ((day.toordinal() * 37) % 7) / 6
+
+    temperature = {
+        (DAY - timedelta(days=n), hour): cold(DAY - timedelta(days=n))
+        for n in range(71)
+        for hour in range(24)
+    }
+    use = {
+        (DAY - timedelta(days=n), hour): (
+            0.35
+            + (0.6 if hour >= 21 or hour < 7 else 0.0)
+            * (
+                12
+                - cold(
+                    (DAY - timedelta(days=n))
+                    if hour >= 12
+                    else DAY - timedelta(days=n + 1)
+                )
+            )
+            / 10
+        )
+        for n in range(71)
+        for hour in range(24)
+    }
+
+    cal = calibrate(
+        use,
+        TZ,
+        lived(use, 45, 0.0, [55.0, 70.0, 85.0]),
+        BATTERY,
+        14,
+        features=Features(temperature=temperature),
+    )
+
+    assert cal.weighting is Weighting.SIMILAR_TEMPERATURE
+
+
+def test_a_heavy_night_is_made_heavier_when_real_nights_often_exceed_it() -> None:
+    use = use_for(70)
+    # A third of real nights carry an extra load no past night had.
+    evenings = lived_with(
+        use, 45, [60.0, 75.0, 90.0], lambda d: 0.25 if d.toordinal() % 3 == 0 else 0.0
+    )
+
+    cal = calibrate(use, TZ, evenings, BATTERY, 14)
+
+    assert cal.heavy_share > 0.8
+
+
+def test_with_few_evenings_a_heavy_night_stays_as_set() -> None:
+    use = use_for(40)
+
+    cal = calibrate(use, TZ, lived(use, 6, 0.0, SOCS), BATTERY, 14)
+
+    assert cal.heavy_share == 0.8
+
+
+def test_sixty_evenings_take_well_under_a_second() -> None:
+    import time
+
+    use = use_for(80)
+    evenings = lived(use, 60, 0.0, SOCS)
+    started = time.perf_counter()
+
+    calibrate(use, TZ, evenings, BATTERY, 14)
+
+    assert time.perf_counter() - started < 2.0

@@ -53,6 +53,35 @@ async def async_get_config_entry_diagnostics(
         "replay": coordinator.snapshot(),
         "backtest": _backtest(coordinator.calibration),
         "corrected_readings": coordinator.corrected_readings,
+        "heavy_share": coordinator.heavy_share,
+        "memory": {
+            "weighting": coordinator.memory.memory.weighting,
+            "mornings": len(coordinator.memory.memory.forecasts),
+            "night_answers": len(coordinator.memory.memory.nights),
+        },
+        "live": {
+            "nights": None
+            if coordinator.live_nights is None
+            else {
+                "count": coordinator.live_nights.nights,
+                "error_kwh": coordinator.live_nights.error_kwh,
+                "lasts_right": coordinator.live_nights.lasts_right,
+            },
+            "full_at": None
+            if coordinator.live_full is None
+            else {
+                "days": coordinator.live_full.days,
+                "error_minutes": coordinator.live_full.error_minutes,
+                "missed": coordinator.live_full.missed,
+            },
+        },
+        "forecast_correction": {
+            "active": coordinator.correction.active,
+            "days": coordinator.correction.days,
+            "raw_error_kwh": coordinator.correction.raw_error_kwh,
+            "corrected_error_kwh": coordinator.correction.corrected_error_kwh,
+            "factors": [float(f) for f in coordinator.correction.factors],
+        },
         "price_source": coordinator.price_source,
         "plan": plan_dict(
             current, detail=False, prices=(coordinator.price, coordinator.feed_in)

@@ -44,6 +44,12 @@
           "borderline": "mdi:battery-alert-variant-outline",
           "grid": "mdi:transmission-tower-import"
         }
+      },
+      "full_at_error": {
+        "default": "mdi:clock-check-outline"
+      },
+      "forecast_correction": {
+        "default": "mdi:tune-variant"
       }
     },
     "binary_sensor": {

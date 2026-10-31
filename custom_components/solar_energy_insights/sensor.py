@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorEntityDescription,
 )
-from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfEnergy
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfEnergy, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -166,31 +166,45 @@ class InsightsStatusDescription(SensorEntityDescription):
     attrs_fn: Callable[[InsightsCoordinator], dict[str, Any]] | None = None
 
 
+def _r(value: float | None, digits: int = 2) -> float | None:
+    return None if value is None else round(value, digits)
+
+
 def _score_attrs(c: InsightsCoordinator) -> dict[str, Any]:
     attrs: dict[str, Any] = {
         "weighting": str(c.weighting),
         "hidden_load_w": round(c.standby_kw * 1000),
+        "heavy_share_pct": round(c.heavy_share * 100),
         "corrected_readings": c.corrected_readings,
     }
     cal = c.calibration
-    if cal is None:
-        return attrs
-    for weighting, error in cal.honest_error_kwh.items():
-        attrs[f"error_{weighting}"] = None if error is None else round(error, 2)
-    score = cal.score
-    bias, uncorrected = score.bias_kwh, cal.uncorrected.bias_kwh
-    agreement = score.agreement
-    attrs.update(
-        {
-            "evenings_scored": len(score.nights),
-            "contested_evenings": len(score.contested),
-            "lasts_right_pct": None if agreement is None else round(agreement * 100),
-            "bias_kwh": None if bias is None else round(bias, 2),
-            "bias_without_hidden_load_kwh": None
-            if uncorrected is None
-            else round(uncorrected, 2),
-        }
-    )
+    if cal is not None:
+        score = cal.score
+        agreement = score.agreement
+        attrs.update(
+            {
+                "errors_by_weighting": {
+                    str(w): _r(e) for w, e in cal.honest_error_kwh.items()
+                },
+                "evenings_scored": len(score.nights),
+                "contested_evenings": len(score.contested),
+                "lasts_right_pct": None
+                if agreement is None
+                else round(agreement * 100),
+                "bias_kwh": _r(score.bias_kwh),
+                "bias_without_hidden_load_kwh": _r(cal.uncorrected.bias_kwh),
+            }
+        )
+    if (live := c.live_nights) is not None:
+        attrs.update(
+            {
+                "live_nights": live.nights,
+                "live_error_kwh": _r(live.error_kwh),
+                "live_lasts_right_pct": None
+                if live.lasts_right is None
+                else round(live.lasts_right * 100),
+            }
+        )
     return attrs
 
 
@@ -208,6 +222,40 @@ STATUS: tuple[InsightsStatusDescription, ...] = (
             else round(c.calibration.error_kwh, 3)
         ),
         attrs_fn=_score_attrs,
+    ),
+    InsightsStatusDescription(
+        key="full_at_error",
+        translation_key="full_at_error",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        suggested_display_precision=0,
+        # What the plan said in the morning, against when the battery got full.
+        value_fn=lambda c: (
+            None
+            if c.live_full is None or c.live_full.error_minutes is None
+            else round(c.live_full.error_minutes, 1)
+        ),
+        attrs_fn=lambda c: (
+            {}
+            if c.live_full is None
+            else {"days": c.live_full.days, "missed": c.live_full.missed}
+        ),
+    ),
+    InsightsStatusDescription(
+        key="forecast_correction",
+        translation_key="forecast_correction",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        native_unit_of_measurement=PERCENTAGE,
+        suggested_display_precision=0,
+        # How much the roof's correction cuts Solcast's error on left-out days.
+        value_fn=lambda c: _r(c.correction.improvement_pct, 1),
+        attrs_fn=lambda c: {
+            "active": c.correction.active,
+            "days": c.correction.days,
+            "raw_error_kwh": _r(c.correction.raw_error_kwh),
+            "corrected_error_kwh": _r(c.correction.corrected_error_kwh),
+            "factors_by_hour": [round(float(f), 2) for f in c.correction.factors],
+        },
     ),
     InsightsStatusDescription(
         key="history_days",

@@ -34,11 +34,14 @@ from .const import (
     CONF_MAX_POWER,
     CONF_MIN_RESERVE,
     CONF_NIGHTS,
+    CONF_PRESENCE,
     CONF_PRICE,
     CONF_PRICE_ENTITY,
     CONF_ROUND_TRIP,
+    CONF_SOLAR_ENERGY,
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
+    CONF_TEMPERATURE,
     DEFAULT_FEED_IN_CT,
     DEFAULT_MAX_POWER_KW,
     DEFAULT_MIN_RESERVE_PCT,
@@ -108,6 +111,9 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Optional(CONF_PRICE_ENTITY): EntitySelector(
             EntitySelectorConfig(domain=["sensor", "input_number"])
         ),
+        vol.Optional(CONF_TEMPERATURE): _sensor(SensorDeviceClass.TEMPERATURE),
+        vol.Optional(CONF_PRESENCE): _sensor(),
+        vol.Optional(CONF_SOLAR_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Required(CONF_NIGHTS, default=DEFAULT_NIGHTS): _number(3, 60, 1, "nights"),
         vol.Required(CONF_MIN_RESERVE, default=DEFAULT_MIN_RESERVE_PCT): _number(
             0, 50, 1, "%"

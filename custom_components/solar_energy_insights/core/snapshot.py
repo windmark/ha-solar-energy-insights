@@ -51,6 +51,7 @@ def to_snapshot(i: PlanInputs, evenings: Sequence[Evening] = ()) -> dict[str, An
         "nights": i.nights,
         "weights": list(i.weights) if i.weights is not None else None,
         "standby_kw": i.standby_kw,
+        "heavy_share": i.heavy_share,
         "forecast": [[_iso(s.start), s.p50, s.p10, s.p90] for s in i.pv.slots],
         # The house's use per local clock hour: [date, hour, kWh].
         "use": [[d.isoformat(), hour, kwh] for (d, hour), kwh in sorted(i.use.items())],
@@ -94,6 +95,7 @@ def from_snapshot(data: Mapping[str, Any]) -> PlanInputs:
         weights=[float(w) for w in weights] if weights is not None else None,
         # Absent in files saved before the hidden load was learned.
         standby_kw=float(s.get("standby_kw", 0.0)),
+        heavy_share=float(s.get("heavy_share", 0.8)),
     )
 
 

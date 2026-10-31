@@ -60,6 +60,18 @@ class PastDay:
         return value if value is not None else self.fallback.get(local.hour, 0.0)
 
 
+def hourly_means(
+    rows: Mapping[datetime, float], tz: tzinfo
+) -> dict[tuple[date, int], float]:
+    """Key the recorder's hourly means (°C, people home) by local date and hour;
+    an hour seen twice (the autumn clock change) holds their average."""
+    sums: dict[tuple[date, int], list[float]] = {}
+    for start, value in rows.items():
+        local = start.astimezone(tz)
+        sums.setdefault((local.date(), local.hour), []).append(value)
+    return {key: sum(v) / len(v) for key, v in sums.items()}
+
+
 def typical_by_hour(use: HourlyUse) -> dict[int, float]:
     """The median kWh of each clock hour over all days given."""
     by_hour: dict[int, list[float]] = {}
