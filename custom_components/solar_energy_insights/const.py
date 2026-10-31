@@ -56,9 +56,10 @@ DEFAULT_FEED_IN_CT: Final = 8.0
 PRICE_HELPER: Final = "input_number.electricity_price"
 FEED_IN_HELPER: Final = "input_number.feed_in_tariff"
 
-# Recent evenings the night answer is scored on, to learn from. About a month: enough evenings that could have gone either way to learn from,
-# recent enough to follow the season. Two months reached back into a different
-# season, whose noise hid the current bias (tests/test_real_mornings.py).
+# Recent evenings the night answer is scored on and learned from. About a month:
+# enough evenings that could have gone either way, recent enough to follow the
+# season. Two months reached back into a different season, whose noise hid the
+# current bias (tests/test_real_mornings.py).
 BACKTEST_EVENINGS: Final = 30
 
 # Minutes past the hour the recorder has compiled the hour before.
