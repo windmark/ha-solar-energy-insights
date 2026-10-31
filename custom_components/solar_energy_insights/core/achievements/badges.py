@@ -64,9 +64,11 @@ class Context:
         return float(np.quantile(values, share))
 
     def specific_yield(self, f: DayFacts) -> float | None:
-        if f.solar_kwh is None or not self.profile.kwp:
+        """Yield per kWp; without a known size, the yield itself, which ranks
+        days the same way against the home's own history."""
+        if f.solar_kwh is None:
             return None
-        return f.solar_kwh / self.profile.kwp
+        return f.solar_kwh / self.profile.kwp if self.profile.kwp else f.solar_kwh
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +113,8 @@ def _every_drop(f: DayFacts, c: Context) -> bool | None:
 def _power_plant(f: DayFacts, c: Context) -> bool | None:
     if f.export_kwh is None or not c.profile.kwp:
         return None
-    return f.export_kwh / c.profile.kwp >= 2.0
+    # 2 kWh per kWp on a roof facing the equator; less on one that faces away.
+    return f.export_kwh / c.profile.kwp >= 2.0 * c.profile.relative_yield
 
 
 def _silver_lining(f: DayFacts, c: Context) -> bool | None:
@@ -256,7 +259,8 @@ def _mwh_per_10kwp(days: Sequence[DayFacts], c: Context) -> float:
     total = sum(f.solar_kwh or 0 for f in days)
     if not c.profile.kwp:
         return 0
-    return total / 1000 / (c.profile.kwp / 10)
+    # Per 10 kWp of an ideal roof: an east–west roof's year counts for more.
+    return total / 1000 / (c.profile.kwp / 10 * c.profile.relative_yield)
 
 
 def _cycles(days: Sequence[DayFacts], _c: Context) -> float:
@@ -289,7 +293,7 @@ CATALOGUE: tuple[Badge, ...] = (
         "Power plant",
         "mdi:factory",
         "2 kWh exported per kWp in a day",
-        (Cap.SOLAR, Cap.GRID),
+        (Cap.SOLAR, Cap.GRID, Cap.ARRAY),
         (1, 10, 30),
         earns=_power_plant,
     ),
@@ -469,7 +473,7 @@ CATALOGUE: tuple[Badge, ...] = (
         "MWh club",
         "mdi:trophy",
         "Lifetime yield, per 10 kWp of panels",
-        (Cap.SOLAR,),
+        (Cap.SOLAR, Cap.ARRAY),
         (1, 5, 10),
         count=_mwh_per_10kwp,
     ),

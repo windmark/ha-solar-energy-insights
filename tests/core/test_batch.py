@@ -32,12 +32,14 @@ def test_batch_runs_match_single_runs(season, sky_name, start_hour, minute) -> N
     sunset = season.sunset_after(start)
     mark = sunset if sunset < sunrise else None
     pv = sky(season, SKIES[sky_name])
+    # Charging and discharging limited differently, as a battery's BMS does.
     battery = Battery(
         capacity_kwh=10.0,
         soc_pct=50.0,
         floor_pct=7.0,
         max_power_kw=4.0,
         ceiling_pct=85.0,
+        max_discharge_kw=2.5,
     )
     slices = Slices.between(start, sunrise, mark)
     sun = slices.sample(pv.kw_at)
