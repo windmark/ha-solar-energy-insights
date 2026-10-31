@@ -19,7 +19,15 @@ from custom_components.solar_energy_insights import const
 from custom_components.solar_energy_insights.diagnostics import (
     async_get_config_entry_diagnostics,
 )
-from tests.common import DAY, local, recent, record_house, set_states, setup_entry, state
+from tests.common import (
+    DAY,
+    local,
+    recent,
+    record_house,
+    set_states,
+    setup_entry,
+    state,
+)
 from tests.test_answers import evening_load
 
 PREFIX = "solar_energy_insights_"
@@ -100,7 +108,8 @@ async def test_a_recorder_hiccup_keeps_the_answers(
         async_fire_time_changed(home)
         await home.async_block_till_done(wait_background_tasks=True)
 
-        assert state(home, f"sensor.{PREFIX}nights_covered") not in ("unavailable", "unknown")
+        covered = state(home, f"sensor.{PREFIX}nights_covered")
+        assert covered not in ("unavailable", "unknown")
 
 
 async def test_answers_keep_long_term_statistics(home: HomeAssistant) -> None:
