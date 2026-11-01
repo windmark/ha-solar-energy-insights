@@ -298,6 +298,15 @@ class InsightsSensor(InsightsEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any] | None:
         attrs_fn = self.entity_description.attrs_fn
         attrs = attrs_fn(self.current) if attrs_fn else None
+        if self.entity_description.key == "charge_needed" and attrs is not None:
+            # The level the plan starts from: the battery's last reading while it
+            # is switched off below its reserve and reports nothing.
+            curve = self.current.curve
+            attrs = {
+                **attrs,
+                "battery_now": round(curve[0][1], 1) if curve else None,
+                "battery_remembered": "soc_pct" in self.coordinator.remembered,
+            }
         if self.entity_description.key == "nights_covered" and attrs is not None:
             # The share is a replay from the battery as it is now; next to it,
             # what really happened, so an empty battery at 1 am does not read

@@ -27,6 +27,7 @@ async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: InsightsConfigEntry) -> bool:
     coordinator = InsightsCoordinator(hass, entry)
     await coordinator.memory.async_load()
+    await coordinator.async_remember_from_recorder()
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     entry.async_on_unload(coordinator.async_follow_states())
