@@ -31,6 +31,8 @@ Complications that, measured on real data, did not earn their place:
 
 ### Fixed
 
+- "Nights covered" is a replay from the battery as it is now, so once the battery reaches its reserve at night it reads 0 %, which looked like "no night lasts". It now also carries what really happened: how many of the recent nights lasted until sunrise, and whether last night did.
+
 - A counter that first reports 0 and then its lifetime total no longer counts as one enormous hour. Records showed it as the best day and the most exported, and the array's size learned from it made every per-kWp badge unreachable; stored achievement facts are rebuilt once, quietly. The Solcast correction, reading the same counter, is protected too.
 
 - During the day, the night is measured from sunset: this morning's reserve is not a failed night, and a heavy night never ends better than a typical one.

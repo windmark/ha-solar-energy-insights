@@ -111,7 +111,24 @@
         "name": "Battery at sunset"
       },
       "nights_covered": {
-        "name": "Nights covered"
+        "name": "Nights covered",
+        "state_attributes": {
+          "nights": {
+            "name": "Nights replayed"
+          },
+          "lasting": {
+            "name": "Lasting from now"
+          },
+          "recent_nights": {
+            "name": "Recent nights"
+          },
+          "recent_nights_lasted": {
+            "name": "Recent nights that lasted"
+          },
+          "last_night_lasted": {
+            "name": "Last night lasted"
+          }
+        }
       },
       "reserve_reached_at": {
         "name": "Reserve reached at"

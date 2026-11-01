@@ -280,6 +280,20 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             round_trip=self._option(CONF_ROUND_TRIP, DEFAULT_ROUND_TRIP_PCT) / 100,
         )
 
+    def recent_nights(self) -> dict[str, Any]:
+        """What really happened on the recent nights: how many lasted until
+        sunrise, from the battery as it was at 21:00, and whether last night did."""
+        if self.calibration is None or not self.calibration.score.nights:
+            return {}
+        nights = sorted(self.calibration.score.nights, key=lambda n: n.day)[
+            -self.nights :
+        ]
+        return {
+            "recent_nights": len(nights),
+            "recent_nights_lasted": sum(n.actual_lasts for n in nights),
+            "last_night_lasted": nights[-1].actual_lasts,
+        }
+
     @property
     def array(self) -> Array:
         """The array as Solcast's sites describe it, or its size set by hand."""
