@@ -87,6 +87,7 @@ from .core.backtest import (
     clean_lows,
 )
 from .core.battery import Battery, Rate
+from .core.changes import Answers, Change, detect, keep
 from .core.correction import Correction
 from .core.forecast import PvForecast, Slot
 from .core.live import FullScore, NightAnswer, NightScore
@@ -156,6 +157,9 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         self.remembered: set[str] = set()
         # What the house has used since this evening's sunset, kWh; None by day.
         self.evening_used_kwh: float | None = None
+        # The last half hour of answers, and what changed in it.
+        self._answers: list[Answers] = []
+        self.changes: dict[str, Change] = {}
 
     # ── Reading ──
 
@@ -362,6 +366,42 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             )
         except Exception:
             return None
+
+    def _note_answers(self, p: Plan) -> None:
+        """Keep the last half hour of answers, and find what changed in it."""
+        night = p.night
+        now = Answers(
+            at=p.now,
+            outlook=str(night.outlook) if night else None,
+            grid_from=night.typical.reserve_at if night else None,
+            spare_kwh=night.typical.spare_kwh if night else None,
+            full_at=p.charge.full_at,
+            house_kwh=self._house_counter_kwh(),
+            forecast_kwh=self._sun_left_today(p.now),
+        )
+        self._answers = keep(self._answers, now)
+        self.changes = detect(self._answers, self._usual_kw(p.now))
+
+    def _sun_left_today(self, now: datetime) -> float | None:
+        """What Solcast still expects today, kWh."""
+        try:
+            forecast = self.forecast()
+        except UpdateFailed:
+            return None
+        end = datetime.combine(
+            now.astimezone(self.tz).date() + timedelta(days=1), time(), self.tz
+        )
+        return round(sum(s.p50 for s in forecast.slots if now <= s.start < end) / 2, 2)
+
+    def _usual_kw(self, now: datetime) -> float | None:
+        """The house's usual use in this clock hour, kW, over the recent days."""
+        local = now.astimezone(self.tz)
+        values = sorted(
+            kwh
+            for (day, hour), kwh in self.use.items()
+            if hour == local.hour and day < local.date()
+        )[-self.nights * 2 :]
+        return values[len(values) // 2] if values else None
 
     def _evening_used(self, i: PlanInputs) -> float | None:
         """The house's use since tonight's sunset, from its energy counter.
@@ -714,6 +754,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         result = plan(self.last_inputs)
         self._remember(result)
         self.evening_used_kwh = self._evening_used(self.last_inputs)
+        self._note_answers(result)
         if result.free_power and not (previous is not None and previous.free_power):
             self.hass.bus.async_fire(EVENT_FREE_POWER, {})
         return result

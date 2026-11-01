@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
@@ -252,3 +254,49 @@ async def test_the_evenings_use_follows_the_house_counter_from_sunset(
     assert outlook is not None
     assert outlook.attributes["evening_used_kwh"] == coordinator.evening_used_kwh
     assert coordinator.evening_used_kwh >= 2.5
+
+
+async def test_a_turned_night_shows_what_it_was_since_when_and_why(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    await record_house(home, recent(14), evening_load)
+    freezer.move_to(local(DAY, 22))
+    set_states(home, soc=90)
+    entry = await setup_entry(home)
+    coordinator = entry.runtime_data
+    outlook = f"sensor.{PREFIX}night_outlook"
+    before = home.states.get(outlook)
+    assert before is not None
+    assert before.attributes["changed"] is None
+
+    def counter(kwh: float) -> None:
+        home.states.async_set(
+            "sensor.house_energy",
+            str(kwh),
+            {
+                "unit_of_measurement": "kWh",
+                "device_class": "energy",
+                "state_class": "total_increasing",
+            },
+        )
+
+    # Ten minutes of a heavy load: the counter jumps and the battery drops.
+    freezer.tick(timedelta(minutes=10))
+    set_states(home, soc=25)
+    counter(1003.0)
+    await coordinator.async_refresh()
+
+    after = home.states.get(outlook)
+    assert after is not None
+    assert after.state != before.state
+    changed = after.attributes["changed"]
+    assert changed["was"]["outlook"] == before.state
+    assert changed["cause"].startswith("house used ")
+    assert changed["cause"].endswith("kWh more than usual")
+
+    # Half an hour later the turn is no longer shown: the new answer is simply
+    # the answer. (The level is held still here, so the grid time drifts later
+    # as the minutes pass; that is a change of its own, from the turned night.)
+    freezer.tick(timedelta(minutes=35))
+    await coordinator.async_refresh()
+    assert all(c.was.outlook != before.state for c in coordinator.changes.values())

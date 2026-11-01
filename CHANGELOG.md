@@ -4,6 +4,8 @@
 
 ### Added
 
+- What changed in the last half hour: when tonight's outlook, the grid time, the spare at sunrise or the time the battery is full moves meaningfully (15 minutes, 0.3 kWh, or a different outlook), "Night outlook" and "Battery full at" carry a `changed` attribute with the earlier answer, since when, and the likely cause (the house using more or less than usual, or Solcast expecting more or less sun). It clears itself after half an hour.
+
 - Tonight's budget, on "Night outlook": what the battery can deliver from sunset to its reserve, how much of it the evening may use (leaving your usual after-midnight use), your usual evening, the house's use since sunset, live, and the recent nights that ran short with their evening's use. A borderline night says why and what keeps it covered.
 
 ### Removed
