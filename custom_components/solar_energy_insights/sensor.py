@@ -315,10 +315,12 @@ class InsightsSensor(InsightsEntity, SensorEntity):
             attrs["changed"] = _changed(
                 self.coordinator.changes.get("tonight"), "tonight"
             )
+            attrs["last_night"] = self.coordinator.last_night()
         if self.entity_description.key == "battery_full_at":
             attrs = {
                 **(attrs or {}),
                 "changed": _changed(self.coordinator.changes.get("full_at"), "full_at"),
+                "this_morning": self.coordinator.this_morning(self.current),
             }
         if self.entity_description.key == "nights_covered" and attrs is not None:
             # The share is a replay from the battery as it is now; next to it,

@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+# How far back changes are shown; an option, from half an hour to two hours.
 WINDOW = timedelta(minutes=30)
 # Smaller moves are the plan's ordinary drift.
 TIME_STEP = timedelta(minutes=15)
@@ -82,32 +83,37 @@ def _cause(was: Answers, now: Answers, usual_kw: float | None) -> str | None:
 
 
 def detect(
-    samples: Sequence[Answers], usual_kw: float | None = None
+    samples: Sequence[Answers],
+    usual_kw: float | None = None,
+    window: timedelta = WINDOW,
 ) -> dict[str, Change]:
-    """What changed against the answers half an hour ago: "tonight" and
+    """What changed against the answers *window* ago (half an hour by
+    default): "tonight" and
     "full_at", each with what it was, since when, and why."""
     if len(samples) < 2:
         return {}
     now = samples[-1]
     # The answers as they stood half an hour ago: the last ones at or before
     # then, or the first ones there are.
-    before = [s for s in samples if s.at <= now.at - WINDOW]
+    before = [s for s in samples if s.at <= now.at - window]
     was = before[-1] if before else samples[0]
-    window = [s for s in samples if s.at >= was.at]
-    if len(window) < 2:
+    recent = [s for s in samples if s.at >= was.at]
+    if len(recent) < 2:
         return {}
     out: dict[str, Change] = {}
     for key, differs in (("tonight", _tonight_differs), ("full_at", _full_differs)):
         if not differs(was, now):
             continue
-        since = next(s.at for s in window[1:] if differs(was, s))
+        since = next(s.at for s in recent[1:] if differs(was, s))
         out[key] = Change(was=was, since=since, cause=_cause(was, now, usual_kw))
     return out
 
 
-def keep(samples: list[Answers], new: Answers) -> list[Answers]:
-    """The samples still needed: the half hour, and the one just before it."""
+def keep(
+    samples: list[Answers], new: Answers, window: timedelta = WINDOW
+) -> list[Answers]:
+    """The samples still needed: the window, and the one just before it."""
     kept = [*samples, new]
-    while len(kept) > 2 and kept[1].at <= new.at - WINDOW:
+    while len(kept) > 2 and kept[1].at <= new.at - window:
         kept.pop(0)
     return kept

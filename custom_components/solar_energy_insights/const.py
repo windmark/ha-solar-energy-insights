@@ -33,6 +33,9 @@ CONF_SOLAR_ENERGY: Final = "solar_energy"
 
 # Achievements: switched on in the options; more counters unlock more of them.
 CONF_ACHIEVEMENTS: Final = "achievements"
+# How far back a changed answer stays shown, minutes.
+CONF_LOOKBACK: Final = "lookback"
+DEFAULT_LOOKBACK_MIN: Final = 30
 CONF_GRID_IMPORT_ENERGY: Final = "grid_import_energy"
 CONF_GRID_EXPORT_ENERGY: Final = "grid_export_energy"
 CONF_SOLAR_POWER: Final = "solar_power"

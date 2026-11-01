@@ -120,3 +120,19 @@ def test_keeping_holds_only_the_half_hour_and_the_moment_before_it() -> None:
     s = series(*(answers(m) for m in range(0, 100, 5)))
 
     assert s[0].at <= s[-1].at - timedelta(minutes=30) < s[1].at
+
+
+def test_a_longer_look_back_keeps_a_change_shown_longer() -> None:
+    hour = timedelta(hours=1)
+    points = [
+        answers(0),
+        answers(22, outlook="grid", grid_from=at(DAY, 3, 10), spare_kwh=0.0),
+        answers(55, outlook="grid", grid_from=at(DAY, 3, 10), spare_kwh=0.0),
+    ]
+    kept: list[Answers] = []
+    for p in points:
+        kept = keep(kept, p, hour)
+
+    # 33 minutes after it: gone with half an hour, still shown with an hour.
+    assert detect(series(*points)) == {}
+    assert detect(kept, window=hour)["tonight"].since == T0 + timedelta(minutes=22)
