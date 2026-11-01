@@ -5,8 +5,8 @@ Facts only; wording is left to whoever shows them."""
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, tzinfo
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime, time, timedelta, tzinfo
 from enum import StrEnum
 
 import numpy as np
@@ -70,6 +70,9 @@ class NightOutcome:
     load_kwh: float
     grid_kwh: float
     spare_kwh: float
+    # The night's use split at local midnight: the evening, and the rest.
+    evening_kwh: float = 0.0
+    late_kwh: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +83,11 @@ class Night:
     # Each replayed night's battery level in %, at these moments: for drawing.
     times: tuple[datetime, ...] = field(default=(), repr=False, compare=False)
     levels: tuple[tuple[float, ...], ...] = field(default=(), repr=False, compare=False)
+    # What the battery can deliver from the night's start (sunset, or now) down
+    # to its reserve; and the part of it the evening may use, leaving the usual
+    # after-midnight use for the rest of the night.
+    budget_kwh: float | None = None
+    evening_budget_kwh: float | None = None
 
     @property
     def lasting(self) -> int:
@@ -241,6 +249,8 @@ def _night(
             load_kwh=float(runs.load_kwh[k]),
             grid_kwh=float(runs.grid_kwh[k]),
             spare_kwh=float(runs.spare_kwh[k]),
+            evening_kwh=_used(i, day, night_start(i), _midnight(i)),
+            late_kwh=_used(i, day, max(_midnight(i), night_start(i)), i.sunrise),
         )
         for k, day in enumerate(days)
     )
@@ -385,6 +395,52 @@ def _free_until(i: PlanInputs, load: Rate) -> datetime | None:
     return i.sunset if i.sunset < i.sunrise else None
 
 
+# Before this hour, a night that has started is past its midnight.
+NOON = 12
+
+
+def night_start(i: PlanInputs) -> datetime:
+    """When the night begins: tonight's sunset, or now if it has set."""
+    return i.sunset if i.sunset < i.sunrise else i.now
+
+
+def _midnight(i: PlanInputs) -> datetime:
+    """The midnight that splits tonight. After midnight the evening is over:
+    the split is the night's start, and all that is left is the late part."""
+    start = night_start(i).astimezone(i.tz)
+    if start.hour < NOON:
+        return start
+    return datetime.combine(start.date() + timedelta(days=1), time(), i.tz)
+
+
+def _used(i: PlanInputs, day: PastDay, start: datetime, end: datetime) -> float:
+    """A past day's house use (with the hidden load) between two of tonight's
+    moments, in kWh."""
+    if end <= start:
+        return 0.0
+    rate = _house(i, day.rate)
+    step = timedelta(minutes=15)
+    total, t = 0.0, start
+    while t < end:
+        until = min(t + step, end)
+        total += rate(t) * (until - t).total_seconds() / 3600
+        t = until
+    return round(total, 3)
+
+
+def _budget(i: PlanInputs, night: Night, start_pct: float) -> Night:
+    """What the battery can deliver from the night's start, and how much of it
+    the evening may use."""
+    b = i.battery
+    budget = max(start_pct - b.floor_pct, 0.0) / 100 * b.capacity_kwh * b.eta
+    late = float(np.median([o.late_kwh for o in night.outcomes]))
+    return replace(
+        night,
+        budget_kwh=round(budget, 2),
+        evening_budget_kwh=round(max(budget - late, 0.0), 2),
+    )
+
+
 def replay_night(i: PlanInputs) -> Night | None:
     """Only the night: each of the last nights replayed from now to sunrise."""
     days, weights = _days(i)
@@ -400,6 +456,12 @@ def plan(i: PlanInputs) -> Plan:
     charge, surplus, expected, cloudy = _charge(i, load)
     sun = _sun(i.pv, Quantile.P50)
     night = _night(i, days, weights, sun)
+    if night is not None:
+        # The night starts from the level expected at sunset, or from now.
+        start_pct = charge.sunset_pct if i.sunset < i.sunrise else i.battery.soc_pct
+        night = _budget(
+            i, night, start_pct if start_pct is not None else i.battery.soc_pct
+        )
     free = (
         i.battery.soc_pct >= i.battery.ceiling_pct - FREE_MARGIN_PCT
         and i.export_kw >= FREE_EXPORT_KW

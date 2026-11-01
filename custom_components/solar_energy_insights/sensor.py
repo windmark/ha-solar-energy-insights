@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import statistics
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -17,6 +18,7 @@ from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfEnergy, UnitOf
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
+from homeassistant.util import dt as dt_util
 
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
 from .core.nights import days_covered
@@ -307,6 +309,8 @@ class InsightsSensor(InsightsEntity, SensorEntity):
                 "battery_now": round(curve[0][1], 1) if curve else None,
                 "battery_remembered": "soc_pct" in self.coordinator.remembered,
             }
+        if self.entity_description.key == "night_outlook":
+            attrs = {**(attrs or {}), **_evening(self.current, self.coordinator)}
         if self.entity_description.key == "nights_covered" and attrs is not None:
             # The share is a replay from the battery as it is now; next to it,
             # what really happened, so an empty battery at 1 am does not read
@@ -505,3 +509,29 @@ class GameSensor(InsightsEntity, SensorEntity):
         view = self.coordinator.achievements.view
         attrs_fn = self.entity_description.attrs_fn
         return attrs_fn(view) if view and attrs_fn else None
+
+
+def _evening(p: Plan, coordinator: InsightsCoordinator) -> dict[str, Any]:
+    """Why the night looks as it does, and what tonight's evening may use."""
+    night = p.night
+    if night is None:
+        return {}
+    today = dt_util.as_local(p.now).date()
+    short = sorted((o for o in night.outcomes if not o.lasts), key=lambda o: o.days_ago)
+    return {
+        "budget_kwh": night.budget_kwh,
+        "evening_budget_kwh": night.evening_budget_kwh,
+        "usual_evening_kwh": round(
+            float(statistics.median(o.evening_kwh for o in night.outcomes)), 2
+        ),
+        "evening_used_kwh": coordinator.evening_used_kwh,
+        "short_nights": [
+            {
+                "date": (today - timedelta(days=o.days_ago)).isoformat(),
+                "evening_kwh": round(o.evening_kwh, 1),
+                "late_kwh": round(o.late_kwh, 1),
+                "grid_from": o.reserve_at.isoformat() if o.reserve_at else None,
+            }
+            for o in short
+        ],
+    }

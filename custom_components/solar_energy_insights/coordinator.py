@@ -7,7 +7,7 @@ restart: the house's hourly use over the last nights, re-read once an hour.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta, tzinfo
+from datetime import date, datetime, time, timedelta, tzinfo
 from typing import Any
 
 import numpy as np
@@ -154,6 +154,8 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         # The last capacity reported, for a battery that reports none while asleep.
         # Readings taken from memory because the battery reports none right now.
         self.remembered: set[str] = set()
+        # What the house has used since this evening's sunset, kWh; None by day.
+        self.evening_used_kwh: float | None = None
 
     # ── Reading ──
 
@@ -345,6 +347,51 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             max_power_kw=self._option(CONF_MAX_POWER, DEFAULT_MAX_POWER_KW),
             round_trip=self._option(CONF_ROUND_TRIP, DEFAULT_ROUND_TRIP_PCT) / 100,
         )
+
+    def _house_counter_kwh(self) -> float | None:
+        state = self._state(CONF_HOUSE_ENERGY)
+        value = _number(state)
+        if value is None or state is None:
+            return None
+        unit = (
+            state.attributes.get("unit_of_measurement") or UnitOfEnergy.KILO_WATT_HOUR
+        )
+        try:
+            return float(
+                EnergyConverter.convert(value, unit, UnitOfEnergy.KILO_WATT_HOUR)
+            )
+        except Exception:
+            return None
+
+    def _evening_used(self, i: PlanInputs) -> float | None:
+        """The house's use since tonight's sunset, from its energy counter.
+
+        The counter's reading at sunset is kept. When it was first read after
+        sunset (Home Assistant started in the evening), the recorder's hours
+        between sunset and then are added.
+        """
+        if not i.sunrise < i.sunset:
+            return None  # daytime: the sun is up
+        night_of = (i.sunset - timedelta(days=1)).astimezone(self.tz).date()
+        counter = self._house_counter_kwh()
+        if counter is None:
+            return None
+        evening = self.memory.memory.evening
+        if evening.get("day") != night_of.isoformat() or counter < evening.get(
+            "counter", 0
+        ):
+            sunset = i.sunset - timedelta(days=1)
+            before = sum(
+                kwh
+                for (day, hour), kwh in self.use.items()
+                if sunset
+                <= datetime.combine(day, time(hour), self.tz)
+                < i.now - timedelta(hours=1)
+            )
+            evening = {"day": night_of.isoformat(), "counter": counter - before}
+            self.memory.memory.evening = evening
+            self.memory.async_save_later()
+        return round(max(counter - float(evening["counter"]), 0.0), 2)
 
     def recent_nights(self) -> dict[str, Any]:
         """What really happened on the recent nights: how many lasted until
@@ -666,6 +713,7 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         self.last_inputs = self.inputs()
         result = plan(self.last_inputs)
         self._remember(result)
+        self.evening_used_kwh = self._evening_used(self.last_inputs)
         if result.free_power and not (previous is not None and previous.free_power):
             self.hass.bus.async_fire(EVENT_FREE_POWER, {})
         return result

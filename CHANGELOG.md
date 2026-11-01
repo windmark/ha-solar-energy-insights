@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Tonight's budget, on "Night outlook": what the battery can deliver from sunset to its reserve, how much of it the evening may use (leaving your usual after-midnight use), your usual evening, the house's use since sunset, live, and the recent nights that ran short with their evening's use. A borderline night says why and what keeps it covered.
+
 ### Removed
 
 Complications that, measured on real data, did not earn their place:
