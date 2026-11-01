@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+import pytest
+
 from custom_components.solar_energy_insights.core.battery import Battery
 from custom_components.solar_energy_insights.core.plan import PlanInputs, plan
 from tests.core.helpers import TZ, at, constant, house_use, sunny
@@ -156,3 +158,24 @@ def test_when_a_full_battery_is_enough_nothing_is_short() -> None:
     assert result.needed is not None
     assert result.needed.heavy_pct is not None
     assert result.needed.heavy_short_kwh == 0
+
+
+def test_the_nights_budget_is_what_the_battery_holds_above_its_reserve() -> None:
+    from tests.core.scenarios import SEASONS, heavy_evenings, history, inputs
+
+    winter = SEASONS[1]
+    now = at(winter.day, 20)
+    i = inputs(winter, now, peak_kw=0, use=history(winter.day, heavy_evenings), soc=80)
+
+    night = plan(i).night
+
+    assert night is not None
+    assert night.budget_kwh is not None
+    b = i.battery
+    assert night.budget_kwh == pytest.approx(
+        (80 - b.floor_pct) / 100 * b.capacity_kwh * b.eta, abs=0.01
+    )
+    late = sorted(o.late_kwh for o in night.outcomes)
+    assert night.evening_budget_kwh == pytest.approx(
+        night.budget_kwh - late[len(late) // 2], abs=0.15
+    )

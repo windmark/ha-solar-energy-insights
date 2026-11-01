@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 
@@ -200,3 +201,54 @@ async def test_an_empty_battery_at_night_still_shows_the_nights_that_lasted(
     )
     assert covered.attributes["recent_nights_lasted"] > 0
     assert covered.attributes["last_night_lasted"] is real[-1].actual_lasts
+
+
+async def test_the_outlook_says_which_nights_ran_short_and_what_the_evening_may_use(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    await record_house(home, recent(14), evening_load)
+    freezer.move_to(local(DAY, 12))
+    set_states(home, soc=60)
+
+    await setup_entry(home)
+
+    outlook = home.states.get(f"sensor.{PREFIX}night_outlook")
+    assert outlook is not None
+    a = outlook.attributes
+    assert a["budget_kwh"] > 0
+    assert 0 <= a["evening_budget_kwh"] <= a["budget_kwh"]
+    assert a["usual_evening_kwh"] > 0
+    assert a["evening_used_kwh"] is None  # the sun is up
+    for night in a["short_nights"]:
+        assert set(night) == {"date", "evening_kwh", "late_kwh", "grid_from"}
+
+
+async def test_the_evenings_use_follows_the_house_counter_from_sunset(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    await record_house(home, recent(14), evening_load)
+    # After sunset on a June evening.
+    freezer.move_to(local(DAY, 22))
+    set_states(home, soc=80)
+    entry = await setup_entry(home)
+    coordinator = entry.runtime_data
+    assert coordinator.evening_used_kwh is not None
+
+    home.states.async_set(
+        "sensor.house_energy",
+        "1002.5",
+        {
+            "unit_of_measurement": "kWh",
+            "device_class": "energy",
+            "state_class": "total_increasing",
+        },
+    )
+    await coordinator.async_refresh()
+
+    # The hours since sunset come from the recorder; the rise is the counter's.
+    before = coordinator.memory.memory.evening["counter"]
+    assert coordinator.evening_used_kwh == pytest.approx(1002.5 - before)
+    outlook = home.states.get(f"sensor.{PREFIX}night_outlook")
+    assert outlook is not None
+    assert outlook.attributes["evening_used_kwh"] == coordinator.evening_used_kwh
+    assert coordinator.evening_used_kwh >= 2.5

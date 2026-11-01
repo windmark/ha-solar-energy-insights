@@ -122,7 +122,22 @@ def the_days_working_adds_up(name: str, i: PlanInputs, p: Plan) -> None:
         assert all(v >= 1.0 - EPS for v in inside), name
 
 
+def the_nights_budget_adds_up(name: str, _i: PlanInputs, p: Plan) -> None:
+    night = p.night
+    if night is None or night.budget_kwh is None:
+        return
+    assert night.budget_kwh >= 0, name
+    assert night.evening_budget_kwh is not None, name
+    assert 0 <= night.evening_budget_kwh <= night.budget_kwh + EPS, name
+    for o in night.outcomes:
+        # The evening and the rest of the night are the whole night's use.
+        assert (
+            abs(o.evening_kwh + o.late_kwh - o.load_kwh) <= 0.05 * o.load_kwh + 0.05
+        ), name
+
+
 ALL: tuple[Check, ...] = (
+    the_nights_budget_adds_up,
     the_days_working_adds_up,
     heavy_never_ends_better,
     nights_are_consistent,
