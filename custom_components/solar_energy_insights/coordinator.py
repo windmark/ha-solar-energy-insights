@@ -48,6 +48,7 @@ from .const import (
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
     CONF_IMPORT_POSITIVE,
+    CONF_LOOKBACK,
     CONF_MAX_CHARGE,
     CONF_MAX_POWER,
     CONF_MIN_RESERVE,
@@ -59,6 +60,7 @@ from .const import (
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
     DEFAULT_FEED_IN_CT,
+    DEFAULT_LOOKBACK_MIN,
     DEFAULT_MAX_CHARGE_PCT,
     DEFAULT_MAX_POWER_KW,
     DEFAULT_MIN_RESERVE_PCT,
@@ -87,6 +89,7 @@ from .core.backtest import (
     clean_lows,
 )
 from .core.battery import Battery, Rate
+from .core.changes import Answers, Change, detect, keep
 from .core.correction import Correction
 from .core.forecast import PvForecast, Slot
 from .core.live import FullScore, NightAnswer, NightScore
@@ -156,6 +159,9 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         self.remembered: set[str] = set()
         # What the house has used since this evening's sunset, kWh; None by day.
         self.evening_used_kwh: float | None = None
+        # The last half hour of answers, and what changed in it.
+        self._answers: list[Answers] = []
+        self.changes: dict[str, Change] = {}
 
     # ── Reading ──
 
@@ -362,6 +368,137 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             )
         except Exception:
             return None
+
+    def _solar_counter_kwh(self) -> float | None:
+        entity_id = self.config_entry.options.get(CONF_SOLAR_ENERGY)
+        state = self.hass.states.get(entity_id) if entity_id else None
+        value = _number(state)
+        if value is None or state is None:
+            return None
+        unit = (
+            state.attributes.get("unit_of_measurement") or UnitOfEnergy.KILO_WATT_HOUR
+        )
+        try:
+            return float(
+                EnergyConverter.convert(value, unit, UnitOfEnergy.KILO_WATT_HOUR)
+            )
+        except Exception:
+            return None
+
+    def _note_solar_day(self, p: Plan) -> None:
+        """Keep the solar counter's reading at the start of each day."""
+        counter = self._solar_counter_kwh()
+        if counter is None:
+            return
+        today = dt_util.as_local(p.now).date().isoformat()
+        kept = self.memory.memory.solar_day
+        if kept.get("day") != today or counter < kept.get("counter", 0):
+            self.memory.memory.solar_day = {
+                "day": today,
+                "counter": counter,
+                "at": p.now.isoformat(),
+            }
+            self.memory.async_save_later()
+
+    def this_morning(self, p: Plan) -> dict[str, Any] | None:
+        """In the day: what this morning's plan said about the battery being
+        full, and the sun so far against the morning forecast for those hours."""
+        if not p.sunset < p.sunrise:
+            return None  # the sun is down
+        local = dt_util.as_local(p.now)
+        day = local.date().isoformat()
+        said = self.memory.memory.days.get(day)
+        if said is None:
+            return None
+        made: float | None = None
+        kept = self.memory.memory.solar_day
+        counter = self._solar_counter_kwh()
+        # Only a reading from before sunrise counts the whole day's sun.
+        if (
+            counter is not None
+            and kept.get("day") == day
+            and datetime.fromisoformat(kept["at"]) <= p.sunrise - timedelta(days=1)
+        ):
+            made = round(counter - float(kept["counter"]), 2)
+        slots = self.memory.memory.forecasts.get(day) or []
+        expected = sum(
+            float(p50) / 2
+            for start, p50, _, _ in slots
+            if datetime.fromisoformat(start) + timedelta(minutes=30) <= p.now
+        )
+        return {
+            "said_full_at": said.get("full_at"),
+            "said_at": said.get("at"),
+            "solar_kwh": made,
+            "forecast_kwh": round(expected, 2) if slots else None,
+        }
+
+    def last_night(self) -> dict[str, Any] | None:
+        """What the plan said at 21:00 last night, what happened, and how many
+        of the recent calls were right."""
+        if self.calibration is None:
+            return None
+        actual = {n.day.isoformat(): n for n in self.calibration.score.nights}
+        said = self.memory.memory.nights
+        calls = [
+            (day, s, actual[day])
+            for day, s in sorted(said.items())
+            if day in actual and s.get("lasts") is not None
+        ]
+        yesterday = (
+            dt_util.as_local(dt_util.utcnow()).date() - timedelta(days=1)
+        ).isoformat()
+        if not calls or calls[-1][0] != yesterday:
+            return None
+        _, s, n = calls[-1]
+        recent = calls[-10:]
+        return {
+            "said_spare_kwh": round(float(s.get("spare_kwh") or 0.0), 1),
+            "said_lasts": bool(s["lasts"]),
+            "spare_kwh": round(n.actual_spare_kwh, 1),
+            "lasted": n.actual_lasts,
+            "right_calls": sum(
+                bool(c["lasts"]) == m.actual_lasts for _, c, m in recent
+            ),
+            "calls": len(recent),
+        }
+
+    def _note_answers(self, p: Plan) -> None:
+        """Keep the last half hour of answers, and find what changed in it."""
+        night = p.night
+        now = Answers(
+            at=p.now,
+            outlook=str(night.outlook) if night else None,
+            grid_from=night.typical.reserve_at if night else None,
+            spare_kwh=night.typical.spare_kwh if night else None,
+            full_at=p.charge.full_at,
+            house_kwh=self._house_counter_kwh(),
+            forecast_kwh=self._sun_left_today(p.now),
+        )
+        window = timedelta(minutes=self._option(CONF_LOOKBACK, DEFAULT_LOOKBACK_MIN))
+        self._answers = keep(self._answers, now, window)
+        self.changes = detect(self._answers, self._usual_kw(p.now), window)
+
+    def _sun_left_today(self, now: datetime) -> float | None:
+        """What Solcast still expects today, kWh."""
+        try:
+            forecast = self.forecast()
+        except UpdateFailed:
+            return None
+        end = datetime.combine(
+            now.astimezone(self.tz).date() + timedelta(days=1), time(), self.tz
+        )
+        return round(sum(s.p50 for s in forecast.slots if now <= s.start < end) / 2, 2)
+
+    def _usual_kw(self, now: datetime) -> float | None:
+        """The house's usual use in this clock hour, kW, over the recent days."""
+        local = now.astimezone(self.tz)
+        values = sorted(
+            kwh
+            for (day, hour), kwh in self.use.items()
+            if hour == local.hour and day < local.date()
+        )[-self.nights * 2 :]
+        return values[len(values) // 2] if values else None
 
     def _evening_used(self, i: PlanInputs) -> float | None:
         """The house's use since tonight's sunset, from its energy counter.
@@ -714,6 +851,8 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         result = plan(self.last_inputs)
         self._remember(result)
         self.evening_used_kwh = self._evening_used(self.last_inputs)
+        self._note_answers(result)
+        self._note_solar_day(result)
         if result.free_power and not (previous is not None and previous.free_power):
             self.hass.bus.async_fire(EVENT_FREE_POWER, {})
         return result

@@ -21,6 +21,7 @@ from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
+from .core.changes import Change
 from .core.nights import days_covered
 from .core.plan import Outlook, Plan
 from .entity import InsightsEntity
@@ -311,6 +312,16 @@ class InsightsSensor(InsightsEntity, SensorEntity):
             }
         if self.entity_description.key == "night_outlook":
             attrs = {**(attrs or {}), **_evening(self.current, self.coordinator)}
+            attrs["changed"] = _changed(
+                self.coordinator.changes.get("tonight"), "tonight"
+            )
+            attrs["last_night"] = self.coordinator.last_night()
+        if self.entity_description.key == "battery_full_at":
+            attrs = {
+                **(attrs or {}),
+                "changed": _changed(self.coordinator.changes.get("full_at"), "full_at"),
+                "this_morning": self.coordinator.this_morning(self.current),
+            }
         if self.entity_description.key == "nights_covered" and attrs is not None:
             # The share is a replay from the battery as it is now; next to it,
             # what really happened, so an empty battery at 1 am does not read
@@ -535,3 +546,20 @@ def _evening(p: Plan, coordinator: InsightsCoordinator) -> dict[str, Any]:
             for o in short
         ],
     }
+
+
+def _changed(change: Change | None, key: str) -> dict[str, Any] | None:
+    """What the answer was half an hour ago, since when it differs, and why."""
+    if change is None:
+        return None
+    was = change.was
+    before: dict[str, Any] = (
+        {
+            "outlook": was.outlook,
+            "grid_from": was.grid_from.isoformat() if was.grid_from else None,
+            "spare_kwh": None if was.spare_kwh is None else round(was.spare_kwh, 1),
+        }
+        if key == "tonight"
+        else {"full_at": was.full_at.isoformat() if was.full_at else None}
+    )
+    return {"was": before, "since": change.since.isoformat(), "cause": change.cause}

@@ -37,6 +37,7 @@ from .const import (
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
     CONF_IMPORT_POSITIVE,
+    CONF_LOOKBACK,
     CONF_MAX_CHARGE,
     CONF_MAX_POWER,
     CONF_MIN_RESERVE,
@@ -49,6 +50,7 @@ from .const import (
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
     DEFAULT_FEED_IN_CT,
+    DEFAULT_LOOKBACK_MIN,
     DEFAULT_MAX_CHARGE_PCT,
     DEFAULT_MAX_POWER_KW,
     DEFAULT_MIN_RESERVE_PCT,
@@ -124,6 +126,9 @@ OPTIONS_SCHEMA = vol.Schema(
             EntitySelectorConfig(domain=["sensor", "input_number"])
         ),
         vol.Optional(CONF_SOLAR_ENERGY): _sensor(SensorDeviceClass.ENERGY),
+        vol.Required(CONF_LOOKBACK, default=DEFAULT_LOOKBACK_MIN): _number(
+            30, 120, 15, "min"
+        ),
         vol.Required(CONF_ACHIEVEMENTS, default=False): BooleanSelector(),
         vol.Optional(CONF_GRID_IMPORT_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Optional(CONF_GRID_EXPORT_ENERGY): _sensor(SensorDeviceClass.ENERGY),

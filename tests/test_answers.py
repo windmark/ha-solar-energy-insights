@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 
+from custom_components.solar_energy_insights import const
 from tests.common import (
     DAY,
     local,
@@ -252,3 +255,131 @@ async def test_the_evenings_use_follows_the_house_counter_from_sunset(
     assert outlook is not None
     assert outlook.attributes["evening_used_kwh"] == coordinator.evening_used_kwh
     assert coordinator.evening_used_kwh >= 2.5
+
+
+async def test_a_turned_night_shows_what_it_was_since_when_and_why(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    await record_house(home, recent(14), evening_load)
+    freezer.move_to(local(DAY, 22))
+    set_states(home, soc=90)
+    entry = await setup_entry(home)
+    coordinator = entry.runtime_data
+    outlook = f"sensor.{PREFIX}night_outlook"
+    before = home.states.get(outlook)
+    assert before is not None
+    assert before.attributes["changed"] is None
+
+    def counter(kwh: float) -> None:
+        home.states.async_set(
+            "sensor.house_energy",
+            str(kwh),
+            {
+                "unit_of_measurement": "kWh",
+                "device_class": "energy",
+                "state_class": "total_increasing",
+            },
+        )
+
+    # Ten minutes of a heavy load: the counter jumps and the battery drops.
+    freezer.tick(timedelta(minutes=10))
+    set_states(home, soc=25)
+    counter(1003.0)
+    await coordinator.async_refresh()
+
+    after = home.states.get(outlook)
+    assert after is not None
+    assert after.state != before.state
+    changed = after.attributes["changed"]
+    assert changed["was"]["outlook"] == before.state
+    assert changed["cause"].startswith("house used ")
+    assert changed["cause"].endswith("kWh more than usual")
+
+    # Half an hour later the turn is no longer shown: the new answer is simply
+    # the answer. (The level is held still here, so the grid time drifts later
+    # as the minutes pass; that is a change of its own, from the turned night.)
+    freezer.tick(timedelta(minutes=35))
+    await coordinator.async_refresh()
+    assert all(c.was.outlook != before.state for c in coordinator.changes.values())
+
+
+async def test_this_morning_shows_what_was_said_and_the_sun_so_far(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    await record_house(home, recent(14), evening_load)
+    solar = "sensor.solar_total"
+
+    def made(kwh: float) -> None:
+        home.states.async_set(
+            solar,
+            str(kwh),
+            {
+                "unit_of_measurement": "kWh",
+                "device_class": "energy",
+                "state_class": "total_increasing",
+            },
+        )
+
+    freezer.move_to(local(DAY, 3))
+    made(5000.0)
+    set_states(home, soc=40, peak_kw=8)
+    entry = await setup_entry(home, {const.CONF_SOLAR_ENERGY: solar})
+    coordinator = entry.runtime_data
+
+    freezer.move_to(local(DAY, 8))
+    await coordinator.async_refresh()
+    freezer.move_to(local(DAY, 12))
+    made(5006.0)
+    await coordinator.async_refresh()
+
+    full = home.states.get(f"sensor.{PREFIX}battery_full_at")
+    assert full is not None
+    morning = full.attributes["this_morning"]
+    assert morning["said_at"].startswith(local(DAY, 8).date().isoformat())
+    assert morning["solar_kwh"] == pytest.approx(6.0)
+    assert morning["forecast_kwh"] > 0
+
+
+async def test_last_night_shows_the_call_and_what_happened(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    days = recent(20)
+    await record_house(home, days, evening_load)
+    await record_battery(home, days, draining)
+    freezer.move_to(local(DAY, 9))
+    set_states(home, soc=40)
+    entry = await setup_entry(home)
+    coordinator = entry.runtime_data
+    real = {n.day: n for n in coordinator.calibration.score.nights}
+    yesterday = DAY - timedelta(days=1)
+    assert yesterday in real
+
+    # What the plan said at 21:00 on the last three evenings.
+    for back, lasts in ((3, True), (2, False), (1, True)):
+        day = DAY - timedelta(days=back)
+        coordinator.memory.memory.nights[day.isoformat()] = {
+            "at": local(day, 21).isoformat(),
+            "spare_kwh": 0.8,
+            "lasts": lasts,
+        }
+
+    call = coordinator.last_night()
+
+    assert call is not None
+    assert call["said_lasts"] is True
+    assert call["said_spare_kwh"] == 0.8
+    assert call["lasted"] is real[yesterday].actual_lasts
+    assert call["calls"] == 3
+    assert call["right_calls"] == sum(
+        lasts == real[DAY - timedelta(days=back)].actual_lasts
+        for back, lasts in ((3, True), (2, False), (1, True))
+    )
+
+
+async def test_no_call_for_last_night_until_it_is_known(home: HomeAssistant) -> None:
+    await record_house(home, recent(14), evening_load)
+    set_states(home)
+
+    entry = await setup_entry(home)
+
+    assert entry.runtime_data.last_night() is None

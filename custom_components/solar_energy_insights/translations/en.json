@@ -79,7 +79,8 @@
           "grid_import_energy": "Grid import energy (optional)",
           "grid_export_energy": "Grid export energy (optional)",
           "solar_power": "Solar power (optional)",
-          "array_kwp": "Array size (optional)"
+          "array_kwp": "Array size (optional)",
+          "lookback": "Show changes for"
         },
         "data_description": {
           "nights": "How many recent nights the battery is tested against.",
@@ -97,7 +98,8 @@
           "grid_import_energy": "A counter of energy bought. With the export counter, unlocks self-sufficiency, grid-free days and the badges that use them.",
           "grid_export_energy": "A counter of energy sold. Unlocks solar kept at home and export badges.",
           "solar_power": "For the peak power record.",
-          "array_kwp": "The panels' DC size. Read from Solcast's rooftop sites, with where each one faces; set it here only if Solcast's sites do not give it."
+          "array_kwp": "The panels' DC size. Read from Solcast's rooftop sites, with where each one faces; set it here only if Solcast's sites do not give it.",
+          "lookback": "How long a changed answer (tonight's outlook, the grid time, when the battery is full) shows what it was before and why: from 30 minutes to 2 hours."
         }
       }
     }
