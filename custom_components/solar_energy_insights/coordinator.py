@@ -12,6 +12,7 @@ from typing import Any
 
 import numpy as np
 from homeassistant.components.recorder import get_instance
+from homeassistant.components.recorder.history import get_last_state_changes
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -151,7 +152,8 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         # The inputs behind the plan shown, for an exact replay.
         self.last_inputs: PlanInputs | None = None
         # The last capacity reported, for a battery that reports none while asleep.
-        self._capacity_kwh: float | None = None
+        # Readings taken from memory because the battery reports none right now.
+        self.remembered: set[str] = set()
 
     # ── Reading ──
 
@@ -179,12 +181,64 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
                 or UnitOfEnergy.KILO_WATT_HOUR
             )
             try:
-                self._capacity_kwh = EnergyConverter.convert(
-                    value, unit, UnitOfEnergy.KILO_WATT_HOUR
+                return self._keep_reading(
+                    "capacity_kwh",
+                    EnergyConverter.convert(value, unit, UnitOfEnergy.KILO_WATT_HOUR),
                 )
             except Exception:
                 _LOGGER.debug("Unreadable capacity unit %s", unit)
-        return self._capacity_kwh
+        return self._kept_reading("capacity_kwh")
+
+    def _keep_reading(self, key: str, value: float) -> float:
+        """Keep a good reading, so it outlives the battery switching off."""
+        readings = self.memory.memory.battery
+        if readings.get(key) != value:
+            readings[key] = value
+            self.memory.async_save_later()
+        self.remembered.discard(key)
+        return value
+
+    def _kept_reading(self, key: str) -> float | None:
+        """The last good reading, while the battery reports none."""
+        value = self.memory.memory.battery.get(key)
+        if value is not None:
+            self.remembered.add(key)
+        return value
+
+    async def async_remember_from_recorder(self) -> None:
+        """Before the first plan: for any reading never stored, the entity's last
+        good value in the recorder. A battery switched off below its reserve
+        reports nothing, and may be off when Home Assistant starts."""
+        wanted = {
+            "capacity_kwh": CONF_BATTERY_CAPACITY,
+            "soc_pct": CONF_BATTERY_SOC,
+            "reserve_pct": CONF_BATTERY_RESERVE,
+        }
+        readings = self.memory.memory.battery
+        for key, conf in wanted.items():
+            entity_id = self.config_entry.data.get(conf)
+            if key in readings or not entity_id:
+                continue
+            states = await get_instance(self.hass).async_add_executor_job(
+                get_last_state_changes, self.hass, 50, entity_id
+            )
+            for state in reversed(states.get(entity_id, [])):
+                value = _number(state)
+                if value is None or value < 0 or (key == "capacity_kwh" and value == 0):
+                    continue
+                if key == "capacity_kwh":
+                    unit = (
+                        state.attributes.get("unit_of_measurement")
+                        or UnitOfEnergy.KILO_WATT_HOUR
+                    )
+                    try:
+                        value = EnergyConverter.convert(
+                            value, unit, UnitOfEnergy.KILO_WATT_HOUR
+                        )
+                    except Exception:
+                        continue
+                readings[key] = value
+                break
 
     def _export_kw(self) -> float:
         state = self._state(CONF_GRID_POWER)
@@ -259,13 +313,25 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         return option if floor < option <= 100 else 100.0
 
     def battery(self) -> Battery:
+        # A battery switched off below its reserve reports nothing: its last
+        # readings stand, since nothing changes while it is off.
         soc = _number(self._state(CONF_BATTERY_SOC))
+        soc = (
+            self._keep_reading("soc_pct", soc)
+            if soc is not None
+            else self._kept_reading("soc_pct")
+        )
         if soc is None:
             raise UpdateFailed("The battery's state of charge is not available")
         capacity = self._capacity()
         if not capacity:
             raise UpdateFailed("The battery's capacity is not available")
-        reserve = _number(self._state(CONF_BATTERY_RESERVE)) or 0.0
+        reserve = _number(self._state(CONF_BATTERY_RESERVE))
+        reserve = (
+            self._keep_reading("reserve_pct", reserve)
+            if reserve is not None
+            else self._kept_reading("reserve_pct")
+        ) or 0.0
         floor = max(reserve, self._option(CONF_MIN_RESERVE, DEFAULT_MIN_RESERVE_PCT))
         if soc < SLEEPING_READING_PCT < floor:
             # Some inverters report 0 % while the battery sleeps at its reserve;

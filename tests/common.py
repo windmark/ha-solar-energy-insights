@@ -66,9 +66,9 @@ def solcast_periods(day: date, peak_kw: float) -> list[dict[str, Any]]:
 def set_states(
     hass: HomeAssistant,
     *,
-    soc: float = 50.0,
+    soc: float | str = 50.0,
     capacity_wh: float | str = 15180,
-    reserve: float = 10.0,
+    reserve: float | str = 10.0,
     grid_w: float = 0,
     peak_kw: float = 8.0,
 ) -> None:

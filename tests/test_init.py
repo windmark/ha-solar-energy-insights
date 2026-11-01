@@ -6,6 +6,9 @@ from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import Event, HomeAssistant
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
+from pytest_homeassistant_custom_component.components.recorder.common import (
+    async_wait_recording_done,
+)
 
 from custom_components.solar_energy_insights import const
 from tests.common import (
@@ -47,13 +50,73 @@ async def test_sets_up_and_unloads(home: HomeAssistant) -> None:
     assert await home.config_entries.async_unload(entry.entry_id)
 
 
-async def test_waits_for_the_battery(home: HomeAssistant) -> None:
-    set_states(home)
-    home.states.async_set("sensor.battery_soc", "unavailable")
+async def test_waits_for_a_battery_it_has_never_seen(home: HomeAssistant) -> None:
+    set_states(home, soc="unavailable", capacity_wh="unavailable")
 
     entry = await setup_entry(home)
 
     assert entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_a_battery_switched_off_below_its_reserve_is_remembered_from_the_recorder(
+    home: HomeAssistant,
+) -> None:
+    """Asleep below its reserve, the battery's entities go unavailable, and Home
+    Assistant may start while it sleeps: its last readings stand."""
+    set_states(home, soc=9.0, capacity_wh=10000, reserve=10.0)
+    await async_wait_recording_done(home)
+    set_states(
+        home, soc="unavailable", capacity_wh="unavailable", reserve="unavailable"
+    )
+
+    entry = await setup_entry(home)
+
+    assert entry.state is ConfigEntryState.LOADED
+    battery = entry.runtime_data.battery()
+    assert battery.capacity_kwh == 10.0
+    assert battery.floor_pct == 10.0
+    # It switched off just below its reserve; that is where it is.
+    assert battery.soc_pct == 9.0
+    assert entry.runtime_data.remembered == {"capacity_kwh", "soc_pct", "reserve_pct"}
+    needed = home.states.get("sensor.solar_energy_insights_charge_needed_for_the_night")
+    assert needed is not None
+    assert needed.attributes["battery_now"] == 9.0
+    assert needed.attributes["battery_remembered"] is True
+
+
+async def test_readings_are_kept_while_the_battery_sleeps(home: HomeAssistant) -> None:
+    set_states(home, soc=42.0, capacity_wh=10000, reserve=10.0)
+    entry = await setup_entry(home)
+    coordinator = entry.runtime_data
+
+    set_states(
+        home, soc="unavailable", capacity_wh="unavailable", reserve="unavailable"
+    )
+    await coordinator.async_refresh()
+
+    assert coordinator.last_update_success
+    battery = coordinator.battery()
+    assert battery.capacity_kwh == 10.0
+    assert battery.soc_pct == 42.0
+    assert coordinator.memory.memory.battery == {
+        "capacity_kwh": 10.0,
+        "soc_pct": 42.0,
+        "reserve_pct": 10.0,
+    }
+
+
+async def test_a_live_reading_replaces_the_remembered_one(home: HomeAssistant) -> None:
+    set_states(home, soc=42.0, capacity_wh=10000)
+    entry = await setup_entry(home)
+    coordinator = entry.runtime_data
+    set_states(home, soc="unavailable", capacity_wh="unavailable")
+    await coordinator.async_refresh()
+
+    set_states(home, soc=55.0, capacity_wh=10000)
+    await coordinator.async_refresh()
+
+    assert coordinator.battery().soc_pct == 55.0
+    assert coordinator.remembered == set()
 
 
 async def test_without_history_the_night_is_unknown(home: HomeAssistant) -> None:

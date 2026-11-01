@@ -28,6 +28,9 @@ SAVE_DELAY_S = 60
 
 @dataclass
 class Memory:
+    # The battery's last good readings (capacity_kwh, soc_pct, reserve_pct), for
+    # when it is switched off below its reserve and its entities go unavailable.
+    battery: dict[str, float] = field(default_factory=dict)
     # Day → [[start, p50, p10, p90], …], Solcast's half hours that morning.
     forecasts: dict[str, list[list[Any]]] = field(default_factory=dict)
     # Day → {"at": when, "full_at": time or None}, said in the morning.
@@ -57,6 +60,7 @@ class Memory:
             "quests": self.quests,
             "announced": self.announced,
             "facts_version": self.facts_version,
+            "battery": self.battery,
         }
 
     @classmethod
@@ -71,6 +75,7 @@ class Memory:
             quests=dict(data.get("quests") or {}),
             announced=data.get("announced"),
             facts_version=int(data.get("facts_version") or 0),
+            battery={k: float(v) for k, v in (data.get("battery") or {}).items()},
         )
 
 

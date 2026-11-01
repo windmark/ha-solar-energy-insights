@@ -31,6 +31,8 @@ Complications that, measured on real data, did not earn their place:
 
 ### Fixed
 
+- A battery switched off below its reserve reports nothing, which stopped the integration from starting ("The battery's capacity is not available"). Its last good capacity, state of charge and reserve are now kept and stand in until it reports again; before any are stored, the recorder's last values are used. Only a battery never seen at all is waited for. The level used is shown on "Charge needed" (`battery_now`, `battery_remembered`).
+
 - "Nights covered" is a replay from the battery as it is now, so once the battery reaches its reserve at night it reads 0 %, which looked like "no night lasts". It now also carries what really happened: how many of the recent nights lasted until sunrise, and whether last night did.
 
 - A counter that first reports 0 and then its lifetime total no longer counts as one enormous hour. Records showed it as the best day and the most exported, and the array's size learned from it made every per-kWp badge unreachable; stored achievement facts are rebuilt once, quietly. The Solcast correction, reading the same counter, is protected too.
