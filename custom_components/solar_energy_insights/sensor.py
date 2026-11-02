@@ -36,12 +36,46 @@ def _iso(t: datetime | None) -> str | None:
 class InsightsSensorDescription(SensorEntityDescription):
     value_fn: Callable[[Plan], StateType | datetime]
     attrs_fn: Callable[[Plan], dict[str, Any]] | None = None
+    # Attributes that need more than the plan: what the integration knows beside it.
+    extra_fn: Callable[[Plan, InsightsCoordinator], dict[str, Any]] | None = None
+
+
+def _battery_now(p: Plan, c: InsightsCoordinator) -> dict[str, Any]:
+    """The level the plan starts from: the battery's last reading while it is
+    switched off below its reserve and reports nothing."""
+    return {
+        "battery_now": round(p.curve[0][1], 1) if p.curve else None,
+        "battery_remembered": "soc_pct" in c.remembered,
+    }
+
+
+def _tonight_extra(p: Plan, c: InsightsCoordinator) -> dict[str, Any]:
+    return {
+        **_evening(p, c),
+        "changed": changed(c.changes.get("tonight"), "tonight"),
+        "last_night": c.last_night(),
+    }
+
+
+def _full_extra(p: Plan, c: InsightsCoordinator) -> dict[str, Any]:
+    return {
+        "changed": changed(c.changes.get("full_at"), "full_at"),
+        "this_morning": c.this_morning(p),
+    }
+
+
+def _recent_extra(p: Plan, c: InsightsCoordinator) -> dict[str, Any]:
+    """The share is a replay from the battery as it is now; next to it, what
+    really happened, so an empty battery at 1 am does not read as "no night
+    ever lasts"."""
+    return {} if p.night is None else c.recent_nights()
 
 
 SENSORS: tuple[InsightsSensorDescription, ...] = (
     InsightsSensorDescription(
         key="battery_full_at",
         translation_key="battery_full_at",
+        extra_fn=_full_extra,
         device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=lambda p: p.charge.full_at,
         attrs_fn=lambda p: {
@@ -62,6 +96,7 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
     InsightsSensorDescription(
         key="night_outlook",
         translation_key="night_outlook",
+        extra_fn=_tonight_extra,
         device_class=SensorDeviceClass.ENUM,
         options=[str(o) for o in Outlook],
         # Yes/no hides a night that lasts only if it is not a heavy one.
@@ -70,6 +105,7 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
     InsightsSensorDescription(
         key="nights_covered",
         translation_key="nights_covered",
+        extra_fn=_recent_extra,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         value_fn=lambda p: None if p.night is None else round(p.night.share * 100),
@@ -82,6 +118,7 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
     InsightsSensorDescription(
         key="charge_needed",
         translation_key="charge_needed",
+        extra_fn=_battery_now,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         suggested_display_precision=0,
@@ -300,34 +337,10 @@ class InsightsSensor(InsightsEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        attrs_fn = self.entity_description.attrs_fn
-        attrs = attrs_fn(self.current) if attrs_fn else None
-        if self.entity_description.key == "charge_needed" and attrs is not None:
-            # The level the plan starts from: the battery's last reading while it
-            # is switched off below its reserve and reports nothing.
-            curve = self.current.curve
-            attrs = {
-                **attrs,
-                "battery_now": round(curve[0][1], 1) if curve else None,
-                "battery_remembered": "soc_pct" in self.coordinator.remembered,
-            }
-        if self.entity_description.key == "night_outlook":
-            attrs = {**(attrs or {}), **_evening(self.current, self.coordinator)}
-            attrs["changed"] = changed(
-                self.coordinator.changes.get("tonight"), "tonight"
-            )
-            attrs["last_night"] = self.coordinator.last_night()
-        if self.entity_description.key == "battery_full_at":
-            attrs = {
-                **(attrs or {}),
-                "changed": changed(self.coordinator.changes.get("full_at"), "full_at"),
-                "this_morning": self.coordinator.this_morning(self.current),
-            }
-        if self.entity_description.key == "nights_covered" and attrs is not None:
-            # The share is a replay from the battery as it is now; next to it,
-            # what really happened, so an empty battery at 1 am does not read
-            # as "no night ever lasts".
-            attrs = {**attrs, **self.coordinator.recent_nights()}
+        d = self.entity_description
+        attrs = d.attrs_fn(self.current) if d.attrs_fn else None
+        if d.extra_fn is not None:
+            attrs = {**(attrs or {}), **d.extra_fn(self.current, self.coordinator)}
         return attrs
 
 
