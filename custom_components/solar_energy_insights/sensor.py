@@ -334,6 +334,7 @@ async def async_setup_entry(
     async_add_entities(InsightsCostSensor(coordinator, d) for d in COSTS)
     async_add_entities([SummarySensor(coordinator, SUMMARY)])
     async_add_entities([MorningForecastSensor(coordinator, MORNING)])
+    async_add_entities([CheckpointsSensor(coordinator, CHECKPOINTS_SENSOR)])
     for found in discover_strings(coordinator.hass, entry):
         n, power = found["n"], found["power"]
         async_add_entities(
@@ -831,3 +832,33 @@ class MorningForecastSensor(InsightsEntity, SensorEntity):
             "today": next((m for m in days if m["d"] == today), {}),
             "history": [m for m in days if m["d"] != today],
         }
+
+
+# ── Forecast checkpoints: how far the forecast held at the moments that matter ──
+
+CHECKPOINTS_SENSOR = SensorEntityDescription(
+    key="forecast_checkpoints", translation_key="forecast_checkpoints"
+)
+
+
+class CheckpointsSensor(InsightsEntity, SensorEntity):
+    """The number of days scored so far, with today's and tomorrow's frozen
+    forecasts and the scores per checkpoint as attributes."""
+
+    _attr_native_unit_of_measurement = "days"
+    _unrecorded_attributes = frozenset(
+        {"today", "tomorrow", "scores", "needs_solar_counter"}
+    )
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success
+
+    @property
+    def native_value(self) -> StateType:
+        scored = (self.coordinator.checkpoints.scores or {}).get("06:00") or {}
+        return int(scored.get("days", 0))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self.coordinator.checkpoints.view()

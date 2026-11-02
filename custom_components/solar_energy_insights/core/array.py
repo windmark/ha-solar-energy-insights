@@ -17,6 +17,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from functools import lru_cache
 
 import numpy as np
@@ -153,3 +154,61 @@ def _number(value: object) -> float | None:
         return float(value)  # type: ignore[arg-type]
     except TypeError, ValueError:
         return None
+
+
+# A clear sky: little diffuse light. And the share of the sunlight on the panels
+# a system turns into energy (inverter, wiring, heat): a standard 85 %.
+_CLEAR_DIFFUSE_SHARE = 0.12
+_PERFORMANCE = 0.85
+
+
+def clear_day_kwh(
+    array: Array,
+    day: date,
+    tz: tzinfo,
+    longitude: float,
+    after: datetime | None = None,
+) -> float:
+    """What the array would make on *day* under a clear sky, kWh; from *after*
+    on, if given. Each plane by its own direction and tilt; solar time from the
+    longitude."""
+    if not array.planes:
+        return 0.0
+    lat = math.radians(array.latitude)
+    doy = day.timetuple().tm_yday
+    decl = math.radians(23.44) * math.sin(2 * math.pi * (284 + doy) / 365)
+    start = datetime.combine(day, datetime.min.time(), tz)
+    steps = [start + timedelta(minutes=15 * k) for k in range(96)]
+    if after is not None:
+        steps = [t for t in steps if t >= after]
+    total = 0.0
+    for t in steps:
+        utc = t.astimezone(UTC)
+        solar_hour = utc.hour + utc.minute / 60 + longitude / 15
+        hour_angle = math.radians(15 * (solar_hour - 12))
+        sin_elev = math.sin(lat) * math.sin(decl) + math.cos(lat) * math.cos(
+            decl
+        ) * math.cos(hour_angle)
+        if sin_elev <= math.sin(math.radians(2)):
+            continue
+        elev = math.asin(sin_elev)
+        az = (
+            math.atan2(
+                math.sin(hour_angle),
+                math.cos(hour_angle) * math.sin(lat) - math.tan(decl) * math.cos(lat),
+            )
+            + math.pi
+        )
+        beam = _SOLAR * 0.7 ** ((1 / sin_elev) ** 0.678)
+        direct_h = beam * sin_elev
+        diffuse_h = direct_h * _CLEAR_DIFFUSE_SHARE / (1 - _CLEAR_DIFFUSE_SHARE)
+        for plane in array.planes:
+            tilt, facing = math.radians(plane.tilt_deg), math.radians(plane.compass_deg)
+            incidence = sin_elev * math.cos(tilt) + math.cos(elev) * math.sin(
+                tilt
+            ) * math.cos(az - facing)
+            poa = beam * max(incidence, 0.0) + diffuse_h * (1 + math.cos(tilt)) / 2
+            poa += _ALBEDO * (direct_h + diffuse_h) * (1 - math.cos(tilt)) / 2
+            # 1000 W/m² on the panels is their rated kWp.
+            total += poa / 1000 * plane.kwp * _PERFORMANCE * 0.25
+    return round(total, 2)

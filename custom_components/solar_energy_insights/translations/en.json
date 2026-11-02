@@ -356,6 +356,9 @@
       },
       "morning_forecast": {
         "name": "Morning forecast"
+      },
+      "forecast_checkpoints": {
+        "name": "Forecast checkpoints"
       }
     },
     "binary_sensor": {
