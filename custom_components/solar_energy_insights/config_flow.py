@@ -63,7 +63,13 @@ from .const import (
     DEFAULT_ROUND_TRIP_PCT,
     DOMAIN,
 )
-from .dashboard import discover_strings, roofs, string_kwp_key, string_roof_key
+from .dashboard import (
+    discover_strings,
+    roofs,
+    string_panel_w_key,
+    string_panels_key,
+    string_roof_key,
+)
 
 POWEROCEAN = "ef_powerocean_tcpmodbus"
 # Our field → PowerOcean entity keys (its unique ids end in _<key>), preferred first.
@@ -269,8 +275,11 @@ class InsightsOptionsFlow(OptionsFlow):
         ]
         fields: dict[Any, Any] = {}
         for st in strings:
-            fields[vol.Optional(string_kwp_key(st["n"]))] = _number(
-                0.1, 100, 0.01, "kWp"
+            fields[vol.Optional(string_panels_key(st["n"]))] = _number(
+                1, 200, 1, "panels"
+            )
+            fields[vol.Optional(string_panel_w_key(st["n"]))] = _number(
+                50, 1000, 1, "W"
             )
             if roof_choices:
                 fields[vol.Optional(string_roof_key(st["n"]))] = SelectSelector(

@@ -10,6 +10,7 @@ page, so nothing goes in /config/www.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -40,6 +41,11 @@ if TYPE_CHECKING:
 POWEROCEAN = "ef_powerocean_tcpmodbus"
 # PowerOcean reports up to three strings: pv1_power, pv2_power, pv3_power.
 STRINGS = (1, 2, 3)
+# A string's size: its number of panels and the watts on their label, whole
+# numbers anyone can read off the installer's plan or a panel (no decimals,
+# which some phone keypads cannot enter). An older option held the kWp itself.
+STRING_PANELS = "string_panels_pv{}"
+STRING_PANEL_W = "string_panel_w_pv{}"
 STRING_KWP = "string_kwp_pv{}"
 STRING_ROOF = "string_roof_pv{}"
 WORDS = (
@@ -58,8 +64,29 @@ _REGISTERED = f"{DOMAIN}_frontend"
 
 
 def string_kwp_key(n: int) -> str:
-    """The option holding string *n*'s size in kWp."""
+    """The older option holding string *n*'s size in kWp."""
     return STRING_KWP.format(n)
+
+
+def string_panels_key(n: int) -> str:
+    return STRING_PANELS.format(n)
+
+
+def string_panel_w_key(n: int) -> str:
+    return STRING_PANEL_W.format(n)
+
+
+def string_kwp(options: Mapping[str, Any], n: int) -> float | None:
+    """String *n*'s size in kWp: panels times watts each, divided by 1000, or the older
+    kWp option; None until it is known."""
+    panels, watts = (
+        options.get(string_panels_key(n)),
+        options.get(string_panel_w_key(n)),
+    )
+    if panels and watts:
+        return round(float(panels) * float(watts) / 1000, 3)
+    older = options.get(string_kwp_key(n))
+    return float(older) if older else None
 
 
 def string_roof_key(n: int) -> str:
@@ -169,7 +196,7 @@ async def dashboard_config(c: InsightsCoordinator) -> dict[str, Any]:
     strings = [
         {
             **s,
-            "kwp": entry.options.get(string_kwp_key(s["n"])),
+            "kwp": string_kwp(entry.options, s["n"]),
             "roof": by_name.get(str(entry.options.get(string_roof_key(s["n"]), ""))),
             "energy": f"sensor.{DOMAIN}_pv{s['n']}_energy_today",
             "power_per_kwp": f"sensor.{DOMAIN}_pv{s['n']}_power_per_kwp",

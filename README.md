@@ -113,7 +113,7 @@ returns every scored evening (predicted and actual spare, whether it was contest
 
 The integration ships the JavaScript its dashboard cards use (`window.SolarDash`) and loads it on every page, so there is nothing to copy to `/config/www` and no resource to add; it updates with the integration. If you added `solar-dash.js` as a resource before, remove that resource.
 
-The helpers read this home's details from the integration's settings: the energy counters you configured, the first day with statistics, and, with EF-PowerOcean-TcpModbus, the per-string power sensors it finds on your installation. For cards that compare strings per kWp, add each string's size under **Configure → Size of string PV1/PV2/PV3** (panels × watts on their label ÷ 1000; for example 12 × 420 W = 5.04 kWp). Until then those cards say so.
+The helpers read this home's details from the integration's settings: the energy counters you configured, the first day with statistics, and, with EF-PowerOcean-TcpModbus, the per-string power sensors it finds on your installation. For cards that compare strings per kWp, add each string's panels under **Configure**: for PV1, PV2 and PV3, the number of panels and the watts on their label (for example 12 panels of 420 W). Until then those cards say so.
 
 ## Summary
 
