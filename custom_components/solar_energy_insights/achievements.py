@@ -41,6 +41,7 @@ from .core.achievements.facts import (
 )
 from .core.achievements.profile import profile_of
 from .core.achievements.quests import Quest
+from .core.achievements.recap import best_since, last_week
 from .core.achievements.trophies import Trophies, as_dict, compute
 from .core.backtest import EVENING, Evening, clean_lows
 from .core.forecast import PvForecast
@@ -333,10 +334,27 @@ class Achievements:
             tomorrow,
             self._tomorrow_forecast(tomorrow),
             outlook,
+            self._advice(),
         )
         if quest is not None:
             memory.quests[quest.id] = {**quest.as_dict(), "set": today.isoformat()}
             self.c.memory.async_save_later()
+
+    def _advice(self) -> quest_rules.Advice:
+        """The plan's advice as it stands: what is left of tonight's evening
+        budget, and the next best window for heavy loads (tomorrow's, by 20:00)."""
+        plan = self.c.plan
+        if plan is None:
+            return quest_rules.Advice()
+        window = plan.best_window
+
+        def hm(t: datetime) -> str:
+            return dt_util.as_local(t).strftime("%H:%M")
+
+        return quest_rules.Advice(
+            evening_budget_kwh=plan.night.evening_budget_kwh if plan.night else None,
+            window_hours=(hm(window.start), hm(window.end)) if window else None,
+        )
 
     def _tomorrow_forecast(self, day: date) -> float | None:
         forecast: PvForecast = self.c.raw_forecast()
@@ -442,10 +460,19 @@ class Achievements:
     def as_dict(self) -> dict[str, Any] | None:
         if self.trophies is None:
             return None
-        return as_dict(
+        today = dt_util.as_local(dt_util.utcnow()).date()
+        view = as_dict(
             self.trophies,
-            dt_util.as_local(dt_util.utcnow()).date(),
+            today,
             self.live,
             self.c.battery().floor_pct,
             (self.c.price, self.c.feed_in),
         )
+        # Last week in one line, and what yesterday was the best at in a while.
+        history = [DayFacts.from_dict(v) for _, v in sorted(self.memory.facts.items())]
+        earned = [
+            (b.badge.name, on) for b in self.trophies.badges for on in b.earned_on
+        ]
+        view["last_week"] = last_week(history, today, self.c.price, earned)
+        view["yesterday"] = best_since(history, today - timedelta(days=1))
+        return view

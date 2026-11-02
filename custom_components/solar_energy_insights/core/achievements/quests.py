@@ -28,6 +28,25 @@ TOO_EASY = 0.8
 
 
 @dataclass(frozen=True, slots=True)
+class Advice:
+    """What the plan advises, as it stands when quests are set (20:00): what is
+    left of tonight's evening budget, and tomorrow's best window for heavy loads."""
+
+    evening_budget_kwh: float | None = None
+    window_hours: tuple[str, str] | None = None  # "HH:MM", "HH:MM", local
+
+    def evening(self) -> str | None:
+        if self.evening_budget_kwh is None or self.evening_budget_kwh <= 0:
+            return None
+        return f"keep the rest of the evening under ~{self.evening_budget_kwh:.1f} kWh"
+
+    def window(self) -> str | None:
+        if self.window_hours is None:
+            return None
+        return f"run heavy loads {self.window_hours[0]}–{self.window_hours[1]}"
+
+
+@dataclass(frozen=True, slots=True)
 class Quest:
     id: str
     day: date
@@ -38,6 +57,8 @@ class Quest:
     # The last day it covers (a week's quest runs Monday to Sunday).
     until: date
     result: bool | None = None
+    # The plan's advice for meeting it, as it stood when the quest was set.
+    hint: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out = asdict(self)
@@ -88,9 +109,12 @@ def next_day(
     day: date,
     forecast_kwh: float | None,
     outlook_tonight: str | None = None,
+    advice: Advice | None = None,
 ) -> Quest | None:
     """The quest for *day*, made the evening before. A borderline night ahead
-    comes first: getting through it is the quest that matters."""
+    comes first: getting through it is the quest that matters. Each comes with
+    the plan's own advice for meeting it, where the plan has some."""
+    advice = advice or Advice()
     if outlook_tonight == "borderline" and profile.has(Cap.BATTERY):
         tonight = day - timedelta(days=1)
         return Quest(
@@ -101,6 +125,7 @@ def next_day(
             1,
             75,
             tonight,
+            hint=advice.evening(),
         )
     similar = _similar(facts, profile, day, forecast_kwh)
     # Each option with the share of similar days that met it.
@@ -112,7 +137,14 @@ def next_day(
             met = sum(1 for m in times if m <= fill_by) / len(similar)
             title = f"Fill the battery before {_hm(fill_by)}"
             quest = Quest(
-                f"fill-{day}", day, "fill_before", title, fill_by, _reward(met), day
+                f"fill-{day}",
+                day,
+                "fill_before",
+                title,
+                fill_by,
+                _reward(met),
+                day,
+                hint=f"heavy loads after {_hm(fill_by)} won't slow it",
             )
             options.append((quest, met))
     if profile.has(Cap.SOLAR, Cap.GRID):
@@ -122,7 +154,14 @@ def next_day(
             met = sum(1 for k in kept if k >= target) / len(kept)
             title = f"Keep {round(target * 100)} % of the sun at home"
             quest = Quest(
-                f"keep-{day}", day, "keep_home", title, target, _reward(met), day
+                f"keep-{day}",
+                day,
+                "keep_home",
+                title,
+                target,
+                _reward(met),
+                day,
+                hint=advice.window(),
             )
             options.append((quest, met))
     if profile.has(Cap.GRID):
@@ -140,6 +179,7 @@ def next_day(
                     target,
                     _reward(met),
                     day,
+                    hint=advice.window(),
                 )
                 options.append((quest, met))
     if not options:
