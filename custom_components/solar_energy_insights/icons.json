@@ -96,6 +96,9 @@
       },
       "morning_forecast": {
         "default": "mdi:weather-sunset-up"
+      },
+      "forecast_checkpoints": {
+        "default": "mdi:target-account"
       }
     },
     "binary_sensor": {

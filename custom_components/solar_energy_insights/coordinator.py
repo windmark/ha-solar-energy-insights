@@ -65,6 +65,7 @@ from .core.nights import (
 )
 from .core.plan import HEAVY_SHARE, Plan, PlanInputs, plan
 from .core.snapshot import to_snapshot
+from .forecast_checkpoints import Checkpoints
 from .memory import MemoryStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -103,6 +104,7 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
         self.live_nights: NightScore | None = None
         self.live_full: FullScore | None = None
         self.achievements = Achievements(self)
+        self.checkpoints = Checkpoints(self)
         # The inputs behind the plan shown, for an exact replay.
         self.last_inputs: PlanInputs | None = None
         # The last capacity reported, for a battery that reports none while asleep.
@@ -197,6 +199,10 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
             await self.achievements.async_update()
         except Exception:
             _LOGGER.exception("Could not update achievements")
+        try:
+            await self.checkpoints.async_update()
+        except Exception:
+            _LOGGER.exception("Could not judge the forecast checkpoints")
 
     def _evenings(self, lows: dict[datetime, float], now: datetime) -> list[Evening]:
         """What the battery did on recent nights, from its hourly lowest level."""

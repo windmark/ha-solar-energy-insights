@@ -34,6 +34,9 @@ class Memory:
     # The house energy counter at this evening's sunset: {"day", "counter", "at"},
     # for how much the evening has used so far.
     evening: dict[str, Any] = field(default_factory=dict)
+    # Forecast checkpoints: "day|name" → the frozen forecast, and its judgement.
+    checkpoints: dict[str, dict[str, Any]] = field(default_factory=dict)
+    judged: dict[str, dict[str, Any]] = field(default_factory=dict)
     # The solar energy counter at the start of the day: {"day", "counter", "at"},
     # for what the panels have made so far.
     solar_day: dict[str, Any] = field(default_factory=dict)
@@ -68,6 +71,8 @@ class Memory:
             "facts_version": self.facts_version,
             "battery": self.battery,
             "evening": self.evening,
+            "checkpoints": self.checkpoints,
+            "judged": self.judged,
             "solar_day": self.solar_day,
         }
 
@@ -85,6 +90,8 @@ class Memory:
             facts_version=int(data.get("facts_version") or 0),
             battery={k: float(v) for k, v in (data.get("battery") or {}).items()},
             evening=dict(data.get("evening") or {}),
+            checkpoints=dict(data.get("checkpoints") or {}),
+            judged=dict(data.get("judged") or {}),
             solar_day=dict(data.get("solar_day") or {}),
         )
 
