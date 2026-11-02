@@ -84,6 +84,18 @@
       },
       "summary": {
         "default": "mdi:text-box-outline"
+      },
+      "string_energy_today": {
+        "default": "mdi:solar-panel"
+      },
+      "string_power_per_kwp": {
+        "default": "mdi:solar-power-variant"
+      },
+      "string_yield_today": {
+        "default": "mdi:solar-panel-large"
+      },
+      "morning_forecast": {
+        "default": "mdi:weather-sunset-up"
       }
     },
     "binary_sensor": {

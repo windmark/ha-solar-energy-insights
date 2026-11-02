@@ -21,6 +21,10 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
 )
 
 from .array import array_of
@@ -59,7 +63,7 @@ from .const import (
     DEFAULT_ROUND_TRIP_PCT,
     DOMAIN,
 )
-from .dashboard import discover_strings, string_kwp_key
+from .dashboard import discover_strings, roofs, string_kwp_key, string_roof_key
 
 POWEROCEAN = "ef_powerocean_tcpmodbus"
 # Our field → PowerOcean entity keys (its unique ids end in _<key>), preferred first.
@@ -253,12 +257,28 @@ class InsightsOptionsFlow(OptionsFlow):
             return self.async_create_entry(data=user_input)
         # Each string PowerOcean reports gets a size field; none if there are none.
         strings = discover_strings(self.hass, self.config_entry)
-        schema = OPTIONS_SCHEMA.extend(
-            {
-                vol.Optional(string_kwp_key(st["n"])): _number(0.1, 100, 0.01, "kWp")
-                for st in strings
-            }
-        )
+        roof_choices = [
+            SelectOptionDict(
+                value=r["name"],
+                label=(
+                    f"{r['name']} (facing {r['facing']}, "
+                    f"{r['tilt']:.0f}° tilt, {r['kwp']:g} kWp)"
+                ),
+            )
+            for r in roofs(self.hass)
+        ]
+        fields: dict[Any, Any] = {}
+        for st in strings:
+            fields[vol.Optional(string_kwp_key(st["n"]))] = _number(
+                0.1, 100, 0.01, "kWp"
+            )
+            if roof_choices:
+                fields[vol.Optional(string_roof_key(st["n"]))] = SelectSelector(
+                    SelectSelectorConfig(
+                        options=roof_choices, mode=SelectSelectorMode.DROPDOWN
+                    )
+                )
+        schema = OPTIONS_SCHEMA.extend(fields)
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(

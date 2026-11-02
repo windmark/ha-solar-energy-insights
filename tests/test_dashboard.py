@@ -74,9 +74,10 @@ async def test_the_dashboard_gets_this_homes_settings(
     assert cfg["entities"]["soc"] == ENTITIES[const.CONF_BATTERY_SOC]
     assert cfg["entities"]["solar"] is None  # not configured: not guessed
     assert cfg["history_start"] == days[0].isoformat()
-    assert cfg["strings"] == [
-        {"n": 1, "name": "PV1", "power": strings[1], "kwp": 5.06},
-        {"n": 3, "name": "PV3", "power": strings[3], "kwp": None},
+    found = [(s["n"], s["power"], s["kwp"], s["energy"]) for s in cfg["strings"]]
+    assert found == [
+        (1, strings[1], 5.06, "sensor.solar_energy_insights_pv1_energy_today"),
+        (3, strings[3], None, "sensor.solar_energy_insights_pv3_energy_today"),
     ]
     assert isinstance(cfg["forecasts"], dict)
 

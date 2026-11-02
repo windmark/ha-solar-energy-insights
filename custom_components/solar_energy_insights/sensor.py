@@ -15,16 +15,23 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfEnergy, UnitOfTime
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 
+from .const import DOMAIN
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
 from .core.nights import days_covered
 from .core.plan import Outlook, Plan
+from .dashboard import discover_strings, history_start, string_kwp_key
 from .entity import InsightsEntity
 from .serialize import costs
+from .strings import backfill_energy, energy_today, power_kw
 from .summary import changed, summary_for
 
 
@@ -326,6 +333,16 @@ async def async_setup_entry(
     async_add_entities(InsightsStatusSensor(coordinator, d) for d in STATUS)
     async_add_entities(InsightsCostSensor(coordinator, d) for d in COSTS)
     async_add_entities([SummarySensor(coordinator, SUMMARY)])
+    async_add_entities([MorningForecastSensor(coordinator, MORNING)])
+    for found in discover_strings(coordinator.hass, entry):
+        n, power = found["n"], found["power"]
+        async_add_entities(
+            [
+                StringEnergySensor(coordinator, n, power),
+                StringPowerPerKwpSensor(coordinator, n, power),
+                StringYieldSensor(coordinator, n, power),
+            ]
+        )
     if coordinator.achievements.enabled:
         async_add_entities(GameSensor(coordinator, d) for d in GAME)
 
@@ -592,3 +609,184 @@ class SummarySensor(InsightsEntity, SensorEntity):
         data = summary.as_dict()
         data.pop("phase")
         return data
+
+
+# ── The strings, from PowerOcean's per-string power and their sizes ──
+
+ENERGY_REFRESH = timedelta(minutes=5)
+
+
+class _StringSensor(InsightsEntity, SensorEntity):
+    """One of a string's sensors: named by the string, e.g. "PV1 energy today"."""
+
+    @callback
+    def _async_source_changed(self, _event: Event[EventStateChangedData]) -> None:
+        """The sensor it follows changed: write the new value, on the event loop."""
+        self.async_write_ha_state()
+
+    kind: str
+
+    def __init__(self, coordinator: InsightsCoordinator, n: int, power: str) -> None:
+        super().__init__(
+            coordinator,
+            SensorEntityDescription(
+                key=f"pv{n}_{self.kind}", translation_key=f"string_{self.kind}"
+            ),
+        )
+        self.n, self.power = n, power
+        self._attr_translation_placeholders = {"string": f"PV{n}"}
+
+    @property
+    def available(self) -> bool:
+        # A string's sensors do not need the plan, only the string's power.
+        return self.coordinator.last_update_success
+
+    @property
+    def kwp(self) -> float | None:
+        value = self.coordinator.config_entry.options.get(string_kwp_key(self.n))
+        return float(value) if value else None
+
+
+class StringEnergySensor(_StringSensor):
+    kind = "energy_today"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 2
+    _today: float | None = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_track_time_interval(self.hass, self._async_refresh, ENERGY_REFRESH)
+        )
+        await self._async_refresh()
+        # Once: the past, from the string's power history, for charts.
+        start = await history_start(self.hass, self.power)
+        await backfill_energy(
+            self.hass, self.power, self.entity_id, f"PV{self.n} energy", start
+        )
+
+    async def _async_refresh(self, _now: datetime | None = None) -> None:
+        self._today = await energy_today(self.hass, self.power, dt_util.utcnow())
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> StateType:
+        return self._today
+
+
+class StringPowerPerKwpSensor(_StringSensor):
+    """The string's power now, per kWp of its panels: strings on the same roof
+    should read about the same."""
+
+    kind = "power_per_kwp"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "kW/kWp"
+    _attr_suggested_display_precision = 3
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, [self.power], self._async_source_changed
+            )
+        )
+
+    @property
+    def available(self) -> bool:
+        return (
+            self.kwp is not None
+            and power_kw(self.hass.states.get(self.power)) is not None
+        )
+
+    @property
+    def native_value(self) -> StateType:
+        kw, kwp = power_kw(self.hass.states.get(self.power)), self.kwp
+        return None if kw is None or kwp is None else round(max(kw, 0.0) / kwp, 4)
+
+
+class StringYieldSensor(_StringSensor):
+    """Today's energy per kWp: the fair way to compare strings and days."""
+
+    kind = "yield_today"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "kWh/kWp"
+    _attr_suggested_display_precision = 2
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        energy = f"sensor.{DOMAIN}_pv{self.n}_energy_today"
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass, [energy], self._async_source_changed
+            )
+        )
+
+    @property
+    def available(self) -> bool:
+        return self.kwp is not None
+
+    @property
+    def native_value(self) -> StateType:
+        state = self.hass.states.get(f"sensor.{DOMAIN}_pv{self.n}_energy_today")
+        kwp = self.kwp
+        try:
+            return (
+                None
+                if kwp is None or state is None
+                else round(float(state.state) / kwp, 3)
+            )
+        except ValueError:
+            return None
+
+
+# ── This morning's forecast, kept by the integration, day by day ──
+
+MORNING = SensorEntityDescription(
+    key="morning_forecast",
+    translation_key="morning_forecast",
+    device_class=SensorDeviceClass.ENERGY,
+    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+    suggested_display_precision=1,
+)
+HISTORY_DAYS = 60
+
+
+def _morning(day: str, slots: list[list[Any]]) -> dict[str, Any]:
+    """One morning's forecast: its total (mo) and per local hour (moh), kWh."""
+    hours = [0.0] * 24
+    for slot in slots:
+        start, p50 = datetime.fromisoformat(str(slot[0])), float(slot[1])
+        hours[dt_util.as_local(start).hour] += p50 / 2
+    return {"d": day, "mo": round(sum(hours), 2), "moh": [round(h, 3) for h in hours]}
+
+
+class MorningForecastSensor(InsightsEntity, SensorEntity):
+    """Solcast's forecast for today as it stood in the morning, with the past
+    mornings as attributes: today (d, mo, moh) and history, oldest first."""
+
+    _unrecorded_attributes = frozenset({"today", "history"})
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success
+
+    def _days(self) -> list[dict[str, Any]]:
+        saved = self.coordinator.memory.memory.forecasts
+        return [_morning(day, slots) for day, slots in sorted(saved.items())][
+            -HISTORY_DAYS:
+        ]
+
+    @property
+    def native_value(self) -> StateType:
+        today = dt_util.now().date().isoformat()
+        return next((m["mo"] for m in self._days() if m["d"] == today), None)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        days, today = self._days(), dt_util.now().date().isoformat()
+        return {
+            "today": next((m for m in days if m["d"] == today), {}),
+            "history": [m for m in days if m["d"] != today],
+        }

@@ -41,6 +41,17 @@ POWEROCEAN = "ef_powerocean_tcpmodbus"
 # PowerOcean reports up to three strings: pv1_power, pv2_power, pv3_power.
 STRINGS = (1, 2, 3)
 STRING_KWP = "string_kwp_pv{}"
+STRING_ROOF = "string_roof_pv{}"
+WORDS = (
+    "north",
+    "north-east",
+    "east",
+    "south-east",
+    "south",
+    "south-west",
+    "west",
+    "north-west",
+)
 URL_BASE = f"/{DOMAIN}_static"
 SCRIPT = "solar-energy-insights.js"
 _REGISTERED = f"{DOMAIN}_frontend"
@@ -49,6 +60,32 @@ _REGISTERED = f"{DOMAIN}_frontend"
 def string_kwp_key(n: int) -> str:
     """The option holding string *n*'s size in kWp."""
     return STRING_KWP.format(n)
+
+
+def string_roof_key(n: int) -> str:
+    """The option holding which Solcast site (roof) string *n* is on."""
+    return STRING_ROOF.format(n)
+
+
+def facing(compass: float) -> str:
+    """A compass direction in words: 172° is south."""
+    return WORDS[round(compass / 45) % 8]
+
+
+def roofs(hass: HomeAssistant) -> list[dict[str, Any]]:
+    """The roofs Solcast knows: each site's name, direction, tilt and size."""
+    from .array import array_of
+
+    return [
+        {
+            "name": p.name or f"Roof {k + 1}",
+            "compass": p.compass_deg,
+            "tilt": p.tilt_deg,
+            "kwp": p.kwp,
+            "facing": facing(p.compass_deg),
+        }
+        for k, p in enumerate(array_of(hass).planes)
+    ]
 
 
 def discover_strings(hass: HomeAssistant, entry: ConfigEntry) -> list[dict[str, Any]]:
@@ -128,8 +165,16 @@ async def dashboard_config(c: InsightsCoordinator) -> dict[str, Any]:
         if entities["house"]
         else None
     )
+    by_name = {r["name"]: r for r in roofs(c.hass)}
     strings = [
-        {**s, "kwp": entry.options.get(string_kwp_key(s["n"]))}
+        {
+            **s,
+            "kwp": entry.options.get(string_kwp_key(s["n"])),
+            "roof": by_name.get(str(entry.options.get(string_roof_key(s["n"]), ""))),
+            "energy": f"sensor.{DOMAIN}_pv{s['n']}_energy_today",
+            "power_per_kwp": f"sensor.{DOMAIN}_pv{s['n']}_power_per_kwp",
+            "yield": f"sensor.{DOMAIN}_pv{s['n']}_yield_today",
+        }
         for s in discover_strings(c.hass, entry)
     ]
     return {
@@ -137,6 +182,7 @@ async def dashboard_config(c: InsightsCoordinator) -> dict[str, Any]:
         "prefix": _prefix([e for e in entities.values() if e]),
         "history_start": start.isoformat() if start else None,
         "strings": strings,
+        "roofs": list(by_name.values()),
         "forecasts": {
             day: [[slot[0], slot[1]] for slot in slots]
             for day, slots in sorted(c.memory.memory.forecasts.items())
