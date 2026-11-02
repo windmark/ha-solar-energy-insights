@@ -255,6 +255,7 @@ STATUS: tuple[InsightsStatusDescription, ...] = (
     InsightsStatusDescription(
         key="night_error",
         translation_key="night_error",
+        entity_category=EntityCategory.DIAGNOSTIC,
         state_class=SensorStateClass.MEASUREMENT,
         device_class=SensorDeviceClass.ENERGY_STORAGE,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -270,6 +271,7 @@ STATUS: tuple[InsightsStatusDescription, ...] = (
     InsightsStatusDescription(
         key="full_at_error",
         translation_key="full_at_error",
+        entity_category=EntityCategory.DIAGNOSTIC,
         state_class=SensorStateClass.MEASUREMENT,
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.MINUTES,

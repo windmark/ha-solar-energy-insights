@@ -407,3 +407,28 @@ async def test_the_summary_carries_the_dashboards_rows(
         assert r["main"]
         assert len(r["detail"]) <= 2
     assert summary.attributes["home"]["main"] == summary.attributes["rows"][0]["main"]
+
+
+async def test_the_integrations_own_accuracy_is_diagnostic(home: HomeAssistant) -> None:
+    from homeassistant.const import EntityCategory
+    from homeassistant.helpers import entity_registry as er
+
+    await record_house(home, recent(14), evening_load)
+    set_states(home)
+    await setup_entry(home)
+    registry = er.async_get(home)
+
+    for key in (
+        "night_prediction_error",
+        "full_at_error",
+        "solcast_correction_gain",
+        "days_of_history",
+    ):
+        entity_id = f"sensor.{PREFIX}{key}"
+        entry = registry.async_get(entity_id)
+        assert entry is not None, entity_id
+        assert entry.entity_category is EntityCategory.DIAGNOSTIC, entity_id
+    # The answers are the integration's output: they stay ordinary sensors.
+    outlook = registry.async_get(f"sensor.{PREFIX}night_outlook")
+    assert outlook is not None
+    assert outlook.entity_category is None
