@@ -14,6 +14,8 @@
 
 ### Removed
 
+- The fallback to the dashboard's `input_number.electricity_price` and `input_number.feed_in_tariff` helpers. Prices come from a price entity, else the options, else the default.
+
 Complications that, measured on real data, did not earn their place:
 
 - Weighting past nights by similarity (the afternoon so far, weekday or weekend, outdoor temperature, presence), the choice between weightings and its stored state, and the temperature and presence options. On a month of real evenings, counting every night equally predicted better (0.48 against 0.53 kWh).
@@ -40,6 +42,10 @@ Complications that, measured on real data, did not earn their place:
 - Setup prefilled from EF-PowerOcean-TcpModbus and Solcast.
 
 ### Fixed
+
+- "Last night" and the live night score now read one record of each night's call and outcome. They disagreed: the live score counts only nights that could have gone either way, "last night" counts every call, and each took the outcome from a different place.
+- Options an earlier version had are dropped when the integration loads.
+- When the reserve comes from PowerOcean's plain limit and its effective reserve exists, a repair under Settings offers to switch, in one click. The plain limit can read 0 % while the app keeps a higher backup reserve.
 
 - A battery switched off below its reserve reports nothing, which stopped the integration from starting ("The battery's capacity is not available"). Its last good capacity, state of charge and reserve are now kept and stand in until it reports again; before any are stored, the recorder's last values are used. Only a battery never seen at all is waited for. The level used is shown on "Charge needed" (`battery_now`, `battery_remembered`).
 

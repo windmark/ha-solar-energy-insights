@@ -66,9 +66,6 @@ DEFAULT_MAX_CHARGE_PCT: Final = 100.0
 # Prices in cents per kWh, until set in the options.
 DEFAULT_PRICE_CT: Final = 30.0
 DEFAULT_FEED_IN_CT: Final = 8.0
-# Helpers whose values prefill the prices, where they exist.
-PRICE_HELPER: Final = "input_number.electricity_price"
-FEED_IN_HELPER: Final = "input_number.feed_in_tariff"
 
 # Recent evenings the night answer is scored on and learned from. About a month:
 # enough evenings that could have gone either way, recent enough to follow the

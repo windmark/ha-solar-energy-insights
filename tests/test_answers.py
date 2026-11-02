@@ -350,7 +350,7 @@ async def test_last_night_shows_the_call_and_what_happened(
     set_states(home, soc=40)
     entry = await setup_entry(home)
     coordinator = entry.runtime_data
-    real = {n.day: n for n in coordinator.calibration.score.nights}
+    real = {e.day: e for e in coordinator.evenings}
     yesterday = DAY - timedelta(days=1)
     assert yesterday in real
 
@@ -363,17 +363,21 @@ async def test_last_night_shows_the_call_and_what_happened(
             "lasts": lasts,
         }
 
+    await coordinator.async_refresh_history()
     call = coordinator.last_night()
 
     assert call is not None
     assert call["said_lasts"] is True
     assert call["said_spare_kwh"] == 0.8
-    assert call["lasted"] is real[yesterday].actual_lasts
+    floor = coordinator.battery().floor_pct
+    assert call["lasted"] is (real[yesterday].lowest_soc > floor + 1.0)
     assert call["calls"] == 3
     assert call["right_calls"] == sum(
-        lasts == real[DAY - timedelta(days=back)].actual_lasts
+        lasts == (real[DAY - timedelta(days=back)].lowest_soc > floor + 1.0)
         for back, lasts in ((3, True), (2, False), (1, True))
     )
+    # The live score reads the same record: its contested nights are a subset.
+    assert coordinator.live_nights.nights <= call["calls"]
 
 
 async def test_no_call_for_last_night_until_it_is_known(home: HomeAssistant) -> None:

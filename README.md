@@ -52,7 +52,7 @@ Requires Home Assistant 2025.12 or newer and the recorder.
 
 **Options:**
 
-- **Prices:** the electricity price and feed-in tariff, in cents per kWh. Until they're saved here, `input_number.electricity_price` and `input_number.feed_in_tariff` are used if you have them. For a dynamic tariff, an optional price entity overrides the price while it has a value.
+- **Prices:** the electricity price and feed-in tariff, in cents per kWh.feed_in_tariff` are used if you have them. For a dynamic tariff, an optional price entity overrides the price while it has a value.
 - **Optional inputs:** a solar energy counter, for learning a Solcast correction (used only once it predicts better) and for achievements.
 - **The night test:** how many nights to replay (default 14), and the lowest state of charge the inverter discharges to by itself (5 %).
 - **The battery:** its charge limit when no entity gives one (100 %), its power limit (5 kW), round-trip efficiency (92 %), and which sign of grid power means importing.

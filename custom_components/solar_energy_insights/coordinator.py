@@ -69,13 +69,11 @@ from .const import (
     DEFAULT_ROUND_TRIP_PCT,
     DOMAIN,
     EVENT_FREE_POWER,
-    FEED_IN_HELPER,
     HISTORY_MINUTE,
     LIVE_COOLDOWN_S,
     LIVE_INTERVAL_MIN,
     MORNING_UNTIL_HOUR,
     NIGHT_ANSWER_HOUR,
-    PRICE_HELPER,
     SHORT_TERM_DAYS,
 )
 from .core import correction, live
@@ -159,6 +157,8 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         self.remembered: set[str] = set()
         # What the house has used since this evening's sunset, kWh; None by day.
         self.evening_used_kwh: float | None = None
+        # Each night's 21:00 call and what happened: the live score's record.
+        self.calls: list[live.Call] = []
         # The last half hour of answers, and what changed in it.
         self._answers: list[Answers] = []
         self.changes: dict[str, Change] = {}
@@ -277,13 +277,11 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
     @property
     def price_source(self) -> str:
         """Where the price comes from: the entity while it has a value, else the
-        options once saved, else the dashboard's helper, else the default."""
+        options once saved, else the default."""
         if self._entity_price() is not None:
             return "entity"
         if CONF_PRICE in self.config_entry.options:
             return "fixed"
-        if _number(self.hass.states.get(PRICE_HELPER)) is not None:
-            return "helper"
         return "default"
 
     @property
@@ -296,20 +294,14 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
         from_entity = self._entity_price()
         if from_entity is not None:
             return from_entity
-        return self._cents(CONF_PRICE, PRICE_HELPER, DEFAULT_PRICE_CT) / 100
+        return float(self.config_entry.options.get(CONF_PRICE, DEFAULT_PRICE_CT)) / 100
 
     @property
     def feed_in(self) -> float:
         """What a kWh exported earns, in currency per kWh."""
-        return self._cents(CONF_FEED_IN, FEED_IN_HELPER, DEFAULT_FEED_IN_CT) / 100
-
-    def _cents(self, option: str, helper: str, default: float) -> float:
-        """A price in cents: the option once saved, else the helper the dashboard
-        already uses, else the default."""
-        if option in self.config_entry.options:
-            return float(self.config_entry.options[option])
-        value = _number(self.hass.states.get(helper))
-        return value if value is not None and value >= 0 else default
+        return (
+            float(self.config_entry.options.get(CONF_FEED_IN, DEFAULT_FEED_IN_CT)) / 100
+        )
 
     def charge_limit(self, floor: float) -> float:
         """The level charging stops at: the entity while it gives a sensible
@@ -435,31 +427,17 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
 
     def last_night(self) -> dict[str, Any] | None:
         """What the plan said at 21:00 last night, what happened, and how many
-        of the recent calls were right."""
-        if self.calibration is None:
+        of the recent calls were right: from the same record as the live score."""
+        yesterday = dt_util.as_local(dt_util.utcnow()).date() - timedelta(days=1)
+        if not self.calls or self.calls[-1].day != yesterday:
             return None
-        actual = {n.day.isoformat(): n for n in self.calibration.score.nights}
-        said = self.memory.memory.nights
-        calls = [
-            (day, s, actual[day])
-            for day, s in sorted(said.items())
-            if day in actual and s.get("lasts") is not None
-        ]
-        yesterday = (
-            dt_util.as_local(dt_util.utcnow()).date() - timedelta(days=1)
-        ).isoformat()
-        if not calls or calls[-1][0] != yesterday:
-            return None
-        _, s, n = calls[-1]
-        recent = calls[-10:]
+        last, recent = self.calls[-1], self.calls[-10:]
         return {
-            "said_spare_kwh": round(float(s.get("spare_kwh") or 0.0), 1),
-            "said_lasts": bool(s["lasts"]),
-            "spare_kwh": round(n.actual_spare_kwh, 1),
-            "lasted": n.actual_lasts,
-            "right_calls": sum(
-                bool(c["lasts"]) == m.actual_lasts for _, c, m in recent
-            ),
+            "said_spare_kwh": round(last.said_spare_kwh, 1),
+            "said_lasts": last.said_lasts,
+            "spare_kwh": round(last.spare_kwh, 1),
+            "lasted": last.lasted,
+            "right_calls": sum(c.right for c in recent),
             "calls": len(recent),
         }
 
@@ -747,7 +725,8 @@ class InsightsCoordinator(DataUpdateCoordinator[Plan]):
             date.fromisoformat(day): NightAnswer(a["spare_kwh"], a["lasts"])
             for day, a in memory.nights.items()
         }
-        self.live_nights = live.score_nights(answers, spare, lasted)
+        self.calls = live.calls(answers, spare, lasted)
+        self.live_nights = live.score_nights(self.calls)
         # "Full at", to five minutes where the recorder still has it.
         highest = {
             dt_util.utc_from_timestamp(row["start"]): value
