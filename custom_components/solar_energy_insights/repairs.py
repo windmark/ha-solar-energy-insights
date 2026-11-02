@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from homeassistant.components.repairs import RepairsFlow, RepairsFlowResult
+from homeassistant.components.repairs import RepairsFlow
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
+
+if TYPE_CHECKING:
+    # Only for the type checker: Home Assistant 2025.12 does not have it yet.
+    from homeassistant.components.repairs import RepairsFlowResult
 
 from .const import CONF_BATTERY_RESERVE, DOMAIN
 
