@@ -58,6 +58,9 @@ Complications that, measured on real data, did not earn their place:
 
 ### Fixed
 
+- Dashboard tiles showed "Could not read the plan: 3" after Home Assistant restarted or the app lost its connection: 3 is the frontend's code for a lost connection, and a failed request replaced the last good answer with the error. A failed request now keeps the last answer, retries by itself after 5 s and then longer, retries at once when the connection is back, and says in words what happened when there is nothing to show yet.
+- The shipped script's address carried the integration's version, which did not change between updates, so browsers could keep an old copy. It now carries a fingerprint of the script itself.
+
 - "Night prediction error" and "Full-at error" are diagnostic sensors, beside "Forecast correction" and "Days of history": they describe the integration's own accuracy, not the house.
 
 - The day and the night are stepped by one engine. The step-by-step day simulation is now one battery through the same code as the nights, which keeps the books the day needs (when the battery filled, export before and after, the peak and when, the low, the level at sunset). The original loop is kept in the tests as an independent reference; the engine agrees with it on every result, over 1,000 random days in CI and 3,000 checked by hand.

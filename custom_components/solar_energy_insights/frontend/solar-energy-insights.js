@@ -495,6 +495,31 @@
 
   /* Shared helpers for the cards: colours, reading states, small pieces of HTML,
      and a WebSocket cache shared by every card (re-rendered when data arrives). */
+  /* Errors in words: the frontend's connection errors arrive as bare codes. */
+  const RETRY_FIRST_S = 5;
+  const CONNECTION = {
+    1: "Home Assistant cannot be reached",
+    2: "the login has expired",
+    3: "the connection to Home Assistant was lost",
+  };
+  const readable = (e) => {
+    const code = typeof e === "number" ? e : e?.code;
+    if (CONNECTION[code]) return CONNECTION[code] + "; retrying";
+    return String(e?.message || e);
+  };
+  /* When the connection is back, retry everything that failed, at once. */
+  const watchConnection = (hass) => {
+    const conn = hass && hass.connection;
+    if (!conn || conn.__seiWatched || !conn.addEventListener) return;
+    conn.__seiWatched = true;
+    conn.addEventListener("ready", () => {
+      const W = window.__sei || {};
+      Object.keys(W).forEach((k) => {
+        if (W[k] && W[k].error) W[k] = { ...W[k], t: 0 };
+      });
+      (W.listeners || []).forEach((f) => f());
+    });
+  };
   const ui = (el, hass, states) => {
     const W = (window.__sei = window.__sei || {});
     const C = {
@@ -542,20 +567,40 @@
         } catch (x) {}
       });
     }
+    // A request that fails keeps the last good answer, so tiles show slightly
+    // older data rather than an error, and is retried soon by itself (5 s, 15 s,
+    // 30 s, … up to the normal interval) and at once when the connection is back.
     const ws = (key, type, maxAgeS) => {
       const c = W[key];
-      if (
-        (!c || (!c.pending && Date.now() - c.t > maxAgeS * 1000)) &&
-        hass?.callWS
-      ) {
+      const due =
+        !c ||
+        (!c.pending &&
+          Date.now() - c.t > (c.error ? c.retryS : maxAgeS) * 1000);
+      if (due && hass?.callWS) {
         W[key] = { ...(c || {}), t: Date.now(), pending: true };
+        watchConnection(hass);
         hass
           .callWS({ type })
           .then((d) => {
             W[key] = { t: Date.now(), data: d };
           })
           .catch((e) => {
-            W[key] = { t: Date.now(), error: String(e?.message || e) };
+            const before = W[key] || {};
+            const retryS = Math.min(
+              before.error ? before.retryS * 2 : RETRY_FIRST_S,
+              maxAgeS,
+            );
+            W[key] = {
+              ...before,
+              pending: false,
+              t: Date.now(),
+              error: readable(e),
+              retryS,
+            };
+            setTimeout(
+              () => (W.listeners || []).forEach((f) => f()),
+              retryS * 1000 + 50,
+            );
           })
           .finally(() => (W.listeners || []).forEach((f) => f()));
       }
