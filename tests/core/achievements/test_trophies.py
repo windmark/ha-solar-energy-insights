@@ -88,3 +88,21 @@ def test_with_prices_a_month_says_what_the_sun_was_worth() -> None:
     assert month["saved"] == round(month["kept_kwh"] * 0.32, 2)
     assert month["earned"] == round(month["export_kwh"] * 0.08, 2)
     assert "saved" not in as_dict(t, END)["months"][-2]
+
+
+def test_a_seasonal_badge_says_when_it_can_be_earned() -> None:
+    from custom_components.solar_energy_insights.core.achievements.trophies import (
+        _window,
+    )
+
+    before = _window("late autumn", date(2026, 11, 2), southern=False)
+    during = _window("late autumn", date(2026, 11, 20), southern=False)
+
+    # The six weeks before the winter solstice: next, then now.
+    assert before == {"season_from": "2026-11-09", "season_until": "2026-12-21"}
+    assert during == before
+    assert (
+        _window("summer", date(2026, 11, 2), southern=True)["season_from"]
+        == "2026-12-21"
+    )
+    assert _window(None, date(2026, 11, 2), southern=False)["season_from"] is None
