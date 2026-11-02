@@ -1,6 +1,10 @@
 {
   "domain": "solar_energy_insights",
   "name": "Solar Energy Insights",
+  "after_dependencies": [
+    "frontend",
+    "http"
+  ],
   "codeowners": [
     "@windmark"
   ],

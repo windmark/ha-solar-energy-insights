@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
 
 from .const import DOMAIN
+from .dashboard import dashboard_config
 from .serialize import backtest_dict, plan_dict
 from .services import coordinator_for
 
@@ -19,6 +20,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_plan)
     websocket_api.async_register_command(hass, ws_backtest)
     websocket_api.async_register_command(hass, ws_achievements)
+    websocket_api.async_register_command(hass, ws_config)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/plan"})
@@ -102,3 +104,21 @@ def ws_achievements(
         )
         return
     connection.send_result(msg["id"], coordinator.achievements.view)
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/config"})
+@websocket_api.async_response
+async def ws_config(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """What a dashboard needs about this home: the configured counters, the
+    first day of history, PowerOcean's strings with their sizes, and the saved
+    morning forecasts."""
+    try:
+        coordinator = coordinator_for(hass)
+    except ServiceValidationError:
+        connection.send_error(
+            msg["id"], "not_loaded", "Solar Energy Insights is not loaded"
+        )
+        return
+    connection.send_result(msg["id"], await dashboard_config(coordinator))

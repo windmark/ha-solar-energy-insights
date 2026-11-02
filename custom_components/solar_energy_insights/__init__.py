@@ -11,6 +11,12 @@ from homeassistant.helpers.typing import ConfigType
 from .config_flow import OPTIONS_SCHEMA
 from .const import DOMAIN
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
+from .dashboard import (
+    STRINGS,
+    async_register_frontend,
+    string_kwp_key,
+    string_roof_key,
+)
 from .memory import MemoryStore
 from .repairs import check_reserve
 from .services import async_setup_services
@@ -23,6 +29,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
     async_setup_services(hass)
     async_setup_websocket(hass)
+    await async_register_frontend(hass)
     return True
 
 
@@ -43,7 +50,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: InsightsConfigEntry) -> 
 def _drop_old_options(hass: HomeAssistant, entry: InsightsConfigEntry) -> None:
     """Options an earlier version had and this one does not are dropped, so
     they do not linger in the entry and in diagnostics."""
-    known = {str(key) for key in OPTIONS_SCHEMA.schema}
+    known = {str(key) for key in OPTIONS_SCHEMA.schema} | {
+        key(n) for n in STRINGS for key in (string_kwp_key, string_roof_key)
+    }
     kept = {k: v for k, v in entry.options.items() if k in known}
     if kept != dict(entry.options):
         hass.config_entries.async_update_entry(entry, options=kept)

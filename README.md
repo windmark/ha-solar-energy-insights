@@ -109,6 +109,12 @@ await hass.callWS({ type: "solar_energy_insights/backtest" });
 
 returns every scored evening (predicted and actual spare, whether it was contested), what was learned (hidden load, heavy share, honest error), and how the plan's own answers did.
 
+## Dashboards
+
+The integration ships the JavaScript its dashboard cards use (`window.SolarDash`) and loads it on every page, so there is nothing to copy to `/config/www` and no resource to add; it updates with the integration. If you added `solar-dash.js` as a resource before, remove that resource.
+
+The helpers read this home's details from the integration's settings: the energy counters you configured, the first day with statistics, and, with EF-PowerOcean-TcpModbus, the per-string power sensors it finds on your installation. For cards that compare strings per kWp, add each string's size under **Configure → Size of string PV1/PV2/PV3** (panels × watts on their label ÷ 1000; for example 12 × 420 W = 5.04 kWp). Until then those cards say so.
+
 ## Summary
 
 `sensor.solar_energy_insights_summary` is the phase of the day (day, evening, night), with the rows a dashboard shows as attributes: for each of Battery, Tonight, Heavy loads, Surplus (and Last night until noon), an icon, a tone, a headline and at most two short clauses, plus the earlier answer and its cause when it changed recently. Its attributes are kept out of the recorder.
