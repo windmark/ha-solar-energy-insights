@@ -80,7 +80,10 @@
           "grid_export_energy": "Grid export energy (optional)",
           "solar_power": "Solar power (optional)",
           "array_kwp": "Array size (optional)",
-          "lookback": "Show changes for"
+          "lookback": "Show changes for",
+          "string_kwp_pv1": "Size of string PV1 (optional)",
+          "string_kwp_pv2": "Size of string PV2 (optional)",
+          "string_kwp_pv3": "Size of string PV3 (optional)"
         },
         "data_description": {
           "nights": "How many recent nights the battery is tested against.",
@@ -99,7 +102,10 @@
           "grid_export_energy": "A counter of energy sold. Unlocks solar kept at home and export badges.",
           "solar_power": "For the peak power record.",
           "array_kwp": "The panels' DC size. Read from Solcast's rooftop sites, with where each one faces; set it here only if Solcast's sites do not give it.",
-          "lookback": "How long a changed answer (tonight's outlook, the grid time, when the battery is full) shows what it was before and why: from 30 minutes to 2 hours."
+          "lookback": "How long a changed answer (tonight's outlook, the grid time, when the battery is full) shows what it was before and why: from 30 minutes to 2 hours.",
+          "string_kwp_pv1": "The panels on string PV1, in kWp: the number of panels times the watts on their label, divided by 1000 (for example 12 panels of 420 W are 5.04 kWp). Your installer's plan or the inverter app may list it. Used by the dashboard to compare strings fairly; leave empty if you don't know.",
+          "string_kwp_pv2": "The panels on string PV2, in kWp: the number of panels times the watts on their label, divided by 1000 (for example 12 panels of 420 W are 5.04 kWp). Your installer's plan or the inverter app may list it. Used by the dashboard to compare strings fairly; leave empty if you don't know.",
+          "string_kwp_pv3": "The panels on string PV3, in kWp: the number of panels times the watts on their label, divided by 1000 (for example 12 panels of 420 W are 5.04 kWp). Your installer's plan or the inverter app may list it. Used by the dashboard to compare strings fairly; leave empty if you don't know."
         }
       }
     }

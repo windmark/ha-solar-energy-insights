@@ -8,6 +8,8 @@
 
 ### Added
 
+- The dashboard helpers ship with the integration and load on every page: nothing in /config/www, no resource to add, updated with the integration. What they used to hardcode comes from the integration's settings through `solar_energy_insights/config`: the configured counters, the first day with statistics, and PowerOcean's per-string power sensors, found on the same installation as the battery (their hourly mean power is the hour's energy, so no template sensors are needed). Each string found gets an optional size in the options, explained in plain words.
+
 - A Summary sensor: what the dashboard says, as rows (Battery, Tonight, Heavy loads, Surplus, and Last night in the morning), each a headline and at most two short clauses chosen by the time of day. The wording lived in the dashboard's JavaScript, copied into two cards and untested; it is now in `core/summary.py`, with real moments word for word and over a thousand day scenarios checked in CI for length and for not contradicting itself. The day's phases come from the plan's own sunset and sunrise.
 
 - How long a changed answer stays shown is an option, from 30 minutes to 2 hours.

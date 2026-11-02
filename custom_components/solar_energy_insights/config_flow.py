@@ -59,6 +59,7 @@ from .const import (
     DEFAULT_ROUND_TRIP_PCT,
     DOMAIN,
 )
+from .dashboard import discover_strings, string_kwp_key
 
 POWEROCEAN = "ef_powerocean_tcpmodbus"
 # Our field → PowerOcean entity keys (its unique ids end in _<key>), preferred first.
@@ -250,10 +251,18 @@ class InsightsOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         if user_input is not None:
             return self.async_create_entry(data=user_input)
+        # Each string PowerOcean reports gets a size field; none if there are none.
+        strings = discover_strings(self.hass, self.config_entry)
+        schema = OPTIONS_SCHEMA.extend(
+            {
+                vol.Optional(string_kwp_key(st["n"])): _number(0.1, 100, 0.01, "kWp")
+                for st in strings
+            }
+        )
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
-                OPTIONS_SCHEMA,
+                schema,
                 {
                     **_powerocean(self.hass, POWEROCEAN_OPTION_KEYS),
                     **_array_size(self.hass),
