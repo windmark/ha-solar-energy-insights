@@ -99,6 +99,9 @@
       },
       "forecast_checkpoints": {
         "default": "mdi:target-account"
+      },
+      "spike_grid_share": {
+        "default": "mdi:chart-bell-curve"
       }
     },
     "binary_sensor": {

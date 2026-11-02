@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
+import pytest
 from homeassistant.core import Event, HomeAssistant
 from pytest_homeassistant_custom_component.typing import WebSocketGenerator
 
@@ -88,3 +89,34 @@ async def test_stored_facts_from_an_older_version_are_rebuilt_quietly(
     assert memory.facts_version == FACTS_VERSION
     assert memory.facts[FIRST.isoformat()]["solar_kwh"] < 50
     assert events == []
+
+
+async def test_load_spikes_are_learned_and_allowed(
+    home: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    """A battery that always has plenty, and an inverter letting 3 % of each
+    hour's use through from the grid as loads switch on: the share is learned,
+    shown, and those hours count as off the grid."""
+    from tests.common import record_battery, record_house
+    from tests.test_answers import evening_load
+
+    await record_house(home, DAYS, evening_load)
+    await record_battery(home, DAYS, lambda _hour: 70.0)
+    await record_energy(home, SOLAR, DAYS, sun)
+    await record_energy(
+        home, IMPORT, DAYS, lambda _day, hour: 0.03 * evening_load(hour)
+    )
+    await record_energy(home, EXPORT, DAYS, sold)
+    set_states(home)
+    await setup_entry(home, ON)
+
+    share = home.states.get(
+        "sensor.solar_energy_insights_grid_share_during_load_spikes"
+    )
+    assert share is not None
+    assert float(share.state) == pytest.approx(3.1, abs=0.15)
+    assert share.attributes["learned"] is True
+    r = await room(home, hass_ws_client)
+    records = {x["id"]: x for x in r["records"]}
+    # Every hour only spikes' share: one stretch through all the days.
+    assert records["offgrid"]["value"] > 24 * 30

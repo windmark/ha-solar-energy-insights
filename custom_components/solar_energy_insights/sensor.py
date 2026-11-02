@@ -26,6 +26,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
+from .core.achievements.facts import MAX_SPIKE_SHARE, MIN_SPIKE_HOURS
 from .core.nights import days_covered
 from .core.plan import Outlook, Plan
 from .dashboard import discover_strings, history_start, string_kwp
@@ -335,6 +336,8 @@ async def async_setup_entry(
     async_add_entities([SummarySensor(coordinator, SUMMARY)])
     async_add_entities([MorningForecastSensor(coordinator, MORNING)])
     async_add_entities([CheckpointsSensor(coordinator, CHECKPOINTS_SENSOR)])
+    if coordinator.achievements.enabled:
+        async_add_entities([SpikeShareSensor(coordinator, SPIKE_SHARE)])
     for found in discover_strings(coordinator.hass, entry):
         n, power = found["n"], found["power"]
         async_add_entities(
@@ -861,3 +864,39 @@ class CheckpointsSensor(InsightsEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return self.coordinator.checkpoints.view()
+
+
+# ── Load spikes: the grid's share while the battery ramps up ──
+
+SPIKE_SHARE = SensorEntityDescription(
+    key="spike_grid_share",
+    translation_key="spike_grid_share",
+    native_unit_of_measurement=PERCENTAGE,
+    entity_category=EntityCategory.DIAGNOSTIC,
+    suggested_display_precision=1,
+)
+
+
+class SpikeShareSensor(InsightsEntity, SensorEntity):
+    """The grid's share of the house's use in hours the battery carried the
+    house: what covers load spikes while the inverter ramps the battery up.
+    Hours importing no more than this share still count as off the grid."""
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success
+
+    @property
+    def native_value(self) -> StateType:
+        return round(self.coordinator.achievements.spike_share * 100, 1)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        a = self.coordinator.achievements
+        live = a.live
+        return {
+            "learned": a.spike_hours >= MIN_SPIKE_HOURS,
+            "hours_seen": a.spike_hours,
+            "cap_pct": round(MAX_SPIKE_SHARE * 100),
+            "excused_today_kwh": None if live is None else live.spike_kwh,
+        }

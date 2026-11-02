@@ -365,6 +365,9 @@
       },
       "forecast_checkpoints": {
         "name": "Forecast checkpoints"
+      },
+      "spike_grid_share": {
+        "name": "Grid share during load spikes"
       }
     },
     "binary_sensor": {
