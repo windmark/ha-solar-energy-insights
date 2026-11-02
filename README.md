@@ -36,7 +36,7 @@ Cooking, the dishwasher and a cold night's heat pump are already in those nights
 2. Install **Solar Energy Insights** and restart Home Assistant.
 3. Settings → Devices & services → Add integration → **Solar Energy Insights**.
 
-Requires Home Assistant 2025.12 or newer and the recorder.
+Requires Home Assistant 2026.9 or newer (and so Python 3.14) and the recorder.
 
 ## Setup
 

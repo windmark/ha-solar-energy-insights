@@ -151,5 +151,5 @@ def from_sites(sites: Sequence[dict[str, object]], latitude: float) -> Array:
 def _number(value: object) -> float | None:
     try:
         return float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None

@@ -1,5 +1,5 @@
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 88
 
 [tool.ruff.lint]
@@ -39,7 +39,7 @@ ignore-variadic-names = true
 parametrize-values-type = "tuple"
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 files = ["custom_components", "tests"]
 explicit_package_bases = true
 strict = true
