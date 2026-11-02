@@ -366,8 +366,8 @@
       "forecast_checkpoints": {
         "name": "Forecast checkpoints"
       },
-      "inverter_background_draw": {
-        "name": "Inverter background draw"
+      "spike_grid_share": {
+        "name": "Grid share during load spikes"
       }
     },
     "binary_sensor": {

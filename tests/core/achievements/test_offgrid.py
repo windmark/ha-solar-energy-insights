@@ -1,4 +1,4 @@
-"""Off the grid: the inverter's own draw allowed, and stretches across days."""
+"""Off the grid: load spikes allowed, and stretches across days."""
 
 from __future__ import annotations
 
@@ -7,74 +7,105 @@ from datetime import date, timedelta
 import pytest
 
 from custom_components.solar_energy_insights.core.achievements.facts import (
-    MAX_DRAW_KWH,
-    OFF_GRID_KWH,
+    MAX_SPIKE_SHARE,
     DayFacts,
-    _offgrid_runs,
-    background_draw,
+    Series,
+    _offgrid,
+    spike_share,
     with_stretches,
 )
 
 DAY = date(2026, 6, 14)
+FLOOR = 5.0
 
 
-def hours(day: date, kwh: list[float]) -> dict[tuple[date, int], float]:
-    return {(day, h): v for h, v in enumerate(kwh)}
+def series(imp: list[float], use: list[float], soc: list[float]) -> Series:
+    return Series(
+        house={(DAY, h): use[h] for h in range(24)},
+        imported={(DAY, h): imp[h] for h in range(24)},
+        soc_min={(DAY, h): soc[h] for h in range(24)},
+    )
 
 
-def test_runs_from_midnight_to_midnight_and_the_longest() -> None:
-    # Grid from 06 to 08 and at 20; the rest off the grid.
-    kwh = [0.0] * 24
-    for h in (6, 7, 20):
-        kwh[h] = 0.4
-    runs = _offgrid_runs(hours(DAY, kwh), DAY, OFF_GRID_KWH, known=True)
+def test_a_sliver_of_grid_while_the_battery_carries_the_house_is_off_the_grid() -> None:
+    # 1 kWh an hour of use; 3 % of it from the grid as loads switch on.
+    s = series([0.03] * 24, [1.0] * 24, [60.0] * 24)
 
-    assert runs == {"offgrid_head": 6.0, "offgrid_tail": 3.0, "offgrid_run": 12.0}
+    off = _offgrid(s, DAY, FLOOR, share=0.04, known=True)
+
+    assert off["offgrid_hours"] == 24.0
+    assert off["spike_kwh"] == pytest.approx(0.72)
+
+
+def test_the_same_sliver_with_the_battery_at_its_reserve_is_grid_use() -> None:
+    soc = [60.0] * 24
+    for h in range(2, 6):
+        soc[h] = FLOOR  # at its reserve: the grid is carrying the house
+    s = series([0.03] * 24, [1.0] * 24, soc)
+
+    off = _offgrid(s, DAY, FLOOR, share=0.04, known=True)
+
+    assert off["offgrid_hours"] == 20.0
+    assert (off["offgrid_head"], off["offgrid_tail"], off["offgrid_run"]) == (
+        2.0,
+        18.0,
+        18.0,
+    )
+
+
+def test_a_large_share_is_grid_use_even_with_charge_left() -> None:
+    imp = [0.03] * 24
+    imp[19] = 1.5  # oven and kettle beyond what the battery can deliver
+    s = series(imp, [1.0] * 23 + [1.0], [60.0] * 24)
+
+    off = _offgrid(s, DAY, FLOOR, share=0.04, known=True)
+
+    assert off["offgrid_hours"] == 23.0
 
 
 def test_a_missing_hour_breaks_a_run() -> None:
-    imported = hours(DAY, [0.0] * 24)
-    del imported[(DAY, 12)]
+    s = series([0.0] * 24, [1.0] * 24, [60.0] * 24)
+    del s.imported[(DAY, 12)]  # type: ignore[union-attr]
 
-    assert _offgrid_runs(imported, DAY, OFF_GRID_KWH, known=True)["offgrid_run"] == 12.0
+    assert _offgrid(s, DAY, FLOOR, share=0.0, known=True)["offgrid_run"] == 12.0
 
 
-def plenty(days: int, draw: list[float]) -> tuple[dict, dict]:
-    """Hours with the battery at 60 %, importing the given draws in turn."""
-    imported, soc = {}, {}
+def history(
+    days: int, share: list[float], soc: float = 60.0
+) -> tuple[dict, dict, dict]:
+    imported, house, low = {}, {}, {}
     for d in range(days):
-        day = DAY - timedelta(days=d)
         for h in range(24):
-            imported[(day, h)] = draw[(d * 24 + h) % len(draw)]
-            soc[(day, h)] = 60.0
-    return imported, soc
+            key = (DAY - timedelta(days=d), h)
+            house[key] = 1.0 + (h % 5) * 0.4
+            imported[key] = house[key] * share[(d * 24 + h) % len(share)]
+            low[key] = soc
+    return imported, house, low
 
 
-def test_the_inverters_own_draw_is_learned_from_hours_the_battery_had_plenty() -> None:
-    imported, soc = plenty(5, [0.01, 0.03, 0.04, 0.02])
-    # Real grid use, with the battery at its reserve: not the inverter's draw.
+def test_the_spike_share_is_learned_from_hours_the_battery_had_plenty() -> None:
+    imported, house, low = history(5, [0.0, 0.01, 0.02, 0.03])
+    # Real grid use with the battery at its reserve: not a spike.
     for h in range(10):
-        imported[(DAY + timedelta(days=1), h)] = 0.9
-        soc[(DAY + timedelta(days=1), h)] = 6.0
+        key = (DAY + timedelta(days=1), h)
+        imported[key], house[key], low[key] = 0.9, 1.0, FLOOR
 
-    draw, seen = background_draw(imported, soc, floor_pct=5.0)
+    share, seen = spike_share(imported, house, low, FLOOR)
 
     assert seen == 120
-    assert draw == pytest.approx(0.0401)  # just above the draw
-    # Statistics carry rounding noise: an hour a hair above the draw still counts.
-    assert draw > 0.04000000001
+    assert share == pytest.approx(0.031)  # just above the high end
 
 
-def test_the_draw_is_capped_so_real_grid_use_is_never_excused() -> None:
-    imported, soc = plenty(5, [0.3])
+def test_the_share_is_capped_so_sustained_grid_use_never_passes() -> None:
+    imported, house, low = history(5, [0.5])
 
-    assert background_draw(imported, soc, floor_pct=5.0)[0] == MAX_DRAW_KWH
+    assert spike_share(imported, house, low, FLOOR)[0] == MAX_SPIKE_SHARE
 
 
-def test_until_there_are_enough_hours_the_plain_threshold_holds() -> None:
-    imported, soc = plenty(1, [0.05])
+def test_until_there_are_enough_hours_nothing_is_excused() -> None:
+    imported, house, low = history(1, [0.03])
 
-    assert background_draw(imported, soc, floor_pct=5.0) == (OFF_GRID_KWH, 24)
+    assert spike_share(imported, house, low, FLOOR) == (0.0, 24)
 
 
 def day(back: int, head: float, tail: float, run: float) -> DayFacts:
@@ -88,35 +119,21 @@ def day(back: int, head: float, tail: float, run: float) -> DayFacts:
 
 
 def test_a_stretch_carries_across_midnight_and_whole_days() -> None:
-    days = [
-        day(3, 0, 6, 6),  # off the grid from 18:00
-        day(2, 24, 24, 24),  # all day
-        day(1, 7, 2, 7),  # until 07:00
-        day(0, 3, 0, 9),
-    ]
+    days = [day(3, 0, 6, 6), day(2, 24, 24, 24), day(1, 7, 2, 7), day(0, 3, 0, 9)]
 
-    stretches = [f.offgrid_stretch for f in with_stretches(days)]
-
-    assert stretches == [6.0, 30.0, 37.0, 9.0]
+    assert [f.offgrid_stretch for f in with_stretches(days)] == [6.0, 30.0, 37.0, 9.0]
 
 
 def test_a_missing_day_breaks_a_stretch() -> None:
-    days = [day(2, 0, 6, 6), day(0, 5, 0, 5)]
+    assert [
+        f.offgrid_stretch for f in with_stretches([day(2, 0, 6, 6), day(0, 5, 0, 5)])
+    ] == [6.0, 5.0]
 
-    assert [f.offgrid_stretch for f in with_stretches(days)] == [6.0, 5.0]
 
-
-def test_the_inverters_draw_is_not_counted_as_grid_use() -> None:
-    f = DayFacts(day=DAY, house_kwh=12.0, import_kwh=0.9, background_kwh=0.96)
-    g = DayFacts(day=DAY, house_kwh=12.0, import_kwh=0.9)
+def test_only_import_excused_as_spikes_is_left_out() -> None:
+    f = DayFacts(day=DAY, house_kwh=12.0, import_kwh=0.4, spike_kwh=0.38)
+    g = DayFacts(day=DAY, house_kwh=12.0, import_kwh=3.0, spike_kwh=0.38)
 
     assert f.grid_free is True
-    assert f.self_sufficiency == 1.0
+    assert g.own_import_kwh == pytest.approx(2.62)
     assert g.grid_free is False
-
-
-def test_beyond_the_allowance_it_is_grid_use() -> None:
-    f = DayFacts(day=DAY, house_kwh=12.0, import_kwh=3.0, background_kwh=0.96)
-
-    assert f.own_import_kwh == pytest.approx(2.04)
-    assert f.grid_free is False

@@ -19,18 +19,20 @@ type Hourly = Mapping[tuple[date, int], float]
 
 # A day needs this many hours of house use to count.
 MIN_HOURS = 20
-# An hour importing less than this counts as off the grid, unless the inverter's
-# own background draw has been learned (see background_draw).
+# An hour importing less than this counts as off the grid.
 OFF_GRID_KWH = 0.02
-# The most an hour's import can be and still be the inverter's own draw.
-MAX_DRAW_KWH = 0.1
-# Hours with the battery this far above its reserve could cover the house: what
-# still came from the grid then is the inverter's own draw.
+# Load spikes: when a load switches on, the inverter takes a moment to ramp the
+# battery up and the grid covers that moment. An hour the battery carried (above
+# its reserve all hour) whose import was only a small share of the house's use
+# is off the grid too. The share is learned from hours the battery had plenty,
+# and never more than this, so sustained grid use cannot pass as spikes.
+MAX_SPIKE_SHARE = 0.10
 PLENTY_ABOVE_FLOOR_PCT = 10.0
-# Hours needed before the draw is learned, and the share of them it covers.
-MIN_DRAW_HOURS = 48
-DRAW_QUANTILE = 0.95
-DRAW_STEP_KWH = 0.0001
+CARRYING_ABOVE_FLOOR_PCT = 1.0
+MIN_SPIKE_HOURS = 48
+SPIKE_QUANTILE = 0.95
+# Rounding noise in the hourly statistics.
+NOISE_KWH = 0.0001
 # Within this many points of the charge limit counts as full.
 FULL_MARGIN_PCT = 1.0
 # Under this many kWh imported in a day is a grid-free day.
@@ -51,9 +53,8 @@ class DayFacts:
     offgrid_head: float | None = None
     offgrid_tail: float | None = None
     offgrid_run: float | None = None
-    # The inverter's own draw allowed for the day, kWh (the tolerance per hour
-    # times the day's hours).
-    background_kwh: float | None = None
+    # Import excused as load spikes: in hours the battery carried the house.
+    spike_kwh: float | None = None
     # The longest stretch off the grid ending this day, hours, across midnight
     # and across days: derived from the days before, not stored.
     offgrid_stretch: float | None = None
@@ -75,10 +76,10 @@ class DayFacts:
 
     @property
     def own_import_kwh(self) -> float | None:
-        """What came from the grid beyond the inverter's own draw."""
+        """What came from the grid beyond the moments of load spikes."""
         if self.import_kwh is None:
             return None
-        return max(self.import_kwh - (self.background_kwh or 0.0), 0.0)
+        return max(self.import_kwh - (self.spike_kwh or 0.0), 0.0)
 
     @property
     def self_sufficiency(self) -> float | None:
@@ -176,7 +177,7 @@ def build(
     forecast_kwh: float | None = None,
     said: Mapping[str, Any] | None = None,
     min_hours: int = MIN_HOURS,
-    offgrid_kwh: float = OFF_GRID_KWH,
+    spike_share: float = 0.0,
 ) -> DayFacts | None:
     """The facts of one closed day, or None if the house's use is mostly missing.
 
@@ -220,13 +221,7 @@ def build(
         solar_best_hour_kwh=None if solar is None else round(max(solar), 3),
         import_kwh=None if imported is None else round(sum(imported), 3),
         export_kwh=None if exported is None else round(sum(exported), 3),
-        offgrid_hours=None
-        if imported is None
-        else float(sum(1 for v in imported if v < offgrid_kwh)),
-        **_offgrid_runs(s.imported, day, offgrid_kwh, imported is not None),
-        background_kwh=None
-        if imported is None
-        else round(len(imported) * _allowed(offgrid_kwh), 3),
+        **_offgrid(s, day, floor_pct, spike_share, imported is not None),
         soc_max=None if highs is None else max(highs),
         soc_min=None if lows is None else min(lows),
         full_at=full_at,
@@ -246,53 +241,86 @@ def yesterday_of(day: date) -> date:
     return day - timedelta(days=1)
 
 
-def _allowed(offgrid_kwh: float) -> float:
-    """The inverter's own draw allowed per hour: none at the plain threshold."""
-    return offgrid_kwh if offgrid_kwh > OFF_GRID_KWH else 0.0
+def _hour_off(s: Series, key: tuple[date, int], floor_pct: float, share: float) -> bool:
+    """Off the grid this hour: next to no import, or only load spikes' share
+    of the house's use while the battery carried the house all hour."""
+    imp = s.imported.get(key) if s.imported else None
+    if imp is None:
+        return False
+    if imp < OFF_GRID_KWH:
+        return True
+    low = s.soc_min.get(key) if s.soc_min else None
+    use = s.house.get(key)
+    return (
+        share > 0
+        and low is not None
+        and low > floor_pct + CARRYING_ABOVE_FLOOR_PCT
+        and use is not None
+        and imp <= share * use + NOISE_KWH
+    )
 
 
-def _offgrid_runs(
-    imported: Hourly | None, day: date, offgrid_kwh: float, known: bool
+def _offgrid(
+    s: Series, day: date, floor_pct: float, share: float, known: bool
 ) -> dict[str, float | None]:
-    """Hours off the grid from midnight on, up to midnight, and the longest run
-    in the day. A missing hour breaks a run."""
-    if not known or imported is None:
-        return {"offgrid_head": None, "offgrid_tail": None, "offgrid_run": None}
-    off = [(day, h) in imported and imported[(day, h)] < offgrid_kwh for h in range(24)]
+    """Off-grid hours, the hours from and to midnight, the longest run in the
+    day, and the import excused as spikes. A missing hour breaks a run."""
+    if not known:
+        return dict.fromkeys(
+            (
+                "offgrid_hours",
+                "offgrid_head",
+                "offgrid_tail",
+                "offgrid_run",
+                "spike_kwh",
+            )
+        )
+    off = [_hour_off(s, (day, h), floor_pct, share) for h in range(24)]
     head = next((h for h, o in enumerate(off) if not o), 24)
     tail = next((h for h, o in enumerate(reversed(off)) if not o), 24)
     run = best = 0
     for o in off:
         run = run + 1 if o else 0
         best = max(best, run)
+    imported = s.imported or {}
+    spikes = sum(
+        imported[(day, h)]
+        for h in range(24)
+        if off[h] and imported.get((day, h), 0.0) >= OFF_GRID_KWH
+    )
     return {
+        "offgrid_hours": float(sum(off)),
         "offgrid_head": float(head),
         "offgrid_tail": float(tail),
         "offgrid_run": float(best),
+        "spike_kwh": round(spikes, 3),
     }
 
 
-def background_draw(
-    imported: Hourly | None, soc_min: Hourly | None, floor_pct: float
+def spike_share(
+    imported: Hourly | None,
+    house: Hourly | None,
+    soc_min: Hourly | None,
+    floor_pct: float,
 ) -> tuple[float, int]:
-    """The inverter's own draw from the grid, kWh per hour, learned from hours
-    when the battery was well above its reserve and could cover the house; and
-    how many such hours there were. The plain threshold until there are enough,
-    and never more than MAX_DRAW_KWH, so real grid use is never excused."""
-    if not imported or not soc_min:
-        return OFF_GRID_KWH, 0
-    seen = sorted(
-        max(kwh, 0.0)
-        for key, kwh in imported.items()
+    """The grid's share of the house's use that load spikes cause, learned from
+    hours the battery had plenty and could cover the house: their high end
+    (95th percentile), rounded up, at most MAX_SPIKE_SHARE; and how many such
+    hours there were. None (0) until there are enough."""
+    if not imported or not house or not soc_min:
+        return 0.0, 0
+    shares = sorted(
+        max(imp, 0.0) / house[key]
+        for key, imp in imported.items()
         if soc_min.get(key, 0.0) >= floor_pct + PLENTY_ABOVE_FLOOR_PCT
+        and house.get(key, 0.0) >= 0.05
     )
-    if len(seen) < MIN_DRAW_HOURS:
-        return OFF_GRID_KWH, len(seen)
-    high = seen[min(int(DRAW_QUANTILE * len(seen)), len(seen) - 1)]
-    # Rounded up and one step (0.1 Wh) above: an hour at the learned draw
-    # counts as off the grid, whatever the rounding noise in the statistics.
-    above = math.ceil(high * 10_000 - 1e-6) / 10_000 + DRAW_STEP_KWH
-    return round(min(max(above, OFF_GRID_KWH), MAX_DRAW_KWH), 4), len(seen)
+    if len(shares) < MIN_SPIKE_HOURS:
+        return 0.0, len(shares)
+    high = shares[min(int(SPIKE_QUANTILE * len(shares)), len(shares) - 1)]
+    return round(min(math.ceil(high * 1000) / 1000 + 0.001, MAX_SPIKE_SHARE), 3), len(
+        shares
+    )
 
 
 def with_stretches(days: list[DayFacts]) -> list[DayFacts]:

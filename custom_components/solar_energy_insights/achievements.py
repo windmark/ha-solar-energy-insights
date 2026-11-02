@@ -31,12 +31,13 @@ from .const import (
 )
 from .core.achievements import quests as quest_rules
 from .core.achievements.facts import (
-    OFF_GRID_KWH,
     DayFacts,
     Series,
-    background_draw,
     build,
     with_stretches,
+)
+from .core.achievements.facts import (
+    spike_share as learn_spike_share,
 )
 from .core.achievements.profile import profile_of
 from .core.achievements.quests import Quest
@@ -54,17 +55,17 @@ _LOGGER = logging.getLogger(__name__)
 # they are then rebuilt from the recorder, and nothing is announced for it.
 # 2: implausible counter jumps dropped. 3: no battery cycle counts.
 FACTS_VERSION = 4
-# Days of hourly history the inverter's own draw is learned from.
-DRAW_DAYS = 30
+# Days of hourly history the load spikes' share is learned from.
+SPIKE_DAYS = 30
 
 
 class Achievements:
     """Keeps the day facts current and the trophy room computed."""
 
-    # The inverter's own draw from the grid, kWh per hour, and the hours it was
-    # learned from: until learned, the plain off-grid threshold.
-    draw_kwh: float = OFF_GRID_KWH
-    draw_hours: int = 0
+    # The grid's share of the house's use during load spikes, learned, and the
+    # hours it was learned from: none until there are enough.
+    spike_share: float = 0.0
+    spike_hours: int = 0
 
     def __init__(self, coordinator: InsightsCoordinator) -> None:
         self.c = coordinator
@@ -231,12 +232,12 @@ class Achievements:
                 if first is None
                 else today - timedelta(days=REBUILD_DAYS + 1)
             )
-            # At least a month, to learn the inverter's own draw from.
-            start_day = min(start_day, today - timedelta(days=DRAW_DAYS))
+            # At least a month, to learn the load spikes' share from.
+            start_day = min(start_day, today - timedelta(days=SPIKE_DAYS))
             start = datetime.combine(start_day, datetime.min.time(), self.c.tz)
             series, lows = await self._series(start, now)
-            self.draw_kwh, self.draw_hours = background_draw(
-                series.imported, series.soc_min, battery.floor_pct
+            self.spike_share, self.spike_hours = learn_spike_share(
+                series.imported, series.house, series.soc_min, battery.floor_pct
             )
             day = start_day
             while day < today:
@@ -250,7 +251,7 @@ class Achievements:
                     evening=self._evening(day, lows),
                     forecast_kwh=self._forecast(day),
                     said=self._said(day),
-                    offgrid_kwh=self.draw_kwh,
+                    spike_share=self.spike_share,
                 )
                 if closed is not None:
                     memory.facts[day.isoformat()] = closed.as_dict()
@@ -268,7 +269,7 @@ class Achievements:
             floor_pct=battery.floor_pct,
             capacity_kwh=battery.capacity_kwh,
             min_hours=1,
-            offgrid_kwh=self.draw_kwh,
+            spike_share=self.spike_share,
         )
         history = with_stretches(
             [DayFacts.from_dict(v) for _, v in sorted(memory.facts.items())]

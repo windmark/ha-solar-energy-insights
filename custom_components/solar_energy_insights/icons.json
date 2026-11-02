@@ -100,8 +100,8 @@
       "forecast_checkpoints": {
         "default": "mdi:target-account"
       },
-      "inverter_background_draw": {
-        "default": "mdi:transmission-tower-import"
+      "spike_grid_share": {
+        "default": "mdi:chart-bell-curve"
       }
     },
     "binary_sensor": {
