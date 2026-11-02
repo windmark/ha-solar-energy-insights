@@ -15,6 +15,8 @@ from .dashboard import (
     STRINGS,
     async_register_frontend,
     string_kwp_key,
+    string_panel_w_key,
+    string_panels_key,
     string_roof_key,
 )
 from .memory import MemoryStore
@@ -52,7 +54,14 @@ def _drop_old_options(hass: HomeAssistant, entry: InsightsConfigEntry) -> None:
     """Options an earlier version had and this one does not are dropped, so
     they do not linger in the entry and in diagnostics."""
     known = {str(key) for key in OPTIONS_SCHEMA.schema} | {
-        key(n) for n in STRINGS for key in (string_kwp_key, string_roof_key)
+        key(n)
+        for n in STRINGS
+        for key in (
+            string_kwp_key,
+            string_panels_key,
+            string_panel_w_key,
+            string_roof_key,
+        )
     }
     kept = {k: v for k, v in entry.options.items() if k in known}
     if kept != dict(entry.options):

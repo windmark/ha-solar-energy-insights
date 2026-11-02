@@ -22,7 +22,8 @@ from pytest_homeassistant_custom_component.components.recorder.common import (
 from pytest_homeassistant_custom_component.typing import WebSocketGenerator
 
 from custom_components.solar_energy_insights.dashboard import (
-    string_kwp_key,
+    string_panel_w_key,
+    string_panels_key,
     string_roof_key,
 )
 from tests.common import DAY, local, set_states, setup_entry
@@ -78,9 +79,9 @@ async def test_each_string_reports_energy_power_and_yield_per_kwp(
     await record_power(home, strings[1], [DAY], 2.0)
     freezer.move_to(local(DAY, 15))
     set_states(home)
-    watts(home, strings[1], 1265)
+    watts(home, strings[1], 1260)
 
-    await setup_entry(home, {string_kwp_key(1): 5.06})
+    await setup_entry(home, {string_panels_key(1): 12, string_panel_w_key(1): 420})
     await home.async_block_till_done()
 
     assert float(state_of(home, f"{PREFIX}pv1_energy_today")) == pytest.approx(
@@ -88,10 +89,10 @@ async def test_each_string_reports_energy_power_and_yield_per_kwp(
     )  # 4 hours of 2 kW
     assert float(state_of(home, f"{PREFIX}pv1_power_per_kwp")) == pytest.approx(0.25)
     assert float(state_of(home, f"{PREFIX}pv1_yield_today")) == pytest.approx(
-        8.0 / 5.06, rel=1e-3
+        8.0 / 5.04, rel=1e-3
     )
 
-    watts(home, strings[1], 2530)
+    watts(home, strings[1], 2520)
     await home.async_block_till_done()
     assert float(state_of(home, f"{PREFIX}pv1_power_per_kwp")) == pytest.approx(0.5)
 
@@ -184,7 +185,7 @@ async def test_power_per_kwp_is_written_when_it_matters(
     strings = powerocean_strings(home, (1,))
     set_states(home)
     watts(home, strings[1], 2000)
-    await setup_entry(home, {string_kwp_key(1): 5.0})
+    await setup_entry(home, {string_panels_key(1): 10, string_panel_w_key(1): 500})
     await home.async_block_till_done()
     entity = f"{PREFIX}pv1_power_per_kwp"
     writes: list[str] = []

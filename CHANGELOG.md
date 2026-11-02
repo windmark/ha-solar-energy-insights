@@ -4,6 +4,8 @@
 
 ### Changed
 
+- A string's size is asked as its number of panels and the watts per panel, two whole numbers, instead of kWp. Some phone keypads offer only a comma for decimals, which the field does not accept, so a size like 5.06 could not be entered. A kWp value set before still counts.
+
 - Requires Home Assistant 2026.9 or newer, and so Python 3.14 (was 2025.12). CI tests the oldest supported release, the pinned one and the newest; the workaround for 2025.12's repairs is gone.
 
 ### Added

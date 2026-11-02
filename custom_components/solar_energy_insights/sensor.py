@@ -28,7 +28,7 @@ from .const import DOMAIN
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
 from .core.nights import days_covered
 from .core.plan import Outlook, Plan
-from .dashboard import discover_strings, history_start, string_kwp_key
+from .dashboard import discover_strings, history_start, string_kwp
 from .entity import InsightsEntity
 from .serialize import costs
 from .strings import backfill_energy, energy_today, power_kw
@@ -648,8 +648,7 @@ class _StringSensor(InsightsEntity, SensorEntity):
 
     @property
     def kwp(self) -> float | None:
-        value = self.coordinator.config_entry.options.get(string_kwp_key(self.n))
-        return float(value) if value else None
+        return string_kwp(self.coordinator.config_entry.options, self.n)
 
 
 class StringEnergySensor(_StringSensor):

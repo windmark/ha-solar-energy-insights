@@ -17,7 +17,10 @@ from custom_components.solar_energy_insights.dashboard import (
     SCRIPT,
     URL_BASE,
     async_register_frontend,
+    string_kwp,
     string_kwp_key,
+    string_panel_w_key,
+    string_panels_key,
 )
 from tests.common import ENTITIES, recent, record_house, set_states, setup_entry
 from tests.test_answers import evening_load
@@ -66,7 +69,7 @@ async def test_the_dashboard_gets_this_homes_settings(
     await record_house(home, days, evening_load)
     strings = powerocean_strings(home)
     set_states(home)
-    await setup_entry(home, {string_kwp_key(1): 5.06})
+    await setup_entry(home, {string_panels_key(1): 12, string_panel_w_key(1): 420})
 
     cfg = await config_of(home, hass_ws_client)
 
@@ -76,7 +79,7 @@ async def test_the_dashboard_gets_this_homes_settings(
     assert cfg["history_start"] == days[0].isoformat()
     found = [(s["n"], s["power"], s["kwp"], s["energy"]) for s in cfg["strings"]]
     assert found == [
-        (1, strings[1], 5.06, "sensor.solar_energy_insights_pv1_energy_today"),
+        (1, strings[1], 5.04, "sensor.solar_energy_insights_pv1_energy_today"),
         (3, strings[3], None, "sensor.solar_energy_insights_pv3_energy_today"),
     ]
     assert isinstance(cfg["forecasts"], dict)
@@ -92,24 +95,31 @@ async def test_no_strings_for_a_battery_that_is_not_a_powerocean(
     assert (await config_of(home, hass_ws_client))["strings"] == []
 
 
-async def test_the_options_ask_for_each_strings_size_and_keep_it(
+async def test_the_options_ask_for_each_strings_panels_and_keep_them(
     home: HomeAssistant,
 ) -> None:
     powerocean_strings(home, (1, 2))
     set_states(home)
-    entry = await setup_entry(home, {string_kwp_key(2): 3.68})
+    entry = await setup_entry(
+        home, {string_panels_key(2): 8, string_panel_w_key(2): 460}
+    )
 
     form = await home.config_entries.options.async_init(entry.entry_id)
 
     assert form["data_schema"] is not None
-    fields = {str(k) for k in form["data_schema"].schema}
-    assert {string_kwp_key(1), string_kwp_key(2)} <= fields
-    assert string_kwp_key(3) not in fields
-    assert suggested(form, string_kwp_key(2)) == 3.68
+    fields = {str(k): v for k, v in form["data_schema"].schema.items()}
+    assert {string_panels_key(1), string_panel_w_key(1), string_panels_key(2)} <= set(
+        fields
+    )
+    assert string_panels_key(3) not in fields
+    # Whole numbers only: a phone shows a plain number pad, no decimal separator.
+    for key in (string_panels_key(1), string_panel_w_key(1)):
+        assert fields[key].config["step"] == 1
+    assert suggested(form, string_panels_key(2)) == 8
     # Kept when the integration loads again, not dropped as an old option.
     await home.config_entries.async_reload(entry.entry_id)
     await home.async_block_till_done()
-    assert entry.options[string_kwp_key(2)] == 3.68
+    assert entry.options[string_panel_w_key(2)] == 460
 
 
 async def test_the_script_is_served_and_loaded_on_every_page(
@@ -152,5 +162,16 @@ def test_each_string_size_has_a_plain_explanation(n: int) -> None:
             / "custom_components/solar_energy_insights/translations/en.json"
         ).read_text()
     )["options"]["step"]["init"]
-    assert strings["data"][string_kwp_key(n)] == f"Size of string PV{n} (optional)"
-    assert "420 W" in strings["data_description"][string_kwp_key(n)]
+    assert (
+        strings["data"][string_panels_key(n)] == f"PV{n}: number of panels (optional)"
+    )
+    assert (
+        strings["data"][string_panel_w_key(n)] == f"PV{n}: watts per panel (optional)"
+    )
+    assert "for example 420" in strings["data_description"][string_panel_w_key(n)]
+
+
+def test_a_size_from_panels_or_the_older_kwp_option() -> None:
+    assert string_kwp({string_panels_key(1): 12, string_panel_w_key(1): 420}, 1) == 5.04
+    assert string_kwp({string_kwp_key(1): 5.06}, 1) == 5.06  # set before, still counts
+    assert string_kwp({string_panels_key(1): 12}, 1) is None  # half a size is no size

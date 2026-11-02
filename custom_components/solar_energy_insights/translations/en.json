@@ -81,12 +81,15 @@
           "solar_power": "Solar power (optional)",
           "array_kwp": "Array size (optional)",
           "lookback": "Show changes for",
-          "string_kwp_pv1": "Size of string PV1 (optional)",
-          "string_kwp_pv2": "Size of string PV2 (optional)",
-          "string_kwp_pv3": "Size of string PV3 (optional)",
           "string_roof_pv1": "Roof of string PV1 (optional)",
           "string_roof_pv2": "Roof of string PV2 (optional)",
-          "string_roof_pv3": "Roof of string PV3 (optional)"
+          "string_roof_pv3": "Roof of string PV3 (optional)",
+          "string_panels_pv1": "PV1: number of panels (optional)",
+          "string_panel_w_pv1": "PV1: watts per panel (optional)",
+          "string_panels_pv2": "PV2: number of panels (optional)",
+          "string_panel_w_pv2": "PV2: watts per panel (optional)",
+          "string_panels_pv3": "PV3: number of panels (optional)",
+          "string_panel_w_pv3": "PV3: watts per panel (optional)"
         },
         "data_description": {
           "nights": "How many recent nights the battery is tested against.",
@@ -106,12 +109,15 @@
           "solar_power": "For the peak power record.",
           "array_kwp": "The panels' DC size. Read from Solcast's rooftop sites, with where each one faces; set it here only if Solcast's sites do not give it.",
           "lookback": "How long a changed answer (tonight's outlook, the grid time, when the battery is full) shows what it was before and why: from 30 minutes to 2 hours.",
-          "string_kwp_pv1": "The panels on string PV1, in kWp: the number of panels times the watts on their label, divided by 1000 (for example 12 panels of 420 W are 5.04 kWp). Your installer's plan or the inverter app may list it. Used by the dashboard to compare strings fairly; leave empty if you don't know.",
-          "string_kwp_pv2": "The panels on string PV2, in kWp: the number of panels times the watts on their label, divided by 1000 (for example 12 panels of 420 W are 5.04 kWp). Your installer's plan or the inverter app may list it. Used by the dashboard to compare strings fairly; leave empty if you don't know.",
-          "string_kwp_pv3": "The panels on string PV3, in kWp: the number of panels times the watts on their label, divided by 1000 (for example 12 panels of 420 W are 5.04 kWp). Your installer's plan or the inverter app may list it. Used by the dashboard to compare strings fairly; leave empty if you don't know.",
           "string_roof_pv1": "Which of your Solcast sites the panels on string PV1 are on. Strings on the same roof should make about the same per kWp, so the dashboard compares them with each other.",
           "string_roof_pv2": "Which of your Solcast sites the panels on string PV2 are on. Strings on the same roof should make about the same per kWp, so the dashboard compares them with each other.",
-          "string_roof_pv3": "Which of your Solcast sites the panels on string PV3 are on. Strings on the same roof should make about the same per kWp, so the dashboard compares them with each other."
+          "string_roof_pv3": "Which of your Solcast sites the panels on string PV3 are on. Strings on the same roof should make about the same per kWp, so the dashboard compares them with each other.",
+          "string_panels_pv1": "How many panels are on string PV1: count them on the roof or in your installer's plan.",
+          "string_panel_w_pv1": "The watts on the panels' label, for example 420. Together with the number of panels this gives string PV1's size, which the dashboard uses to compare strings fairly. Leave both empty if you don't know.",
+          "string_panels_pv2": "How many panels are on string PV2: count them on the roof or in your installer's plan.",
+          "string_panel_w_pv2": "The watts on the panels' label, for example 420. Together with the number of panels this gives string PV2's size, which the dashboard uses to compare strings fairly. Leave both empty if you don't know.",
+          "string_panels_pv3": "How many panels are on string PV3: count them on the roof or in your installer's plan.",
+          "string_panel_w_pv3": "The watts on the panels' label, for example 420. Together with the number of panels this gives string PV3's size, which the dashboard uses to compare strings fairly. Leave both empty if you don't know."
         }
       }
     }
