@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from freezegun.api import FrozenDateTimeFactory
+from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.components.recorder.statistics import (
     StatisticMeanType,
@@ -30,6 +31,12 @@ from tests.test_dashboard import config_of, powerocean_strings
 from tests.test_devices import solcast_site
 
 PREFIX = "sensor.solar_energy_insights_"
+
+
+def state_of(home: HomeAssistant, entity_id: str) -> str:
+    state = home.states.get(entity_id)
+    assert state is not None, entity_id
+    return state.state
 
 
 async def record_power(
@@ -76,21 +83,17 @@ async def test_each_string_reports_energy_power_and_yield_per_kwp(
     await setup_entry(home, {string_kwp_key(1): 5.06})
     await home.async_block_till_done()
 
-    energy = home.states.get(f"{PREFIX}pv1_energy_today")
-    assert energy is not None
-    assert float(energy.state) == pytest.approx(8.0)  # 4 hours of 2 kW
-    assert float(home.states.get(f"{PREFIX}pv1_power_per_kwp").state) == pytest.approx(
-        0.25
-    )
-    assert float(home.states.get(f"{PREFIX}pv1_yield_today").state) == pytest.approx(
+    assert float(state_of(home, f"{PREFIX}pv1_energy_today")) == pytest.approx(
+        8.0
+    )  # 4 hours of 2 kW
+    assert float(state_of(home, f"{PREFIX}pv1_power_per_kwp")) == pytest.approx(0.25)
+    assert float(state_of(home, f"{PREFIX}pv1_yield_today")) == pytest.approx(
         8.0 / 5.06, rel=1e-3
     )
 
     watts(home, strings[1], 2530)
     await home.async_block_till_done()
-    assert float(home.states.get(f"{PREFIX}pv1_power_per_kwp").state) == pytest.approx(
-        0.5
-    )
+    assert float(state_of(home, f"{PREFIX}pv1_power_per_kwp")) == pytest.approx(0.5)
 
 
 async def test_without_a_size_per_kwp_is_not_guessed(home: HomeAssistant) -> None:
@@ -100,9 +103,9 @@ async def test_without_a_size_per_kwp_is_not_guessed(home: HomeAssistant) -> Non
 
     await setup_entry(home)
 
-    assert home.states.get(f"{PREFIX}pv2_power_per_kwp").state == "unavailable"
-    assert home.states.get(f"{PREFIX}pv2_yield_today").state == "unavailable"
-    assert home.states.get(f"{PREFIX}pv2_energy_today").state != "unavailable"
+    assert state_of(home, f"{PREFIX}pv2_power_per_kwp") == "unavailable"
+    assert state_of(home, f"{PREFIX}pv2_yield_today") == "unavailable"
+    assert state_of(home, f"{PREFIX}pv2_energy_today") != "unavailable"
 
 
 async def test_the_energy_sensor_starts_with_the_strings_whole_history(
@@ -119,7 +122,7 @@ async def test_the_energy_sensor_starts_with_the_strings_whole_history(
     await async_wait_recording_done(home)
 
     energy = f"{PREFIX}pv3_energy_today"
-    rows: dict[str, Any] = await home.async_add_executor_job(
+    rows: dict[str, Any] = await get_instance(home).async_add_executor_job(
         statistics_during_period,
         home,
         dt_util.as_utc(local(past[0], 0)),
