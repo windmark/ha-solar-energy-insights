@@ -45,6 +45,8 @@ Complications that, measured on real data, did not earn their place:
 
 ### Fixed
 
+- The day and the night are stepped by one engine. The step-by-step day simulation is now one battery through the same code as the nights, which keeps the books the day needs (when the battery filled, export before and after, the peak and when, the low, the level at sunset). The original loop is kept in the tests as an independent reference; the engine agrees with it on every result, over 1,000 random days in CI and 3,000 checked by hand.
+
 - "Last night" and the live night score now read one record of each night's call and outcome. They disagreed: the live score counts only nights that could have gone either way, "last night" counts every call, and each took the outcome from a different place.
 - Options an earlier version had are dropped when the integration loads.
 - When the reserve comes from PowerOcean's plain limit and its effective reserve exists, a repair under Settings offers to switch, in one click. The plain limit can read 0 % while the app keeps a higher backup reserve.
