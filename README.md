@@ -115,6 +115,17 @@ The integration ships the JavaScript its dashboard cards use (`window.SolarDash`
 
 The helpers read this home's details from the integration's settings: the energy counters you configured, the first day with statistics, and, with EF-PowerOcean-TcpModbus, the per-string power sensors it finds on your installation. For cards that compare strings per kWp, add each string's panels under **Configure**: for PV1, PV2 and PV3, the number of panels and the watts on their label (for example 12 panels of 420 W). Until then those cards say so.
 
+### Achievement cards
+
+With achievements on, four cards come with the integration, one line each:
+
+```yaml
+- type: custom:solar-energy-insights-level
+- type: custom:solar-energy-insights-streaks
+- type: custom:solar-energy-insights-records
+- type: custom:solar-energy-insights-badges
+```
+
 ## Summary
 
 `sensor.solar_energy_insights_summary` is the phase of the day (day, evening, night), with the rows a dashboard shows as attributes: for each of Battery, Tonight, Heavy loads, Surplus (and Last night until noon), an icon, a tone, a headline and at most two short clauses, plus the earlier answer and its cause when it changed recently. Its attributes are kept out of the recorder.

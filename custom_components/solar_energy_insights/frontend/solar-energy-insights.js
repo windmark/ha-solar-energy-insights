@@ -651,4 +651,698 @@
     const ha = document.querySelector("home-assistant");
     if (ha && ha.hass) loadConfig(ha.hass);
   } catch (x) {}
+
+  /* ── Achievement cards: real cards, not button-card templates ──
+     Each renders into its own shadow DOM inside a standard ha-card, so taps,
+     redraws and state work the ordinary way. Each draws only when what it would
+     show has changed. */
+  const CARD_STYLE =
+    "display:block;background:#1c1c1e;border-radius:18px;border:none;box-shadow:none;" +
+    "padding:18px 20px 20px;color:#e5e5e7;text-align:left;white-space:nowrap;" +
+    "font-family:var(--ha-font-family-body, Roboto, sans-serif);font-size:14px;line-height:1.4";
+  const defineCard = (tag, name, description, render) => {
+    if (!window.customElements || customElements.get(tag)) return;
+    class Card extends HTMLElement {
+      setConfig(config) {
+        this._config = config || {};
+      }
+      set hass(hass) {
+        this._hass = hass;
+        this.requestUpdate();
+      }
+      get hass() {
+        return this._hass;
+      }
+      // Also how the shared helpers ask for a redraw when data arrives.
+      requestUpdate() {
+        if (this._queued) return;
+        this._queued = true;
+        Promise.resolve().then(() => {
+          this._queued = false;
+          this._render();
+        });
+      }
+      getCardSize() {
+        return 4;
+      }
+      getGridOptions() {
+        return { columns: 12, min_columns: 6 };
+      }
+      _render() {
+        if (!this._hass) return;
+        if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+        let body;
+        try {
+          body = render.call(this, this._hass.states, this._hass);
+        } catch (e) {
+          body = `<div style="font-size:12px;color:#ff8a80;white-space:normal">${String(
+            (e && e.message) || e,
+          )}</div>`;
+        }
+        if (body === this._drawn) return;
+        this._drawn = body;
+        this.shadowRoot.innerHTML = `<ha-card style="${CARD_STYLE}">${body}</ha-card>`;
+      }
+    }
+    customElements.define(tag, Card);
+    (window.customCards = window.customCards || []).push({
+      type: tag,
+      name,
+      description,
+      preview: false,
+    });
+  };
+
+  defineCard(
+    "solar-energy-insights-level",
+    "Solar level",
+    "Your level, rank, today's score and quest.",
+    function (states, hass) {
+      const el = this;
+      const {
+        W,
+        C,
+        st,
+        val,
+        attr,
+        num,
+        hm,
+        kwh,
+        sub,
+        head,
+        pill,
+        ws,
+        waiting,
+      } = window.SolarDash.ui(this, hass, states);
+
+      const a = ws("ach", "solar_energy_insights/achievements", 300);
+      const off = W.ach?.error && /disabled|off/i.test(W.ach.error);
+      const TIER = [
+        ["#cd7f32", "Bronze"],
+        ["#c0c0c8", "Silver"],
+        ["#f5b83d", "Gold"],
+      ];
+      const RANK = {
+        Bronze: ["#cd7f32", "mdi:shield-outline"],
+        Silver: ["#c0c0c8", "mdi:shield-half-full"],
+        Gold: ["#f5b83d", "mdi:shield-star"],
+        Platinum: ["#9ad7e6", "mdi:shield-crown"],
+        Diamond: ["#b9f2ff", "mdi:diamond-stone"],
+      };
+      const bar = (pct, color, h = 6) =>
+        `<div style="height:${h}px;background:#000;border-radius:${
+          h / 2
+        }px;overflow:hidden"><div style="width:${Math.max(
+          0,
+          Math.min(pct, 100),
+        )}%;height:100%;background:${color};border-radius:${
+          h / 2
+        }px"></div></div>`;
+      const dmy = (d) =>
+        d
+          ? new Date(d).toLocaleDateString("en-GB", {
+              day: "numeric",
+              month: "short",
+              year: "2-digit",
+            })
+          : "";
+      const notReady = () =>
+        off
+          ? sub(
+              "Achievements are off: switch them on in the Solar Energy Insights options.",
+            )
+          : waiting("ach", "the trophy room");
+
+      // Level, rank and today's score, led by the open quest: what is closest to happening.
+      if (!a) return notReady();
+      const L = a.level,
+        R = a.rank,
+        [rc, ricon] = RANK[R.name] || RANK.Bronze;
+      const PARTS = [
+        ["self_sufficiency", "Self-sufficiency", 40, "#8be36a"],
+        ["kept_at_home", "Solar kept at home", 30, "#f5b83d"],
+        ["battery_used", "Battery put to work", 15, "#4c7cf3"],
+        ["performance", "Against the forecast", 15, "#b07cf0"],
+      ];
+      const parts = a.today.parts || {};
+      const shown = PARTS.filter(([k]) => parts[k] !== undefined);
+      const total = shown.reduce((s, [, , w]) => s + w, 0) || 1;
+      const rows = shown
+        .map(([k, label, w, c]) => {
+          const pts = Math.round((parts[k] * w * 100) / total);
+          return `<div style="margin-top:9px"><div style="display:flex;justify-content:space-between;font-size:12px">
+    <span style="color:#c7c7cc">${label}</span><span style="color:#fff">${pts}<span style="color:#636366"> / ${Math.round(
+      (w * 100) / total,
+    )}</span></span></div>
+    <div style="margin-top:4px">${bar(parts[k] * 100, c)}</div></div>`;
+        })
+        .join("");
+      const open = [...(a.quests || [])]
+        .reverse()
+        .find((q) => q.result === null || q.result === undefined);
+      const last = [...(a.quests || [])]
+        .reverse()
+        .find((q) => q.result === true || q.result === false);
+      const quest = open
+        ? `<div style="background:#1f2a1f;border-radius:12px;padding:10px 12px;margin:12px 0 4px">
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#8be36a">
+      <span><ha-icon icon="mdi:flag-variant-outline" style="--mdc-icon-size:14px"></ha-icon> ${
+        open.kind === "grid_free_nights"
+          ? "This week"
+          : open.kind === "grid_free_night"
+            ? "Tonight"
+            : "Quest for " +
+              new Date(open.day).toLocaleDateString("en-GB", {
+                weekday: "long",
+              })
+      }</span>
+      <span style="font-weight:500">+${open.reward} XP</span></div>
+    <div style="font-size:15px;color:#fff;font-weight:500;margin-top:4px;white-space:normal">${
+      open.title
+    }</div></div>`
+        : "";
+      const lastLine = last
+        ? `<div style="font-size:11px;color:${
+            last.result ? C.ok : C.muted
+          };margin-top:4px">${last.result ? "✓" : "✗"} ${last.title}${
+            last.result ? ` · +${last.reward} XP` : ""
+          }</div>`
+        : "";
+      const month = (a.months || []).slice(-2, -1)[0];
+      return `<div style="display:flex;align-items:center;gap:14px">
+    <div style="width:56px;height:56px;border-radius:50%;background:#2c2c2e;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px ${rc}55;flex-shrink:0">
+      <ha-icon icon="${ricon}" style="--mdc-icon-size:30px;color:${rc}"></ha-icon></div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:18px;color:#fff;font-weight:500;white-space:normal;line-height:1.25">Level ${
+        L.level
+      } · ${L.name}</div>
+      <div style="font-size:12px;color:#8e8e93;white-space:normal;line-height:1.35">${
+        R.name
+      } rank · 30-day average ${R.average}${
+        R.next_name ? ` · ${R.next_name} at ${R.next_at}` : ""
+      }</div>
+      <div style="margin-top:6px">${bar(L.progress * 100, rc, 5)}</div>
+      <div style="font-size:11px;color:#636366;margin-top:3px">${(
+        L.next_xp - L.xp
+      ).toLocaleString("en-GB")} XP to level ${L.level + 1}</div>
+    </div>
+    <div style="text-align:center;flex-shrink:0"><div style="font-size:30px;color:#fff;font-weight:500;line-height:1">${
+      a.today.score ?? "–"
+    }</div>
+      <div style="font-size:10px;color:#8e8e93">today</div></div>
+  </div>${quest}${lastLine}${rows}
+  ${
+    month
+      ? `<div style="font-size:11px;color:#636366;margin-top:12px;white-space:normal">${new Date(
+          month.month + "-01",
+        ).toLocaleDateString("en-GB", { month: "long" })}: average ${
+          month.score
+        }, ${month.nights_lasted} of ${month.nights} nights without the grid${
+          month.saved !== null && month.saved !== undefined
+            ? `, sun kept at home worth ${new Intl.NumberFormat("en-GB", {
+                style: "currency",
+                currency: hass?.config?.currency || "EUR",
+              }).format(month.saved)}`
+            : ""
+        }${
+          month.badges.length
+            ? `, ${month.badges.length} new tier${
+                month.badges.length > 1 ? "s" : ""
+              }`
+            : ""
+        }</div>`
+      : ""
+  }`;
+    },
+  );
+
+  defineCard(
+    "solar-energy-insights-streaks",
+    "Solar streaks",
+    "Your streaks, with their shields.",
+    function (states, hass) {
+      const el = this;
+      const {
+        W,
+        C,
+        st,
+        val,
+        attr,
+        num,
+        hm,
+        kwh,
+        sub,
+        head,
+        pill,
+        ws,
+        waiting,
+      } = window.SolarDash.ui(this, hass, states);
+
+      const a = ws("ach", "solar_energy_insights/achievements", 300);
+      const off = W.ach?.error && /disabled|off/i.test(W.ach.error);
+      const TIER = [
+        ["#cd7f32", "Bronze"],
+        ["#c0c0c8", "Silver"],
+        ["#f5b83d", "Gold"],
+      ];
+      const RANK = {
+        Bronze: ["#cd7f32", "mdi:shield-outline"],
+        Silver: ["#c0c0c8", "mdi:shield-half-full"],
+        Gold: ["#f5b83d", "mdi:shield-star"],
+        Platinum: ["#9ad7e6", "mdi:shield-crown"],
+        Diamond: ["#b9f2ff", "mdi:diamond-stone"],
+      };
+      const bar = (pct, color, h = 6) =>
+        `<div style="height:${h}px;background:#000;border-radius:${
+          h / 2
+        }px;overflow:hidden"><div style="width:${Math.max(
+          0,
+          Math.min(pct, 100),
+        )}%;height:100%;background:${color};border-radius:${
+          h / 2
+        }px"></div></div>`;
+      const dmy = (d) =>
+        d
+          ? new Date(d).toLocaleDateString("en-GB", {
+              day: "numeric",
+              month: "short",
+              year: "2-digit",
+            })
+          : "";
+      const notReady = () =>
+        off
+          ? sub(
+              "Achievements are off: switch them on in the Solar Energy Insights options.",
+            )
+          : waiting("ach", "the trophy room");
+
+      // Streaks: current run and best, with weather shields (a shield absorbs a break the weather caused).
+      if (!a) return notReady();
+      const rows = a.streaks
+        .map((s) => {
+          const hot = s.current > 0;
+          const shields = s.shields
+            ? ` <span style="color:#9ad7e6;font-size:11px">${'<ha-icon icon="mdi:shield-half-full" style="--mdc-icon-size:13px"></ha-icon>'.repeat(
+                s.shields,
+              )}</span>`
+            : "";
+          return `<div style="display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;margin-top:12px">
+    <div style="width:36px;height:36px;border-radius:50%;background:${
+      hot ? "#3a2412" : "#2c2c2e"
+    };display:flex;align-items:center;justify-content:center">
+      <ha-icon icon="${s.icon}" style="--mdc-icon-size:19px;color:${
+        hot ? "#ff9f43" : "#636366"
+      }"></ha-icon></div>
+    <div><div style="font-size:14px;color:#fff">${
+      s.name
+    }${shields}</div><div style="font-size:11px;color:#8e8e93">${
+      s.description
+    }</div></div>
+    <div style="text-align:right"><div style="font-size:22px;color:${
+      hot ? "#fff" : "#636366"
+    }">${s.current}${
+      hot
+        ? ' <ha-icon icon="mdi:fire" style="--mdc-icon-size:16px;color:#ff9f43"></ha-icon>'
+        : ""
+    }</div>
+      <div style="font-size:11px;color:${
+        s.personal_best ? "#f5b83d" : "#8e8e93"
+      }">${
+        s.personal_best ? "personal best!" : `best ${s.best}`
+      }</div></div></div>`;
+        })
+        .join("");
+      return `<div style="font-size:12px;color:#8e8e93">Shields come with each week-long run and absorb one break the weather caused.</div>${rows}`;
+    },
+  );
+
+  defineCard(
+    "solar-energy-insights-records",
+    "Solar records",
+    "Your best days, all time and this season.",
+    function (states, hass) {
+      const el = this;
+      const {
+        W,
+        C,
+        st,
+        val,
+        attr,
+        num,
+        hm,
+        kwh,
+        sub,
+        head,
+        pill,
+        ws,
+        waiting,
+      } = window.SolarDash.ui(this, hass, states);
+
+      const a = ws("ach", "solar_energy_insights/achievements", 300);
+      const off = W.ach?.error && /disabled|off/i.test(W.ach.error);
+      const TIER = [
+        ["#cd7f32", "Bronze"],
+        ["#c0c0c8", "Silver"],
+        ["#f5b83d", "Gold"],
+      ];
+      const RANK = {
+        Bronze: ["#cd7f32", "mdi:shield-outline"],
+        Silver: ["#c0c0c8", "mdi:shield-half-full"],
+        Gold: ["#f5b83d", "mdi:shield-star"],
+        Platinum: ["#9ad7e6", "mdi:shield-crown"],
+        Diamond: ["#b9f2ff", "mdi:diamond-stone"],
+      };
+      const bar = (pct, color, h = 6) =>
+        `<div style="height:${h}px;background:#000;border-radius:${
+          h / 2
+        }px;overflow:hidden"><div style="width:${Math.max(
+          0,
+          Math.min(pct, 100),
+        )}%;height:100%;background:${color};border-radius:${
+          h / 2
+        }px"></div></div>`;
+      const dmy = (d) =>
+        d
+          ? new Date(d).toLocaleDateString("en-GB", {
+              day: "numeric",
+              month: "short",
+              year: "2-digit",
+            })
+          : "";
+      const notReady = () =>
+        off
+          ? sub(
+              "Achievements are off: switch them on in the Solar Energy Insights options.",
+            )
+          : waiting("ach", "the trophy room");
+
+      // Records: the best day of each kind, the season's best, and how yesterday ranked.
+      if (!a) return notReady();
+      const clock = (m) =>
+        `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(
+          Math.round(m % 60),
+        ).padStart(2, "0")}`;
+      const fmt = (r) => (v) =>
+        r.unit === "min"
+          ? clock(v)
+          : r.unit === "kW"
+            ? v.toFixed(2) + " kW"
+            : r.unit === "h"
+              ? v.toFixed(0) + " h"
+              : v.toFixed(1) + " kWh";
+      const yieldToday = num(a.today.solar_kwh);
+      const rows = a.records
+        .map((r) => {
+          const f = fmt(r);
+          let chase = "";
+          if (r.id === "best_day" && yieldToday !== null && r.value > 0) {
+            const p = Math.min((yieldToday / r.value) * 100, 100);
+            chase = `<div style="margin-top:5px">${bar(
+              p,
+              p >= 100 ? "#8be36a" : "#f5b83d",
+              4,
+            )}</div><div style="font-size:10px;color:#636366;margin-top:2px">today ${Math.round(
+              p,
+            )}% of the record</div>`;
+          }
+          const season =
+            r.season_value !== null &&
+            r.season_value !== undefined &&
+            r.season_value !== r.value
+              ? `this season ${f(r.season_value)}`
+              : "";
+          const top =
+            r.last_top_pct !== null &&
+            r.last_top_pct !== undefined &&
+            r.last_top_pct <= 20
+              ? `yesterday: top ${Math.max(1, Math.round(r.last_top_pct))}%`
+              : "";
+          return `<div style="display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:start;margin-top:12px">
+    <ha-icon icon="${
+      r.icon
+    }" style="--mdc-icon-size:18px;color:#f5b83d;margin-top:1px"></ha-icon>
+    <div><div style="font-size:14px;color:#fff">${r.name}</div>
+      <div style="font-size:11px;color:#8e8e93">${dmy(r.day)}${
+        season ? " · " + season : ""
+      }${
+        top ? ` · <span style="color:#8be36a">${top}</span>` : ""
+      }</div>${chase}</div>
+    <div style="font-size:16px;color:#fff;text-align:right">${f(
+      r.value,
+    )}</div></div>`;
+        })
+        .join("");
+      return rows || sub("No records yet.");
+    },
+  );
+
+  defineCard(
+    "solar-energy-insights-badges",
+    "Solar badges",
+    "Badges within reach, later in the year and complete; tap one to see what it takes.",
+    function (states, hass) {
+      const el = this;
+      const {
+        W,
+        C,
+        st,
+        val,
+        attr,
+        num,
+        hm,
+        kwh,
+        sub,
+        head,
+        pill,
+        ws,
+        waiting,
+      } = window.SolarDash.ui(this, hass, states);
+
+      const a = ws("ach", "solar_energy_insights/achievements", 300);
+      const off = W.ach?.error && /disabled|off/i.test(W.ach.error);
+      const TIER = [
+        ["#cd7f32", "Bronze"],
+        ["#c0c0c8", "Silver"],
+        ["#f5b83d", "Gold"],
+      ];
+      const RANK = {
+        Bronze: ["#cd7f32", "mdi:shield-outline"],
+        Silver: ["#c0c0c8", "mdi:shield-half-full"],
+        Gold: ["#f5b83d", "mdi:shield-star"],
+        Platinum: ["#9ad7e6", "mdi:shield-crown"],
+        Diamond: ["#b9f2ff", "mdi:diamond-stone"],
+      };
+      const bar = (pct, color, h = 6) =>
+        `<div style="height:${h}px;background:#000;border-radius:${
+          h / 2
+        }px;overflow:hidden"><div style="width:${Math.max(
+          0,
+          Math.min(pct, 100),
+        )}%;height:100%;background:${color};border-radius:${
+          h / 2
+        }px"></div></div>`;
+      const dmy = (d) =>
+        d
+          ? new Date(d).toLocaleDateString("en-GB", {
+              day: "numeric",
+              month: "short",
+              year: "2-digit",
+            })
+          : "";
+      const notReady = () =>
+        off
+          ? sub(
+              "Achievements are off: switch them on in the Solar Energy Insights options.",
+            )
+          : waiting("ach", "the trophy room");
+
+      // Badges: the closest few in full, then rows of icons (any time, later,
+      // complete) and one line explaining whichever badge is selected; the latest
+      // completed one to begin with. Every badge is in exactly one place.
+      if (!a) return notReady();
+      // The selection lives in the shared state: button-card redraws the card
+      // whenever a watched sensor changes, which would otherwise undo every tap.
+      const UI = (W.badgeUi = W.badgeUi || { spot: null });
+      if (!el.__seiBadgeTaps) {
+        el.__seiBadgeTaps = true;
+        // iOS gets no click here (the card's own tap handling cancels the touch), so
+        // a tap is a pointer that goes down and up in about the same place.
+        const hitOf = (ev) =>
+          ev.composedPath().find((n) => n.dataset && n.dataset.badge);
+        let down = null;
+        el.addEventListener(
+          "pointerdown",
+          (ev) => {
+            down = { x: ev.clientX, y: ev.clientY, hit: hitOf(ev) };
+          },
+          true,
+        );
+        el.addEventListener(
+          "pointerup",
+          (ev) => {
+            const d = down;
+            down = null;
+            if (
+              !d ||
+              !d.hit ||
+              Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 10
+            )
+              return;
+            ev.stopPropagation();
+            UI.spot = d.hit.dataset.badge;
+            (W.listeners || []).forEach((f) => f());
+          },
+          true,
+        );
+        el.addEventListener(
+          "click",
+          (ev) => {
+            if (hitOf(ev)) ev.stopPropagation();
+          },
+          true,
+        );
+      }
+      const PIP = ["#cd7f32", "#c0c0c8", "#f5b83d"];
+      const dm = (d) =>
+        new Date(d + "T00:00").toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "short",
+        });
+      const named = (b) => b.name || "Hidden";
+      const what = (b) => (b.name ? b.description : `“${b.riddle}”`);
+      const tierOf = (b) => (b.tier ? ` (${b.tier} of ${b.tiers.length})` : "");
+      const close = (b) => (b.next_tier_at ? b.count / b.next_tier_at : 0);
+      const fmt = (n) => (n % 1 ? n.toFixed(1) : n);
+      const now = a.badges
+        .filter((b) => !b.complete && (!b.season || b.in_season))
+        .sort((x, y) => !!y.season - !!x.season || close(y) - close(x));
+      const later = a.badges
+        .filter((b) => !b.complete && b.season && !b.in_season)
+        .sort((x, y) =>
+          (x.season_from || "").localeCompare(y.season_from || ""),
+        );
+      const done = a.badges
+        .filter((b) => b.complete)
+        .sort((x, y) =>
+          (y.last_earned || "").localeCompare(x.last_earned || ""),
+        );
+      const SHOW = 3,
+        rows = now.slice(0, SHOW),
+        anyTime = now.slice(SHOW);
+      const all = [...a.badges];
+      const lit = all.find((b) => b.id === UI.spot) || done[0] || null;
+      const icon = (b, bg, fg, size = 32) =>
+        `<span style="width:${size}px;height:${size}px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;flex-shrink:0;${
+          b === lit ? "box-shadow:0 0 0 2px " + fg : ""
+        }"><ha-icon icon="${b.icon}" style="--mdc-icon-size:${Math.round(
+          size * 0.56,
+        )}px;color:${fg}"></ha-icon></span>`;
+      const reach = (b) => {
+        const pct = Math.round(close(b) * 100);
+        const when = b.season ? `until ${dm(b.season_until)} · ` : "";
+        const progress =
+          b.next_tier_at && b.count > 0
+            ? `<div style="display:flex;gap:8px;align-items:center;margin-top:4px">${bar(
+                pct,
+                "#9ad7e6",
+                4,
+              )}<span style="font-size:11px;color:${
+                C.muted
+              };white-space:nowrap">${fmt(b.count)} of ${
+                b.next_tier_at
+              }</span></div>`
+            : "";
+        return `<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0">${icon(
+          b,
+          b.season ? "#3a2c12" : "#16303a",
+          b.season ? "#ffb74d" : "#9ad7e6",
+        )}
+    <div style="flex:1;min-width:0"><div style="font-size:14px;color:${
+      C.text
+    }">${named(b)}${tierOf(b)}</div>
+    <div style="font-size:11px;color:${
+      C.muted
+    };line-height:1.35;white-space:normal">${when}${what(
+      b,
+    )}</div>${progress}</div></div>`;
+      };
+      // A row of tappable icons under a small label; an optional note under each.
+      const strip = (label, badges, bg, fg, note, pips) =>
+        !badges.length
+          ? ""
+          : `<div style="display:flex;gap:10px;align-items:flex-start;margin-top:12px">
+  <div style="width:62px;font-size:11px;color:${C.muted};padding-top:8px;flex-shrink:0">${label}</div>
+  <div style="display:flex;flex-wrap:wrap;gap:10px">` +
+            badges
+              .map(
+                (b) =>
+                  `<div data-badge="${
+                    b.id
+                  }" style="display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;min-width:32px">${icon(
+                    b,
+                    bg,
+                    fg,
+                  )}` +
+                  (pips
+                    ? `<span style="display:flex;gap:2px">${PIP.map(
+                        (c) =>
+                          `<i style="width:5px;height:5px;border-radius:50%;background:${c};display:block"></i>`,
+                      ).join("")}</span>`
+                    : "") +
+                  (note
+                    ? `<span style="font-size:9px;color:${
+                        C.muted
+                      };white-space:nowrap">${note(b)}</span>`
+                    : "") +
+                  `</div>`,
+              )
+              .join("") +
+            `</div></div>`;
+      // One line for whichever badge is selected, in words that fit where it stands.
+      const spot = (b) => {
+        if (!b) return "";
+        const name = `<b style="color:${C.text};font-weight:500">${named(
+          b,
+        )}</b>${b.complete ? "" : tierOf(b)} · ${what(b)}.`;
+        if (b.complete)
+          return (
+            name +
+            ` You've done it <b style="color:${C.text};font-weight:500">${fmt(
+              b.count,
+            )} time${b.count === 1 ? "" : "s"}</b>${
+              b.last_earned ? ", most recently " + dm(b.last_earned) : ""
+            } · all ${b.tiers.length} tiers.`
+          );
+        if (b.season && !b.in_season)
+          return (
+            name +
+            ` Can be earned ${dm(b.season_from)} – ${dm(b.season_until)}.`
+          );
+        return (
+          name + (b.count ? ` ${fmt(b.count)} so far.` : " Not earned yet.")
+        );
+      };
+      let out = head(
+        "mdi:medal-outline",
+        "Badges",
+        `${done.length} of ${a.badges.length} complete`,
+      );
+      out += rows.map(reach).join("");
+      out += strip("Any time", anyTime, "#16303a", "#9ad7e6");
+      out += strip("Later", later, "#2c2c2e", "#8e8e93", (b) =>
+        dm(b.season_from),
+      );
+      out += strip("Complete", done, "#1f3317", "#8be36a", null, true);
+      out += `<div style="font-size:12px;color:${
+        C.muted
+      };line-height:1.45;margin-top:12px;padding-top:10px;border-top:1px solid ${
+        C.track
+      };white-space:normal">${
+        lit === done[0] && !UI.spot
+          ? '<span style="font-size:11px;color:#636366">Latest · </span>'
+          : ""
+      }${spot(lit)}</div>`;
+      return out;
+    },
+  );
 })();
