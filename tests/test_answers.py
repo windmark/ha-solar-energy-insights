@@ -387,3 +387,23 @@ async def test_no_call_for_last_night_until_it_is_known(home: HomeAssistant) -> 
     entry = await setup_entry(home)
 
     assert entry.runtime_data.last_night() is None
+
+
+async def test_the_summary_carries_the_dashboards_rows(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    await record_house(home, recent(14), evening_load)
+    freezer.move_to(local(DAY, 10))
+    set_states(home, soc=40, peak_kw=8)
+
+    await setup_entry(home)
+
+    summary = home.states.get(f"sensor.{PREFIX}summary")
+    assert summary is not None
+    assert summary.state == "day"
+    labels = [r["label"] for r in summary.attributes["rows"]]
+    assert labels[:4] == ["Battery", "Tonight", "Heavy loads", "Surplus"]
+    for r in summary.attributes["rows"]:
+        assert r["main"]
+        assert len(r["detail"]) <= 2
+    assert summary.attributes["home"]["main"] == summary.attributes["rows"][0]["main"]

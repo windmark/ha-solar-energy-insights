@@ -109,6 +109,10 @@ await hass.callWS({ type: "solar_energy_insights/backtest" });
 
 returns every scored evening (predicted and actual spare, whether it was contested), what was learned (hidden load, heavy share, honest error), and how the plan's own answers did.
 
+## Summary
+
+`sensor.solar_energy_insights_summary` is the phase of the day (day, evening, night), with the rows a dashboard shows as attributes: for each of Battery, Tonight, Heavy loads, Surplus (and Last night until noon), an icon, a tone, a headline and at most two short clauses, plus the earlier answer and its cause when it changed recently. Its attributes are kept out of the recorder.
+
 ## Read from your devices
 
 Where the information exists, it is read rather than asked for or guessed, and the options come prefilled:

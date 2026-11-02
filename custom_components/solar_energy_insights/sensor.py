@@ -21,11 +21,11 @@ from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
-from .core.changes import Change
 from .core.nights import days_covered
 from .core.plan import Outlook, Plan
 from .entity import InsightsEntity
 from .serialize import costs
+from .summary import changed, summary_for
 
 
 def _iso(t: datetime | None) -> str | None:
@@ -286,6 +286,7 @@ async def async_setup_entry(
     async_add_entities(InsightsSensor(coordinator, d) for d in SENSORS)
     async_add_entities(InsightsStatusSensor(coordinator, d) for d in STATUS)
     async_add_entities(InsightsCostSensor(coordinator, d) for d in COSTS)
+    async_add_entities([SummarySensor(coordinator, SUMMARY)])
     if coordinator.achievements.enabled:
         async_add_entities(GameSensor(coordinator, d) for d in GAME)
 
@@ -312,14 +313,14 @@ class InsightsSensor(InsightsEntity, SensorEntity):
             }
         if self.entity_description.key == "night_outlook":
             attrs = {**(attrs or {}), **_evening(self.current, self.coordinator)}
-            attrs["changed"] = _changed(
+            attrs["changed"] = changed(
                 self.coordinator.changes.get("tonight"), "tonight"
             )
             attrs["last_night"] = self.coordinator.last_night()
         if self.entity_description.key == "battery_full_at":
             attrs = {
                 **(attrs or {}),
-                "changed": _changed(self.coordinator.changes.get("full_at"), "full_at"),
+                "changed": changed(self.coordinator.changes.get("full_at"), "full_at"),
                 "this_morning": self.coordinator.this_morning(self.current),
             }
         if self.entity_description.key == "nights_covered" and attrs is not None:
@@ -548,18 +549,31 @@ def _evening(p: Plan, coordinator: InsightsCoordinator) -> dict[str, Any]:
     }
 
 
-def _changed(change: Change | None, key: str) -> dict[str, Any] | None:
-    """What the answer was half an hour ago, since when it differs, and why."""
-    if change is None:
-        return None
-    was = change.was
-    before: dict[str, Any] = (
-        {
-            "outlook": was.outlook,
-            "grid_from": was.grid_from.isoformat() if was.grid_from else None,
-            "spare_kwh": None if was.spare_kwh is None else round(was.spare_kwh, 1),
-        }
-        if key == "tonight"
-        else {"full_at": was.full_at.isoformat() if was.full_at else None}
+# ── The summary: what the dashboard says ──
+
+SUMMARY = SensorEntityDescription(key="summary", translation_key="summary")
+
+
+class SummarySensor(InsightsEntity, SensorEntity):
+    """The phase of the day, with the dashboard's rows as attributes: each
+    answer as a headline and at most two short clauses."""
+
+    # The rows change with every update and are only for display: keep them
+    # out of the recorder.
+    _unrecorded_attributes = frozenset(
+        {"rows", "home", "time", "soc", "asleep", "ring"}
     )
-    return {"was": before, "since": change.since.isoformat(), "cause": change.cause}
+
+    @property
+    def native_value(self) -> StateType:
+        summary = summary_for(self.coordinator)
+        return None if summary is None else summary.phase
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        summary = summary_for(self.coordinator)
+        if summary is None:
+            return None
+        data = summary.as_dict()
+        data.pop("phase")
+        return data

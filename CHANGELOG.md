@@ -4,6 +4,8 @@
 
 ### Added
 
+- A Summary sensor: what the dashboard says, as rows (Battery, Tonight, Heavy loads, Surplus, and Last night in the morning), each a headline and at most two short clauses chosen by the time of day. The wording lived in the dashboard's JavaScript, copied into two cards and untested; it is now in `core/summary.py`, with real moments word for word and over a thousand day scenarios checked in CI for length and for not contradicting itself. The day's phases come from the plan's own sunset and sunrise.
+
 - How long a changed answer stays shown is an option, from 30 minutes to 2 hours.
 - "Battery full at" carries `this_morning` in the day: the full time the plan said this morning, the sun so far (with the solar counter) and the morning forecast for those hours.
 - "Night outlook" carries `last_night`: what the plan said at 21:00, what happened, and how many of the recent calls were right.

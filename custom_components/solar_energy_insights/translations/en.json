@@ -324,6 +324,14 @@
       },
       "quest": {
         "name": "Quest"
+      },
+      "summary": {
+        "name": "Summary",
+        "state": {
+          "day": "Daytime",
+          "evening": "Evening",
+          "late": "Night"
+        }
       }
     },
     "binary_sensor": {
