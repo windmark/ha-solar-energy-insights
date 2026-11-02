@@ -99,6 +99,9 @@
       },
       "forecast_checkpoints": {
         "default": "mdi:target-account"
+      },
+      "inverter_background_draw": {
+        "default": "mdi:transmission-tower-import"
       }
     },
     "binary_sensor": {

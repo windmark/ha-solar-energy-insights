@@ -293,7 +293,7 @@ RECORDS: tuple[RecordRule, ...] = (
         "Longest off the grid",
         "mdi:island",
         "h",
-        lambda f, _: f.offgrid_hours,
+        lambda f, _: f.offgrid_stretch,
     ),
     RecordRule(
         "earliest_full",

@@ -7,8 +7,9 @@ recent days), plus the integration's saved forecast and answers.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, fields, replace
 from datetime import date, datetime, timedelta, tzinfo
 from typing import Any
 
@@ -18,8 +19,18 @@ type Hourly = Mapping[tuple[date, int], float]
 
 # A day needs this many hours of house use to count.
 MIN_HOURS = 20
-# An hour importing less than this counts as off the grid.
+# An hour importing less than this counts as off the grid, unless the inverter's
+# own background draw has been learned (see background_draw).
 OFF_GRID_KWH = 0.02
+# The most an hour's import can be and still be the inverter's own draw.
+MAX_DRAW_KWH = 0.1
+# Hours with the battery this far above its reserve could cover the house: what
+# still came from the grid then is the inverter's own draw.
+PLENTY_ABOVE_FLOOR_PCT = 10.0
+# Hours needed before the draw is learned, and the share of them it covers.
+MIN_DRAW_HOURS = 48
+DRAW_QUANTILE = 0.95
+DRAW_STEP_KWH = 0.0001
 # Within this many points of the charge limit counts as full.
 FULL_MARGIN_PCT = 1.0
 # Under this many kWh imported in a day is a grid-free day.
@@ -36,6 +47,16 @@ class DayFacts:
     import_kwh: float | None = None
     export_kwh: float | None = None
     offgrid_hours: float | None = None
+    # Off the grid from midnight on, up to midnight, and the longest run in the day.
+    offgrid_head: float | None = None
+    offgrid_tail: float | None = None
+    offgrid_run: float | None = None
+    # The inverter's own draw allowed for the day, kWh (the tolerance per hour
+    # times the day's hours).
+    background_kwh: float | None = None
+    # The longest stretch off the grid ending this day, hours, across midnight
+    # and across days: derived from the days before, not stored.
+    offgrid_stretch: float | None = None
     soc_max: float | None = None
     soc_min: float | None = None
     full_at: datetime | None = None
@@ -53,10 +74,18 @@ class DayFacts:
     # ── Derived ──
 
     @property
-    def self_sufficiency(self) -> float | None:
-        if self.import_kwh is None or self.house_kwh <= 0:
+    def own_import_kwh(self) -> float | None:
+        """What came from the grid beyond the inverter's own draw."""
+        if self.import_kwh is None:
             return None
-        return max(0.0, min(1.0, 1 - self.import_kwh / self.house_kwh))
+        return max(self.import_kwh - (self.background_kwh or 0.0), 0.0)
+
+    @property
+    def self_sufficiency(self) -> float | None:
+        own = self.own_import_kwh
+        if own is None or self.house_kwh <= 0:
+            return None
+        return max(0.0, min(1.0, 1 - own / self.house_kwh))
 
     @property
     def kept_at_home(self) -> float | None:
@@ -66,7 +95,8 @@ class DayFacts:
 
     @property
     def grid_free(self) -> bool | None:
-        return None if self.import_kwh is None else self.import_kwh < GRID_FREE_KWH
+        own = self.own_import_kwh
+        return None if own is None else own < GRID_FREE_KWH
 
     @property
     def full(self) -> bool | None:
@@ -88,6 +118,7 @@ class DayFacts:
 
     def as_dict(self) -> dict[str, Any]:
         out = asdict(self)
+        out.pop("offgrid_stretch")  # derived from the days before
         for key, value in out.items():
             if isinstance(value, (date, datetime)):
                 out[key] = value.isoformat()
@@ -145,6 +176,7 @@ def build(
     forecast_kwh: float | None = None,
     said: Mapping[str, Any] | None = None,
     min_hours: int = MIN_HOURS,
+    offgrid_kwh: float = OFF_GRID_KWH,
 ) -> DayFacts | None:
     """The facts of one closed day, or None if the house's use is mostly missing.
 
@@ -190,7 +222,11 @@ def build(
         export_kwh=None if exported is None else round(sum(exported), 3),
         offgrid_hours=None
         if imported is None
-        else float(sum(1 for v in imported if v < OFF_GRID_KWH)),
+        else float(sum(1 for v in imported if v < offgrid_kwh)),
+        **_offgrid_runs(s.imported, day, offgrid_kwh, imported is not None),
+        background_kwh=None
+        if imported is None
+        else round(len(imported) * _allowed(offgrid_kwh), 3),
         soc_max=None if highs is None else max(highs),
         soc_min=None if lows is None else min(lows),
         full_at=full_at,
@@ -208,3 +244,74 @@ def build(
 
 def yesterday_of(day: date) -> date:
     return day - timedelta(days=1)
+
+
+def _allowed(offgrid_kwh: float) -> float:
+    """The inverter's own draw allowed per hour: none at the plain threshold."""
+    return offgrid_kwh if offgrid_kwh > OFF_GRID_KWH else 0.0
+
+
+def _offgrid_runs(
+    imported: Hourly | None, day: date, offgrid_kwh: float, known: bool
+) -> dict[str, float | None]:
+    """Hours off the grid from midnight on, up to midnight, and the longest run
+    in the day. A missing hour breaks a run."""
+    if not known or imported is None:
+        return {"offgrid_head": None, "offgrid_tail": None, "offgrid_run": None}
+    off = [(day, h) in imported and imported[(day, h)] < offgrid_kwh for h in range(24)]
+    head = next((h for h, o in enumerate(off) if not o), 24)
+    tail = next((h for h, o in enumerate(reversed(off)) if not o), 24)
+    run = best = 0
+    for o in off:
+        run = run + 1 if o else 0
+        best = max(best, run)
+    return {
+        "offgrid_head": float(head),
+        "offgrid_tail": float(tail),
+        "offgrid_run": float(best),
+    }
+
+
+def background_draw(
+    imported: Hourly | None, soc_min: Hourly | None, floor_pct: float
+) -> tuple[float, int]:
+    """The inverter's own draw from the grid, kWh per hour, learned from hours
+    when the battery was well above its reserve and could cover the house; and
+    how many such hours there were. The plain threshold until there are enough,
+    and never more than MAX_DRAW_KWH, so real grid use is never excused."""
+    if not imported or not soc_min:
+        return OFF_GRID_KWH, 0
+    seen = sorted(
+        max(kwh, 0.0)
+        for key, kwh in imported.items()
+        if soc_min.get(key, 0.0) >= floor_pct + PLENTY_ABOVE_FLOOR_PCT
+    )
+    if len(seen) < MIN_DRAW_HOURS:
+        return OFF_GRID_KWH, len(seen)
+    high = seen[min(int(DRAW_QUANTILE * len(seen)), len(seen) - 1)]
+    # Rounded up and one step (0.1 Wh) above: an hour at the learned draw
+    # counts as off the grid, whatever the rounding noise in the statistics.
+    above = math.ceil(high * 10_000 - 1e-6) / 10_000 + DRAW_STEP_KWH
+    return round(min(max(above, OFF_GRID_KWH), MAX_DRAW_KWH), 4), len(seen)
+
+
+def with_stretches(days: list[DayFacts]) -> list[DayFacts]:
+    """Each day with the longest stretch off the grid ending in it, carried
+    across midnight and across days. A missing day breaks a stretch."""
+    out, carry, before = [], 0.0, None
+    for f in days:
+        if before is not None and (f.day - before).days != 1:
+            carry = 0.0
+        if f.offgrid_head is None or f.offgrid_tail is None or f.offgrid_run is None:
+            out.append(replace(f, offgrid_stretch=None))
+            carry = 0.0
+        elif f.offgrid_run >= 24:
+            carry += 24
+            out.append(replace(f, offgrid_stretch=carry))
+        else:
+            out.append(
+                replace(f, offgrid_stretch=max(carry + f.offgrid_head, f.offgrid_run))
+            )
+            carry = f.offgrid_tail
+        before = f.day
+    return out

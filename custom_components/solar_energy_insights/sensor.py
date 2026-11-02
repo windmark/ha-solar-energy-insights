@@ -26,6 +26,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
+from .core.achievements.facts import MAX_DRAW_KWH, MIN_DRAW_HOURS
 from .core.nights import days_covered
 from .core.plan import Outlook, Plan
 from .dashboard import discover_strings, history_start, string_kwp
@@ -335,6 +336,8 @@ async def async_setup_entry(
     async_add_entities([SummarySensor(coordinator, SUMMARY)])
     async_add_entities([MorningForecastSensor(coordinator, MORNING)])
     async_add_entities([CheckpointsSensor(coordinator, CHECKPOINTS_SENSOR)])
+    if coordinator.achievements.enabled:
+        async_add_entities([BackgroundDrawSensor(coordinator, BACKGROUND_DRAW)])
     for found in discover_strings(coordinator.hass, entry):
         n, power = found["n"], found["power"]
         async_add_entities(
@@ -861,3 +864,39 @@ class CheckpointsSensor(InsightsEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return self.coordinator.checkpoints.view()
+
+
+# ── The inverter's own draw from the grid, as the achievements learn it ──
+
+BACKGROUND_DRAW = SensorEntityDescription(
+    key="inverter_background_draw",
+    translation_key="inverter_background_draw",
+    device_class=SensorDeviceClass.POWER,
+    native_unit_of_measurement="W",
+    entity_category=EntityCategory.DIAGNOSTIC,
+    suggested_display_precision=0,
+)
+
+
+class BackgroundDrawSensor(InsightsEntity, SensorEntity):
+    """What the inverter draws from the grid on its own, learned from hours when
+    the battery could easily cover the house: hours importing no more than this
+    still count as off the grid."""
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success
+
+    @property
+    def native_value(self) -> StateType:
+        return round(self.coordinator.achievements.draw_kwh * 1000, 1)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        a = self.coordinator.achievements
+        return {
+            "learned": a.draw_hours >= MIN_DRAW_HOURS,
+            "hours_seen": a.draw_hours,
+            "per_hour_kwh": a.draw_kwh,
+            "cap_w": round(MAX_DRAW_KWH * 1000),
+        }

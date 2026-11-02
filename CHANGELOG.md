@@ -4,6 +4,9 @@
 
 ### Changed
 
+- "Longest off the grid" is the longest consecutive stretch off the grid, across midnight and across days, instead of the most off-grid hours within one day, which stopped at 24.
+- An inverter's own draw from the grid no longer counts as grid use. It is learned from the hourly history: the 95th percentile of what came from the grid while the battery was well above its reserve, at most 0.1 kWh an hour. It applies to the record, Island mode, grid-free days and the self-sufficiency streak, and shows as the diagnostic sensor "Inverter background draw". Stored facts are rebuilt once with it.
+
 - A string's size is asked as its number of panels and the watts per panel, two whole numbers, instead of kWp. Some phone keypads offer only a comma for decimals, which the field does not accept, so a size like 5.06 could not be entered. A kWp value set before still counts.
 
 - Requires Home Assistant 2026.9 or newer, and so Python 3.14 (was 2025.12). CI tests the oldest supported release, the pinned one and the newest; the workaround for 2025.12's repairs is gone.

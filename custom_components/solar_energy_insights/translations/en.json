@@ -365,6 +365,9 @@
       },
       "forecast_checkpoints": {
         "name": "Forecast checkpoints"
+      },
+      "inverter_background_draw": {
+        "name": "Inverter background draw"
       }
     },
     "binary_sensor": {
