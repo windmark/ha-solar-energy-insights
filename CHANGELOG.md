@@ -2,7 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- Requires Home Assistant 2026.9 or newer, and so Python 3.14 (was 2025.12). CI tests the oldest supported release, the pinned one and the newest; the workaround for 2025.12's repairs is gone.
+
 ### Added
+
+- A Summary sensor: what the dashboard says, as rows (Battery, Tonight, Heavy loads, Surplus, and Last night in the morning), each a headline and at most two short clauses chosen by the time of day. The wording lived in the dashboard's JavaScript, copied into two cards and untested; it is now in `core/summary.py`, with real moments word for word and over a thousand day scenarios checked in CI for length and for not contradicting itself. The day's phases come from the plan's own sunset and sunrise.
 
 - How long a changed answer stays shown is an option, from 30 minutes to 2 hours.
 - "Battery full at" carries `this_morning` in the day: the full time the plan said this morning, the sun so far (with the solar counter) and the morning forecast for those hours.
@@ -13,6 +19,8 @@
 - Tonight's budget, on "Night outlook": what the battery can deliver from sunset to its reserve, how much of it the evening may use (leaving your usual after-midnight use), your usual evening, the house's use since sunset, live, and the recent nights that ran short with their evening's use. A borderline night says why and what keeps it covered.
 
 ### Removed
+
+- The fallback to the dashboard's `input_number.electricity_price` and `input_number.feed_in_tariff` helpers. Prices come from a price entity, else the options, else the default.
 
 Complications that, measured on real data, did not earn their place:
 
@@ -40,6 +48,14 @@ Complications that, measured on real data, did not earn their place:
 - Setup prefilled from EF-PowerOcean-TcpModbus and Solcast.
 
 ### Fixed
+
+- "Night prediction error" and "Full-at error" are diagnostic sensors, beside "Forecast correction" and "Days of history": they describe the integration's own accuracy, not the house.
+
+- The day and the night are stepped by one engine. The step-by-step day simulation is now one battery through the same code as the nights, which keeps the books the day needs (when the battery filled, export before and after, the peak and when, the low, the level at sunset). The original loop is kept in the tests as an independent reference; the engine agrees with it on every result, over 1,000 random days in CI and 3,000 checked by hand.
+
+- "Last night" and the live night score now read one record of each night's call and outcome. They disagreed: the live score counts only nights that could have gone either way, "last night" counts every call, and each took the outcome from a different place.
+- Options an earlier version had are dropped when the integration loads.
+- When the reserve comes from PowerOcean's plain limit and its effective reserve exists, a repair under Settings offers to switch, in one click. The plain limit can read 0 % while the app keeps a higher backup reserve.
 
 - A battery switched off below its reserve reports nothing, which stopped the integration from starting ("The battery's capacity is not available"). Its last good capacity, state of charge and reserve are now kept and stand in until it reports again; before any are stored, the recorder's last values are used. Only a battery never seen at all is waited for. The level used is shown on "Charge needed" (`battery_now`, `battery_remembered`).
 

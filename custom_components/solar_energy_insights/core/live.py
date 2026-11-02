@@ -6,7 +6,7 @@ say. The night answer is saved at 21:00, "full at" in the morning.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, tzinfo
 
@@ -28,22 +28,56 @@ class NightScore:
     lasts_right: float | None
 
 
-def score_nights(
+@dataclass(frozen=True, slots=True)
+class Call:
+    """One night: what the plan said at 21:00, and what happened."""
+
+    day: date
+    said_spare_kwh: float
+    said_lasts: bool
+    spare_kwh: float
+    lasted: bool
+
+    @property
+    def contested(self) -> bool:
+        """Could have gone either way: the call or the night said it lasts."""
+        return self.said_lasts or self.lasted
+
+    @property
+    def right(self) -> bool:
+        return self.said_lasts == self.lasted
+
+
+def calls(
     answers: Mapping[date, NightAnswer],
     actual_spare_kwh: Mapping[date, float],
     actual_lasts: Mapping[date, bool],
-) -> NightScore:
-    """On evenings that could have gone either way, as in the backtest."""
-    days = [
-        d
+) -> list[Call]:
+    """Every night with both a 21:00 answer and a known outcome, oldest first.
+    The one record both the live score and "last night" are read from."""
+    return [
+        Call(
+            d,
+            answers[d].spare_kwh,
+            answers[d].lasts,
+            actual_spare_kwh[d],
+            actual_lasts[d],
+        )
         for d in sorted(answers)
-        if d in actual_spare_kwh and (answers[d].lasts or actual_lasts[d])
+        if d in actual_spare_kwh and d in actual_lasts
     ]
-    if not days:
+
+
+def score_nights(nights: Sequence[Call]) -> NightScore:
+    """On nights that could have gone either way, as in the backtest."""
+    contested = [c for c in nights if c.contested]
+    if not contested:
         return NightScore(0, None, None)
-    errors = [abs(answers[d].spare_kwh - actual_spare_kwh[d]) for d in days]
-    right = [answers[d].lasts == actual_lasts[d] for d in days]
-    return NightScore(len(days), sum(errors) / len(days), sum(right) / len(days))
+    errors = [abs(c.said_spare_kwh - c.spare_kwh) for c in contested]
+    right = [c.right for c in contested]
+    return NightScore(
+        len(contested), sum(errors) / len(contested), sum(right) / len(contested)
+    )
 
 
 def full_times(

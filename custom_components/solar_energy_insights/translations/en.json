@@ -324,6 +324,14 @@
       },
       "quest": {
         "name": "Quest"
+      },
+      "summary": {
+        "name": "Summary",
+        "state": {
+          "day": "Daytime",
+          "evening": "Evening",
+          "late": "Night"
+        }
       }
     },
     "binary_sensor": {
@@ -357,6 +365,19 @@
     },
     "not_ready": {
       "message": "No plan yet: {reason}."
+    }
+  },
+  "issues": {
+    "better_reserve": {
+      "title": "A better reserve sensor is available",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Use the effective reserve",
+            "description": "The reserve now comes from {current}, PowerOcean's plain limit, which can read 0 % while the EcoFlow app keeps a higher backup reserve. {better} is the higher of the two: with it, the plan never counts on energy the battery will not give. Switch to it?"
+          }
+        }
+      }
     }
   }
 }

@@ -36,7 +36,7 @@ Cooking, the dishwasher and a cold night's heat pump are already in those nights
 2. Install **Solar Energy Insights** and restart Home Assistant.
 3. Settings → Devices & services → Add integration → **Solar Energy Insights**.
 
-Requires Home Assistant 2025.12 or newer and the recorder.
+Requires Home Assistant 2026.9 or newer (and so Python 3.14) and the recorder.
 
 ## Setup
 
@@ -52,7 +52,7 @@ Requires Home Assistant 2025.12 or newer and the recorder.
 
 **Options:**
 
-- **Prices:** the electricity price and feed-in tariff, in cents per kWh. Until they're saved here, `input_number.electricity_price` and `input_number.feed_in_tariff` are used if you have them. For a dynamic tariff, an optional price entity overrides the price while it has a value.
+- **Prices:** the electricity price and feed-in tariff, in cents per kWh. For a dynamic tariff, an optional price entity overrides the price while it has a value.
 - **Optional inputs:** a solar energy counter, for learning a Solcast correction (used only once it predicts better) and for achievements.
 - **The night test:** how many nights to replay (default 14), and the lowest state of charge the inverter discharges to by itself (5 %).
 - **The battery:** its charge limit when no entity gives one (100 %), its power limit (5 kW), round-trip efficiency (92 %), and which sign of grid power means importing.
@@ -108,6 +108,10 @@ await hass.callWS({ type: "solar_energy_insights/backtest" });
 ```
 
 returns every scored evening (predicted and actual spare, whether it was contested), what was learned (hidden load, heavy share, honest error), and how the plan's own answers did.
+
+## Summary
+
+`sensor.solar_energy_insights_summary` is the phase of the day (day, evening, night), with the rows a dashboard shows as attributes: for each of Battery, Tonight, Heavy loads, Surplus (and Last night until noon), an icon, a tone, a headline and at most two short clauses, plus the earlier answer and its cause when it changed recently. Its attributes are kept out of the recorder.
 
 ## Read from your devices
 

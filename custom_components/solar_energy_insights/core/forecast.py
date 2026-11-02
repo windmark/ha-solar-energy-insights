@@ -54,7 +54,7 @@ def _parse_time(value: Any) -> datetime | None:
 def _number(value: Any) -> float:
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0.0
     return number if number > 0 else 0.0
 

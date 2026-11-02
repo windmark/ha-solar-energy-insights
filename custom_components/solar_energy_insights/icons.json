@@ -81,6 +81,9 @@
       },
       "quest": {
         "default": "mdi:flag-variant-outline"
+      },
+      "summary": {
+        "default": "mdi:text-box-outline"
       }
     },
     "binary_sensor": {

@@ -58,8 +58,6 @@ from .const import (
     DEFAULT_PRICE_CT,
     DEFAULT_ROUND_TRIP_PCT,
     DOMAIN,
-    FEED_IN_HELPER,
-    PRICE_HELPER,
 )
 
 POWEROCEAN = "ef_powerocean_tcpmodbus"
@@ -257,26 +255,9 @@ class InsightsOptionsFlow(OptionsFlow):
             data_schema=self.add_suggested_values_to_schema(
                 OPTIONS_SCHEMA,
                 {
-                    **self._helper_prices(),
                     **_powerocean(self.hass, POWEROCEAN_OPTION_KEYS),
                     **_array_size(self.hass),
                     **self.config_entry.options,
                 },
             ),
         )
-
-    def _helper_prices(self) -> dict[str, float]:
-        """Prefill the prices from existing helpers, until they are set here."""
-        out: dict[str, float] = {}
-        for field, entity_id in (
-            (CONF_PRICE, PRICE_HELPER),
-            (CONF_FEED_IN, FEED_IN_HELPER),
-        ):
-            state = self.hass.states.get(entity_id)
-            if state is None:
-                continue
-            try:
-                out[field] = float(state.state)
-            except ValueError:
-                continue
-        return out

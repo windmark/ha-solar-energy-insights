@@ -5,7 +5,9 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
+
+import numpy as np
 
 # kW at an instant.
 type Rate = Callable[[datetime], float]
@@ -128,13 +130,6 @@ def _pct(kwh: float, capacity_kwh: float) -> float:
     return kwh / capacity_kwh * 100 if capacity_kwh > 0 else 0.0
 
 
-def _next_boundary(t: datetime) -> datetime:
-    """Return the next :00 or :30 after *t*, as an instant."""
-    utc = t.astimezone(UTC)
-    base = utc.replace(minute=0 if utc.minute < 30 else 30, second=0, microsecond=0)
-    return base + STEP
-
-
 def simulate(
     battery: Battery,
     start: datetime,
@@ -149,97 +144,79 @@ def simulate(
     and the rest is exported. A deficit is covered from the battery down to the
     reserve floor, then from the grid. *mark_at* records the level at that moment,
     such as sunset.
+
+    It is one battery through the same engine as the nights (batch.run), so the
+    day and the night are stepped by the same code.
     """
-    cap, eta, p_max = battery.capacity_kwh, battery.eta, battery.max_power_kw
-    floor = battery.floor_kwh
-    top = battery.ceiling_kwh
+    from . import batch
+
+    cap, floor = battery.capacity_kwh, battery.floor_kwh
     level = battery.stored_kwh
-    full_at = start if battery.is_full else None
-    export = export_before = grid = pv_total = load_total = 0.0
-    reserve_at: datetime | None = None
-    peak, peak_at, low = level, start, level
-    mark = level if mark_at is not None and mark_at <= start else None
-    low_after_mark = mark
-    night_start = mark_at if mark_at is not None else start
-    night_reserve_at: datetime | None = None
-    night_grid = night_load = 0.0
-    points: list[tuple[datetime, float]] = [(start, _pct(level, cap))]
-
-    t = start
-    while t < end:
-        nxt = min(_next_boundary(t), end)
-        if mark_at is not None and t < mark_at < nxt:
-            nxt = mark_at
-        hours = (nxt - t).total_seconds() / 3600
-        sun, use = max(pv(t), 0.0), max(load(t), 0.0)
-        net = sun - use
-        pv_total += sun * hours
-        load_total += use * hours
-        in_night = t >= night_start
-        if in_night:
-            night_load += use * hours
-
-        if net > 0:
-            charge_kw = min(net, p_max)
-            into = max(min(charge_kw * hours, (top - level) / eta), 0.0)
-            level = max(min(level + into * eta, top), level)
-            if into < charge_kw * hours - 1e-9:
-                # The battery filled during this slice.
-                filled_h = into / charge_kw
-                if full_at is not None:
-                    export += (net - charge_kw) * filled_h + net * (hours - filled_h)
-                else:
-                    export_before += (net - charge_kw) * filled_h
-                    export += net * (hours - filled_h)
-                    full_at = t + timedelta(hours=filled_h)
-            elif full_at is not None:
-                export += (net - charge_kw) * hours
-            else:
-                export_before += (net - charge_kw) * hours
-        elif net < 0:
-            need = -net * hours
-            out = max(min(need, p_max * hours, (level - floor) * eta), 0.0)
-            level -= out / eta
-            if out < need - 1e-6:
-                grid += need - out
-                handover = t + (nxt - t) * (out / need)
-                if reserve_at is None:
-                    reserve_at = handover
-                if in_night:
-                    night_grid += need - out
-                    if night_reserve_at is None:
-                        night_reserve_at = handover
-
-        if level > peak + 1e-6:
-            peak, peak_at = level, nxt
-        low = min(low, level)
-        if mark_at is not None and mark is None and nxt >= mark_at:
-            mark = level
-        if mark is not None and nxt >= (mark_at or start):
-            low_after_mark = (
-                level if low_after_mark is None else min(low_after_mark, level)
-            )
-        points.append((nxt, _pct(level, cap)))
-        t = nxt
-
+    slices = batch.Slices.between(start, end, mark_at)
+    if not len(slices):
+        at_mark = level if mark_at is not None and mark_at <= start else None
+        return Simulation(
+            capacity_kwh=cap,
+            floor_kwh=floor,
+            full_at=start if battery.is_full else None,
+            export_kwh=0.0,
+            export_before_full_kwh=0.0,
+            reserve_at=None,
+            grid_kwh=0.0,
+            pv_kwh=0.0,
+            load_kwh=0.0,
+            peak_kwh=level,
+            peak_at=start,
+            low_kwh=level,
+            end_kwh=level,
+            mark_kwh=at_mark,
+            low_after_mark_kwh=at_mark,
+            night_reserve_at=None,
+            night_grid_kwh=0.0,
+            night_load_kwh=0.0,
+            points=((start, _pct(level, cap)),),
+        )
+    runs = batch.run(
+        battery,
+        [battery.soc_pct],
+        slices,
+        slices.sample(pv),
+        slices.sample(load)[np.newaxis, :],
+        record=True,
+        detail=True,
+    )
+    d = runs.detail
+    assert d is not None
+    assert runs.levels_pct is not None
+    end_kwh = float(d["end_kwh"][0])
+    mark: float | None = None
+    low_after_mark: float | None = None
+    if mark_at is not None and mark_at <= end:
+        found = float(d["mark_kwh"][0])
+        # A mark at the very end (the day stepped to sunset) is the level there.
+        mark = end_kwh if np.isnan(found) else found
+        low_after_mark = float(d["night_low_kwh"][0])
+    times = (slices.starts[0], *d["ends"])
     return Simulation(
         capacity_kwh=cap,
         floor_kwh=floor,
-        full_at=full_at,
-        export_kwh=export,
-        export_before_full_kwh=export_before,
-        reserve_at=reserve_at,
-        grid_kwh=grid,
-        pv_kwh=pv_total,
-        load_kwh=load_total,
-        peak_kwh=peak,
-        peak_at=peak_at,
-        low_kwh=low,
-        end_kwh=level,
+        full_at=d["full_at"][0],
+        export_kwh=float(d["export_kwh"][0]),
+        export_before_full_kwh=float(d["export_before_full_kwh"][0]),
+        reserve_at=d["reserve_at"][0],
+        grid_kwh=float(d["grid_kwh"][0]),
+        pv_kwh=float(d["pv_kwh"]),
+        load_kwh=float(d["load_kwh"][0]),
+        peak_kwh=float(d["peak_kwh"][0]),
+        peak_at=d["peak_at"][0],
+        low_kwh=float(d["low_kwh"][0]),
+        end_kwh=end_kwh,
         mark_kwh=mark,
         low_after_mark_kwh=low_after_mark,
-        night_reserve_at=night_reserve_at,
-        night_grid_kwh=night_grid,
-        night_load_kwh=night_load,
-        points=tuple(points),
+        night_reserve_at=runs.reserve_at[0],
+        night_grid_kwh=float(runs.grid_kwh[0]),
+        night_load_kwh=float(runs.load_kwh[0]),
+        points=tuple(
+            (t, float(v)) for t, v in zip(times, runs.levels_pct[0], strict=True)
+        ),
     )

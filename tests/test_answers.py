@@ -350,7 +350,7 @@ async def test_last_night_shows_the_call_and_what_happened(
     set_states(home, soc=40)
     entry = await setup_entry(home)
     coordinator = entry.runtime_data
-    real = {n.day: n for n in coordinator.calibration.score.nights}
+    real = {e.day: e for e in coordinator.evenings}
     yesterday = DAY - timedelta(days=1)
     assert yesterday in real
 
@@ -363,17 +363,21 @@ async def test_last_night_shows_the_call_and_what_happened(
             "lasts": lasts,
         }
 
+    await coordinator.async_refresh_history()
     call = coordinator.last_night()
 
     assert call is not None
     assert call["said_lasts"] is True
     assert call["said_spare_kwh"] == 0.8
-    assert call["lasted"] is real[yesterday].actual_lasts
+    floor = coordinator.battery().floor_pct
+    assert call["lasted"] is (real[yesterday].lowest_soc > floor + 1.0)
     assert call["calls"] == 3
     assert call["right_calls"] == sum(
-        lasts == real[DAY - timedelta(days=back)].actual_lasts
+        lasts == (real[DAY - timedelta(days=back)].lowest_soc > floor + 1.0)
         for back, lasts in ((3, True), (2, False), (1, True))
     )
+    # The live score reads the same record: its contested nights are a subset.
+    assert coordinator.live_nights.nights <= call["calls"]
 
 
 async def test_no_call_for_last_night_until_it_is_known(home: HomeAssistant) -> None:
@@ -383,3 +387,48 @@ async def test_no_call_for_last_night_until_it_is_known(home: HomeAssistant) -> 
     entry = await setup_entry(home)
 
     assert entry.runtime_data.last_night() is None
+
+
+async def test_the_summary_carries_the_dashboards_rows(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    await record_house(home, recent(14), evening_load)
+    freezer.move_to(local(DAY, 10))
+    set_states(home, soc=40, peak_kw=8)
+
+    await setup_entry(home)
+
+    summary = home.states.get(f"sensor.{PREFIX}summary")
+    assert summary is not None
+    assert summary.state == "day"
+    labels = [r["label"] for r in summary.attributes["rows"]]
+    assert labels[:4] == ["Battery", "Tonight", "Heavy loads", "Surplus"]
+    for r in summary.attributes["rows"]:
+        assert r["main"]
+        assert len(r["detail"]) <= 2
+    assert summary.attributes["home"]["main"] == summary.attributes["rows"][0]["main"]
+
+
+async def test_the_integrations_own_accuracy_is_diagnostic(home: HomeAssistant) -> None:
+    from homeassistant.const import EntityCategory
+    from homeassistant.helpers import entity_registry as er
+
+    await record_house(home, recent(14), evening_load)
+    set_states(home)
+    await setup_entry(home)
+    registry = er.async_get(home)
+
+    for key in (
+        "night_prediction_error",
+        "full_at_error",
+        "solcast_correction_gain",
+        "days_of_history",
+    ):
+        entity_id = f"sensor.{PREFIX}{key}"
+        entry = registry.async_get(entity_id)
+        assert entry is not None, entity_id
+        assert entry.entity_category is EntityCategory.DIAGNOSTIC, entity_id
+    # The answers are the integration's output: they stay ordinary sensors.
+    outlook = registry.async_get(f"sensor.{PREFIX}night_outlook")
+    assert outlook is not None
+    assert outlook.entity_category is None

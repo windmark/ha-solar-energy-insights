@@ -11,11 +11,12 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
 
-from .battery import STEP, Battery
+from .battery import FULL_MARGIN_PCT, STEP, Battery
 
 type Floats = NDArray[np.float64]
 type Bools = NDArray[np.bool_]
@@ -72,6 +73,8 @@ class Runs:
     # The level in % at the start and after each slice: (runs, slices + 1).
     # Only kept when asked for, to draw the runs.
     levels_pct: Floats | None = None
+    # With detail: the whole run, as battery.simulate reports it.
+    detail: dict[str, Any] | None = None
 
 
 def run(
@@ -82,10 +85,15 @@ def run(
     loads: Floats,
     *,
     record: bool = False,
+    detail: bool = False,
 ) -> Runs:
     """Step every run through the slices. *loads* is (runs, slices) kW.
 
-    With *record*, the level of every run after every slice is kept too.
+    With *record*, the level of every run after every slice is kept too. With
+    *detail*, the books battery.simulate reports are kept as well: when the
+    battery filled (within its slice), export before and after that, the whole
+    run's solar, use and grid, the first handover, the peak and when, the low,
+    and the level at the mark.
     """
     socs = np.asarray(socs, dtype=float)
     count = len(socs)
@@ -100,6 +108,21 @@ def run(
     low = np.where(slices.night[0], level, np.inf) if len(slices) else level.copy()
     elapsed = 0.0
     trace = [level * 100 / cap] if record else []
+    if detail:
+        full_h = np.where(
+            level >= top - battery.capacity_kwh * FULL_MARGIN_PCT / 100, 0.0, np.nan
+        )
+        export = np.zeros(count)
+        export_before = np.zeros(count)
+        grid_all = np.zeros(count)
+        pv_total = 0.0
+        load_all = np.zeros(count)
+        first_short_h = np.full(count, np.nan)
+        peak, peak_k = level.copy(), np.full(count, -1)
+        low_all = level.copy()
+        mark_level = (
+            level.copy() if len(slices) and slices.night[0] else np.full(count, np.nan)
+        )
     for k in range(len(slices)):
         hours = slices.hours[k]
         use = np.maximum(loads[:, k], 0.0)
@@ -108,6 +131,27 @@ def run(
         charge_kw = np.minimum(np.maximum(net, 0.0), p_max)
         into = np.clip(np.minimum(charge_kw * hours, (top - level) / eta), 0.0, None)
         level = np.maximum(np.minimum(level + into * eta, top), level)
+        if detail:
+            pv_total += max(sun[k], 0.0) * hours
+            load_all += use * hours
+            surplus = net > 0
+            filled = surplus & (into < charge_kw * hours - 1e-9)
+            filled_h = np.divide(
+                into, charge_kw, out=np.zeros(count), where=charge_kw > 0
+            )
+            was_full = ~np.isnan(full_h)
+            over = np.maximum(net - charge_kw, 0.0)
+            # Filling in this slice: before it, the excess over the power limit
+            # goes out; after it, all of the surplus.
+            export += np.where(
+                filled,
+                np.where(was_full, over * filled_h, 0.0) + net * (hours - filled_h),
+                0.0,
+            )
+            export_before += np.where(filled & ~was_full, over * filled_h, 0.0)
+            export += np.where(surplus & ~filled & was_full, over * hours, 0.0)
+            export_before += np.where(surplus & ~filled & ~was_full, over * hours, 0.0)
+            full_h = np.where(filled & ~was_full, elapsed + filled_h, full_h)
         # A deficit is covered from the battery down to the floor, then the grid.
         need = np.maximum(-net, 0.0) * hours
         out = np.clip(
@@ -119,6 +163,21 @@ def run(
         )
         level = level - out / eta
         short = np.where(need - out > 1e-6, need - out, 0.0)
+        if detail:
+            grid_all += short
+            share_all = np.divide(out, need, out=np.zeros(count), where=need > 0)
+            first_short_h = np.where(
+                np.isnan(first_short_h) & (short > 0),
+                elapsed + hours * share_all,
+                first_short_h,
+            )
+            higher = level > peak + 1e-6
+            peak = np.where(higher, level, peak)
+            peak_k = np.where(higher, k, peak_k)
+            low_all = np.minimum(low_all, level)
+            # The level at the mark: after the last slice before the night.
+            if not slices.night[k] and k + 1 < len(slices) and slices.night[k + 1]:
+                mark_level = level.copy()
         if slices.night[k]:
             load_total += use * hours
             grid += short
@@ -133,6 +192,35 @@ def run(
         if record:
             trace.append(level * 100 / cap)
     start = slices.starts[0] if len(slices) else None
+
+    def at(h: float) -> datetime | None:
+        return (
+            None if np.isnan(h) or start is None else start + timedelta(hours=float(h))
+        )
+
+    books = None
+    if detail and start is not None:
+        ends = [
+            t + timedelta(hours=float(h))
+            for t, h in zip(slices.starts, slices.hours, strict=True)
+        ]
+        books = {
+            "full_at": [at(h) for h in full_h],
+            "export_kwh": export,
+            "export_before_full_kwh": export_before,
+            "grid_kwh": grid_all,
+            "pv_kwh": pv_total,
+            "load_kwh": load_all,
+            "reserve_at": [at(h) for h in first_short_h],
+            "peak_kwh": peak,
+            "peak_at": [start if k < 0 else ends[k] for k in peak_k],
+            "low_kwh": low_all,
+            "end_kwh": level,
+            "mark_kwh": mark_level,
+            # The lowest level from the mark on, counting the level at the mark.
+            "night_low_kwh": np.where(np.isinf(low), level, low),
+            "ends": ends,
+        }
     reserve_at = tuple(
         None if np.isnan(h) or start is None else start + timedelta(hours=float(h))
         for h in reserve_hours
@@ -144,6 +232,7 @@ def run(
         spare_kwh=np.maximum(np.where(np.isinf(low), level, low) - floor, 0.0),
         reserve_at=reserve_at,
         levels_pct=np.stack(trace, axis=1) if record else None,
+        detail=books,
     )
 
 

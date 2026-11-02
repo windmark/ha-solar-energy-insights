@@ -8,6 +8,7 @@ import pytest
 
 from custom_components.solar_energy_insights.core.live import (
     NightAnswer,
+    calls,
     full_times,
     score_full,
     score_nights,
@@ -28,7 +29,7 @@ def test_night_answers_are_scored_only_when_they_could_have_gone_either_way() ->
     spare = {days[0]: 1.5, days[1]: 0.0, days[2]: 0.0}
     lasted = {days[0]: True, days[1]: False, days[2]: False}
 
-    result = score_nights(answers, spare, lasted)
+    result = score_nights(calls(answers, spare, lasted))
 
     assert result.nights == 2
     assert result.error_kwh == pytest.approx((0.5 + 0.8) / 2)
@@ -55,3 +56,20 @@ def test_full_at_is_scored_in_minutes_and_misses_are_counted() -> None:
     assert result.days == 3
     assert result.error_minutes == pytest.approx(30)
     assert result.missed == 1
+
+
+def test_one_record_gives_both_the_live_score_and_the_tally_of_calls() -> None:
+    days = [date(2026, 11, d) for d in (1, 2, 3)]
+    record = calls(
+        {
+            days[0]: NightAnswer(0.0, False),
+            days[1]: NightAnswer(0.0, False),
+            days[2]: NightAnswer(0.8, True),
+        },
+        dict.fromkeys(days, 0.0) | {days[2]: 0.6},
+        {days[0]: False, days[1]: False, days[2]: True},
+    )
+
+    # Two nights called "grid" that needed it: right, but not contested.
+    assert [c.right for c in record] == [True, True, True]
+    assert score_nights(record).nights == 1
