@@ -10,6 +10,8 @@
 
 ### Added
 
+- Each badge in the achievements view says when it can next be earned (`season_from`, `season_until`: the window it is in, or the next one, found with the same rule that decides "in season"), whether it is `complete`, and the count its next tier needs (`next_tier_at`), for dashboards that group badges into within reach, coming up and complete.
+
 - Forecast checkpoints: Solcast's forecast is frozen at 18:00 and 21:00 (for tomorrow), 06:00 (for today) and 12:00 (for the afternoon), with when Solcast last refreshed. Once a day is over, each is judged against the solar counter on the stretch it was about. The Forecast checkpoints sensor gives, per checkpoint over the last 30 days: the typical miss in kWh and as a share of a day, the lean (optimistic or pessimistic), how often the real sun fell inside the forecast's range, the same split by what the forecast said (sunny, mixed or dull, against a clear day's energy from the roofs), the same weeks last year once there is a year, and whether waiting from 18:00 to 21:00 or from 06:00 to 12:00 cuts the miss. Scores appear after 10 days (8 per group); it needs the solar energy counter.
 
 - Each PowerOcean string found gets three sensors (power per kWp writes a change of 0.01 kW/kWp at once and smaller drift at most every 30 s, since every write goes into the recorder): energy today, power per kWp and yield today, from its own power and its size in the options. The energy sensor's long-term statistics are filled in from the string's power history on first start, so charts keep every past day. Each string can be placed on one of the Solcast sites ("Roof of string PV1"), so dashboards compare strings on the same roof.

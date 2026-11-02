@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, tzinfo
+from datetime import date, timedelta, tzinfo
 from typing import Any
 
 from .badges import TIER_XP, BadgeState, evaluate
@@ -204,6 +204,11 @@ def as_dict(
                 "hidden": b.badge.hidden,
                 "season": b.badge.season,
                 "in_season": _in_season(b.badge.season, today, southern),
+                **_window(b.badge.season, today, southern),
+                "complete": b.tier >= len(b.badge.tiers),
+                "next_tier_at": b.badge.tiers[b.tier]
+                if b.tier < len(b.badge.tiers)
+                else None,
                 "count": b.count,
                 "tier": b.tier,
                 "tiers": list(b.badge.tiers),
@@ -268,3 +273,33 @@ def _month(m: Month, prices: tuple[float, float] | None) -> dict[str, Any]:
             None if m.export_kwh is None else round(m.export_kwh * feed_in, 2)
         )
     return out
+
+
+# Far enough ahead to reach every season's next window.
+_LOOK_DAYS = 400
+
+
+def _window(season: str | None, today: date, southern: bool) -> dict[str, str | None]:
+    """When a seasonal badge can be earned: the window it is in now, or the
+    next one. Found with the same rule that decides "in season", so the dates
+    shown and the badge never disagree."""
+    if season is None:
+        return {"season_from": None, "season_until": None}
+    day = today
+    if _in_season(season, day, southern):
+        while _in_season(season, day - timedelta(days=1), southern):
+            day -= timedelta(days=1)
+    else:
+        for _ in range(_LOOK_DAYS):
+            day += timedelta(days=1)
+            if _in_season(season, day, southern):
+                break
+        else:
+            return {"season_from": None, "season_until": None}
+    until = day
+    while (
+        _in_season(season, until + timedelta(days=1), southern)
+        and (until - day).days < _LOOK_DAYS
+    ):
+        until += timedelta(days=1)
+    return {"season_from": day.isoformat(), "season_until": until.isoformat()}
