@@ -10,6 +10,7 @@ page, so nothing goes in /config/www.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -20,7 +21,6 @@ from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
-from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -225,7 +225,11 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
     from homeassistant.components.frontend import add_extra_js_url
 
     hass.data[_REGISTERED] = True
-    version = (await async_get_integration(hass, DOMAIN)).version
+    # The address changes with the script's contents, so browsers fetch every
+    # new copy (the integration's version alone did not change between updates).
+    script = Path(__file__).parent / "frontend" / SCRIPT
+    content = await hass.async_add_executor_job(script.read_bytes)
+    version = hashlib.sha256(content).hexdigest()[:12]
     await hass.http.async_register_static_paths(
         [
             StaticPathConfig(

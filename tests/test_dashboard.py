@@ -136,7 +136,17 @@ async def test_the_script_is_served_and_loaded_on_every_page(
     assert paths[0].path.endswith("frontend")
     add.assert_called_once()
     url = add.call_args.args[1]
-    assert url.startswith(f"{URL_BASE}/{SCRIPT}?v=")
+    # The address carries the script's fingerprint, so every new copy is fetched.
+    import hashlib
+    from pathlib import Path
+
+    script = (
+        Path(__file__).parent.parent
+        / "custom_components/solar_energy_insights/frontend"
+        / SCRIPT
+    )
+    fingerprint = hashlib.sha256(script.read_bytes()).hexdigest()[:12]
+    assert url == f"{URL_BASE}/{SCRIPT}?v={fingerprint}"
 
 
 def test_the_shipped_script_carries_nothing_of_one_home() -> None:
