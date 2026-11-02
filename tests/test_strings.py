@@ -174,3 +174,41 @@ async def test_each_string_is_placed_on_a_solcast_roof(
     assert roofs[1]["facing"] == "south"
     assert roofs[3]["facing"] == "north"
     assert [r["name"] for r in cfg["roofs"]] == ["South roof", "North roof"]
+
+
+async def test_power_per_kwp_is_written_when_it_matters(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Each write goes into the recorder: a meaningful change at once, small
+    drift at most every 30 seconds."""
+    strings = powerocean_strings(home, (1,))
+    set_states(home)
+    watts(home, strings[1], 2000)
+    await setup_entry(home, {string_kwp_key(1): 5.0})
+    await home.async_block_till_done()
+    entity = f"{PREFIX}pv1_power_per_kwp"
+    writes: list[str] = []
+    home.bus.async_listen(
+        "state_changed",
+        lambda e: (
+            writes.append(e.data["new_state"].state)
+            if e.data["entity_id"] == entity
+            else None
+        ),
+    )
+
+    async def power(w: float, after_s: float = 5) -> None:
+        freezer.tick(timedelta(seconds=after_s))
+        watts(home, strings[1], w)
+        await home.async_block_till_done()
+
+    for w in (2010, 2020, 2030, 2040):  # 0.002 kW/kWp steps: drift
+        await power(w)
+    assert writes == []
+    await power(2045, after_s=15)  # 30 s since the last write: drift is written
+    assert writes == ["0.409"]
+    await power(2600)  # a cloud clears: written at once
+    assert writes == ["0.409", "0.52"]
+    home.states.async_set(strings[1], "unavailable")
+    await home.async_block_till_done()
+    assert writes[-1] == "unavailable"

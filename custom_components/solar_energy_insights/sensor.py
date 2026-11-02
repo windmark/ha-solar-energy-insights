@@ -614,6 +614,10 @@ class SummarySensor(InsightsEntity, SensorEntity):
 # ── The strings, from PowerOcean's per-string power and their sizes ──
 
 ENERGY_REFRESH = timedelta(minutes=5)
+# Power per kWp: a change of this much (about 1 % of full output) is written at
+# once; smaller drift at most this often.
+SIGNIFICANT_KW_PER_KWP = 0.01
+DRIFT_EVERY = timedelta(seconds=30)
 
 
 class _StringSensor(InsightsEntity, SensorEntity):
@@ -684,9 +688,46 @@ class StringPowerPerKwpSensor(_StringSensor):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = "kW/kWp"
     _attr_suggested_display_precision = 3
+    # Every write goes through the recorder: a change this big is written at
+    # once, smaller drift at most every so often.
+    _written: float | None = None
+    _written_at: datetime | None = None
+
+    @callback
+    def _async_source_changed(self, _event: Event[EventStateChangedData]) -> None:
+        """Write a meaningful change at once, small drift at most every 30 s,
+        and always a change in whether there is a value at all."""
+        value, now = self.native_value, dt_util.utcnow()
+        last, at = self._written, self._written_at
+        if value == last:
+            return
+        if (
+            value is None
+            or last is None
+            or at is None
+            or abs(float(value) - last) >= SIGNIFICANT_KW_PER_KWP
+            or now - at >= DRIFT_EVERY
+        ):
+            self._async_write()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._async_write()
+
+    @callback
+    def _async_write(self) -> None:
+        """Write the state, remembering what was written and when."""
+        value = self.native_value
+        self._written = None if value is None else float(value)
+        self._written_at = dt_util.utcnow()
+        self.async_write_ha_state()
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+        # Home Assistant writes the first state itself, right after this.
+        value = self.native_value
+        self._written = None if value is None else float(value)
+        self._written_at = dt_util.utcnow()
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass, [self.power], self._async_source_changed

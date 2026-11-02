@@ -8,7 +8,7 @@
 
 ### Added
 
-- Each PowerOcean string found gets three sensors: energy today, power per kWp and yield today, from its own power and its size in the options. The energy sensor's long-term statistics are filled in from the string's power history on first start, so charts keep every past day. Each string can be placed on one of the Solcast sites ("Roof of string PV1"), so dashboards compare strings on the same roof.
+- Each PowerOcean string found gets three sensors (power per kWp writes a change of 0.01 kW/kWp at once and smaller drift at most every 30 s, since every write goes into the recorder): energy today, power per kWp and yield today, from its own power and its size in the options. The energy sensor's long-term statistics are filled in from the string's power history on first start, so charts keep every past day. Each string can be placed on one of the Solcast sites ("Roof of string PV1"), so dashboards compare strings on the same roof.
 - A Morning forecast sensor: Solcast's forecast for today as it stood in the morning, with past mornings as attributes (each day's total and hourly profile), for charts of forecast against actual.
 
 - The dashboard helpers ship with the integration and load on every page: nothing in /config/www, no resource to add, updated with the integration. What they used to hardcode comes from the integration's settings through `solar_energy_insights/config`: the configured counters, the first day with statistics, and PowerOcean's per-string power sensors, found on the same installation as the battery (their hourly mean power is the hour's energy, so no template sensors are needed). Each string found gets an optional size in the options, explained in plain words.
