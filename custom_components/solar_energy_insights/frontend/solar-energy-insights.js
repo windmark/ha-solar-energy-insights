@@ -819,7 +819,11 @@
       <span style="font-weight:500">+${open.reward} XP</span></div>
     <div style="font-size:15px;color:#fff;font-weight:500;margin-top:4px;white-space:normal">${
       open.title
-    }</div></div>`
+    }</div>${
+      open.hint
+        ? `<div style="font-size:12px;color:#a8d5a0;margin-top:3px;white-space:normal">${open.hint}</div>`
+        : ""
+    }</div>`
         : "";
       const lastLine = last
         ? `<div style="font-size:11px;color:${
@@ -829,6 +833,61 @@
           }</div>`
         : "";
       const month = (a.months || []).slice(-2, -1)[0];
+      // What yesterday was the best at in a while, and last week in one line.
+      const dayMonth = (d) =>
+        new Date(d + "T00:00").toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "short",
+        });
+      const NEWS = {
+        best_day: ["best day", "best day on record"],
+        self_sufficient: [
+          "most self-sufficient",
+          "most self-sufficient on record",
+        ],
+        thriftiest: ["thriftiest", "thriftiest on record"],
+      };
+      const news = (a.yesterday || [])
+        .filter((x) => NEWS[x.key])
+        .map((x) =>
+          x.since
+            ? `${NEWS[x.key][0]} since ${dayMonth(x.since)}`
+            : NEWS[x.key][1],
+        );
+      const yesterdayLine = news.length
+        ? `<div style="font-size:11px;color:#8be36a;margin-top:12px;white-space:normal">Yesterday: ${news.join(
+            " · ",
+          )}</div>`
+        : "";
+      const lw = a.last_week;
+      const money = (v) =>
+        new Intl.NumberFormat("en-GB", {
+          style: "currency",
+          currency: hass?.config?.currency || "EUR",
+        }).format(v);
+      const weekLine = lw
+        ? `<div style="font-size:11px;color:#8e8e93;margin-top:${
+            news.length ? 4 : 12
+          }px;white-space:normal">Last week: ${[
+            lw.nights
+              ? `${lw.nights_lasted} of ${lw.nights} nights without the grid`
+              : "",
+            lw.best_day
+              ? `best day ${new Date(lw.best_day + "T00:00").toLocaleDateString(
+                  "en-GB",
+                  { weekday: "long" },
+                )} (${lw.best_kwh} kWh)`
+              : "",
+            lw.saved !== null && lw.saved !== undefined
+              ? `${money(lw.saved)} kept at home`
+              : "",
+            lw.badges && lw.badges.length
+              ? `${lw.badges.join(", ")} earned`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" · ")}</div>`
+        : "";
       return `<div style="display:flex;align-items:center;gap:14px">
     <div style="width:56px;height:56px;border-radius:50%;background:#2c2c2e;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px ${rc}55;flex-shrink:0">
       <ha-icon icon="${ricon}" style="--mdc-icon-size:30px;color:${rc}"></ha-icon></div>
@@ -850,7 +909,7 @@
       a.today.score ?? "–"
     }</div>
       <div style="font-size:10px;color:#8e8e93">today</div></div>
-  </div>${quest}${lastLine}${rows}
+  </div>${quest}${lastLine}${rows}${yesterdayLine}${weekLine}
   ${
     month
       ? `<div style="font-size:11px;color:#636366;margin-top:12px;white-space:normal">${new Date(

@@ -120,3 +120,6 @@ async def test_load_spikes_are_learned_and_allowed(
     records = {x["id"]: x for x in r["records"]}
     # Every hour only spikes' share: one stretch through all the days.
     assert records["offgrid"]["value"] > 24 * 30
+    # Last week in one line, and what yesterday was the best at in a while.
+    assert r["last_week"]["nights"] >= 0
+    assert isinstance(r["yesterday"], list)

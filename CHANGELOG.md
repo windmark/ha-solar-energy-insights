@@ -13,6 +13,9 @@
 
 ### Added
 
+- Quests carry the plan's advice for meeting them, as it stood when they were set: tonight's "get to sunrise without the grid" what is left of the evening's budget, tomorrow's "keep the sun at home" and "be self-sufficient" the best window for heavy loads, "fill the battery before" that heavy loads after then won't slow it.
+- The achievements answer gives last week in one line (nights without the grid, the best day, the sun kept at home and what it was worth, badges earned) and what yesterday was the best at in a while ("best day since 12 Oct", or "on record" with a month behind it; gaps under a week are not news). The level card shows both, and the quest's advice.
+
 - The achievement cards ship with the integration as real cards: `custom:solar-energy-insights-level`, `-streaks`, `-records` and `-badges`, each one line in a dashboard and listed in the card picker. The achievements answer's `today` carries the sun so far (`solar_kwh`), so the records card needs no sensor of its own. They draw into their own card, so taps, redraws and what is selected work the ordinary way, and are tested in CI.
 
 - Each badge in the achievements view says when it can next be earned (`season_from`, `season_until`: the window it is in, or the next one, found with the same rule that decides "in season"), whether it is `complete`, and the count its next tier needs (`next_tier_at`), for dashboards that group badges into within reach, coming up and complete.

@@ -174,4 +174,16 @@ check(
     "today 22% of the record",
   ),
 );
+const level = text(cards["solar-energy-insights-level"].shadowRoot.innerHTML);
+check(
+  "the quest carries the plan's advice",
+  level.includes("keep the rest of the evening under ~5.7 kWh"),
+);
+check("yesterday's news", level.includes("Yesterday: best day since 12 Oct"));
+check(
+  "last week in one line",
+  level.includes(
+    "Last week: 4 of 7 nights without the grid · best day Sunday (26 kWh) · €37.80 kept at home · Night owl earned",
+  ),
+);
 console.log("ok");
