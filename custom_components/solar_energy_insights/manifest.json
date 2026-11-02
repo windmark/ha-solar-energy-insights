@@ -1,6 +1,10 @@
 {
   "domain": "solar_energy_insights",
   "name": "Solar Energy Insights",
+  "after_dependencies": [
+    "frontend",
+    "http"
+  ],
   "codeowners": [
     "@windmark"
   ],
@@ -19,9 +23,5 @@
     "numpy>=2.0"
   ],
   "single_config_entry": true,
-  "version": "0.1.0",
-  "after_dependencies": [
-    "frontend",
-    "http"
-  ]
+  "version": "0.1.0"
 }
