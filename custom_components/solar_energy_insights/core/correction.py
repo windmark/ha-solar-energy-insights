@@ -1,10 +1,6 @@
 """A correction to Solcast for this roof, learned from its own mornings.
 
-Each morning's forecast is saved, then compared hour by hour with what the
-panels actually made. Per clock hour, the correction is the ratio of what came
-to what was forecast, pulled towards 1 (no correction) by a prior worth a
-couple of kWh, so a few odd days cannot swing it. It is switched on only when
-it beats the raw forecast on days it was not learned from.
+Kept only if it predicts left-out days better than Solcast alone.
 """
 
 from __future__ import annotations

@@ -1,21 +1,15 @@
-"""How well would the night answer have done? Replay the recent evenings.
+"""Score the night answer on recent evenings, replayed from the recorder.
 
-For each evening, the battery as it was at 21:00 is replayed against the nights
-before it, exactly as the live plan would have, and compared with the lowest
-state of charge it actually reached before sunrise. No prediction has to be
-stored: the recorder holds everything needed.
+Each evening's 21:00 battery is replayed against the nights before it and
+compared with the lowest level it really reached before sunrise.
 
-Three lessons from real data shape what is scored and learned:
-
-- An evening that starts nearly empty ends at the reserve whatever the model
-  says. Only evenings where the prediction or the battery said "lasted" are
-  contested; the rest would flatter any score.
-- The house counter does not see everything the battery feeds, such as the
-  inverter's own standby. One constant hidden load is learned, and kept only if
-  it predicts evenings it was not fitted on better (leave one out).
-- Every recent night counts the same. Weighting nights by how similar they
-  looked (to the day so far, the day of the week, temperature or presence) was
-  tried and dropped: on a month of real evenings it predicted no better.
+- Only contested evenings are scored (predicted or actually lasted): one that
+  starts nearly empty ends at the reserve whatever the model says, and would
+  flatter any score.
+- The house meter misses some load (the inverter's standby). One constant is
+  learned, and kept only if it predicts left-out evenings better.
+- Nights count equally: weighting them by similarity was tried on a month of
+  real evenings and predicted no better.
 """
 
 from __future__ import annotations
@@ -33,19 +27,14 @@ from .nights import HourlySeries, HourlyUse, PastDay, past_days
 from .plan import HEAVY_SHARE
 
 EVENING = time(21, 0)
-# A night counts as lasted when it stayed this far above the floor.
-LASTED_MARGIN_PCT = 1.0
-# Contested evenings needed before anything is learned or switched.
-MIN_CONTESTED = 5
-# The hidden load is searched in these steps, and kept only for this gain.
+LASTED_ABOVE_FLOOR_PCT = 1.0
+MIN_CONTESTED_EVENINGS = 5
 STANDBY_STEPS_W = tuple(range(0, 160, 10))
-STANDBY_GAIN = 0.10
-# A reading below the floor, in an hour that otherwise sat this far above it,
-# is a glitch rather than a battery asleep at its reserve.
+MIN_STANDBY_GAIN = 0.10
+# A reading below the floor in an hour that otherwise sat this far above it is
+# a glitch, not a battery asleep at its reserve.
 GLITCH_MARGIN_PCT = 5.0
-# Contested evenings needed to calibrate how heavy "a heavy night" is, and the
-# range it is kept in.
-MIN_BAND_EVENINGS = 12
+MIN_EVENINGS_FOR_HEAVY_SHARE = 12
 HEAVY_SHARE_RANGE = (0.6, 0.95)
 
 
@@ -77,7 +66,6 @@ class Scored:
 class Score:
     nights: tuple[Scored, ...]
     standby_kw: float = 0.0
-    # Days of the evenings that could have gone either way.
     contested_days: frozenset[date] = frozenset()
 
     @property
@@ -110,14 +98,12 @@ class Calibration:
     """What was learned from the recent evenings, and how well it does."""
 
     standby_kw: float
-    # The score with the learned hidden load.
     score: Score
-    # The honest error: on evenings left out of any fitting.
+    # On evenings left out of any fitting.
     honest_error_kwh: float | None
-    # The same evenings without a hidden load, for comparison.
+    # Without the hidden load, for comparison.
     uncorrected: Score
-    # Where "a heavy night" sits among the replayed nights, calibrated so it is
-    # exceeded about as often on real nights as intended.
+    # Calibrated so a heavy night is exceeded as often as intended.
     heavy_share: float = HEAVY_SHARE
 
     @property
@@ -128,13 +114,10 @@ class Calibration:
 def clean_lows(
     hours: Mapping[datetime, tuple[float | None, float | None]], floor_pct: float
 ) -> tuple[dict[datetime, float], int]:
-    """The battery's lowest level per hour, without impossible readings.
+    """The lowest level per hour, with glitches replaced by the hour's mean.
 
-    *hours* maps each hour to its (lowest, mean) state of charge. A battery
-    cannot go below its floor: such a reading in an hour that otherwise sat well
-    above the floor is a glitch, and the hour's mean stands in. Otherwise the
-    battery was asleep at its reserve, which some inverters report as 0 %.
-    Returns the cleaned levels and how many hours needed correcting.
+    *hours* maps each hour to its (lowest, mean) state of charge. Returns the
+    cleaned levels and how many hours were corrected.
     """
     cleaned: dict[datetime, float] = {}
     corrected = 0
@@ -227,7 +210,7 @@ def _scored(r: _EveningRuns, step: int, weights: Floats, battery: Battery) -> Sc
         / 100
         * battery.capacity_kwh,
         predicted_lasts=bool(r.lasts[step, k]),
-        actual_lasts=r.evening.lowest_soc > floor + LASTED_MARGIN_PCT,
+        actual_lasts=r.evening.lowest_soc > floor + LASTED_ABOVE_FLOOR_PCT,
     )
 
 
@@ -277,7 +260,7 @@ def _fit_standby(
     contested = frozenset().union(*(s.contested_days for s in by_step.values()))
     rows = {step: {n.day: n for n in s.nights} for step, s in by_step.items()}
     baseline = _mae(by_step[0].nights, contested)
-    if baseline is None or len(contested) < MIN_CONTESTED:
+    if baseline is None or len(contested) < MIN_CONTESTED_EVENINGS:
         return 0, baseline, contested
     held_out = []
     for day in sorted(contested):
@@ -287,7 +270,7 @@ def _fit_standby(
         )
         held_out.append(abs(rows[best][day].error_kwh))
     honest = sum(held_out) / len(held_out)
-    if honest >= baseline * (1 - STANDBY_GAIN):
+    if honest >= baseline * (1 - MIN_STANDBY_GAIN):
         return 0, baseline, contested
     fitted = min(
         STANDBY_STEPS_W, key=lambda w: (_mae(by_step[w].nights, contested) or 0.0, w)
@@ -298,11 +281,9 @@ def _fit_standby(
 def _heavy_share(runs: Sequence[_EveningRuns], step: int, score: Score) -> float:
     """Where a heavy night should sit among the replayed nights.
 
-    For each contested evening, find where the real night fell among the
-    replayed ones (0 = better than all, 1 = worse than all). "Heavy" should be
-    worse than the real night about as often as intended: the 80th percentile
-    of those positions. A night that ran out is only known to be at least as
-    bad as every replay that ran out, so it is placed halfway into those.
+    The 80th percentile of where real nights fell among their replays
+    (0 = best, 1 = worst). A night that ran out is only known to be at least as
+    bad as the replays that ran out, so it is placed halfway into them.
     """
     contested = score.contested_days
     positions = []
@@ -318,7 +299,7 @@ def _heavy_share(runs: Sequence[_EveningRuns], step: int, score: Score) -> float
         else:
             lasting = w[badness <= 0].sum() / total
             positions.append((lasting + 1) / 2)
-    if len(positions) < MIN_BAND_EVENINGS:
+    if len(positions) < MIN_EVENINGS_FOR_HEAVY_SHARE:
         return HEAVY_SHARE
     low, high = HEAVY_SHARE_RANGE
     return float(np.clip(np.quantile(positions, HEAVY_SHARE), low, high))

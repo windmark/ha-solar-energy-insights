@@ -1,11 +1,7 @@
-"""Each PowerOcean string as sensors: today's energy, live power per kWp and
-today's yield per kWp, from the string's own power and its size in the options.
+"""Per-string sensors from PowerOcean's string power and the string sizes.
 
-They replace template sensors a dashboard would otherwise need. Their energy is
-the recorder's hourly mean power (kW over an hour is kWh) plus the hour in
-progress from its five-minute statistics, so it agrees with the history. On
-first start, the energy sensor's long-term statistics are filled in from the
-string's power history, so charts built on them keep every past day.
+Energy comes from the recorder's hourly mean power (kW over an hour is kWh), so
+it agrees with history; the energy sensor's statistics are backfilled once.
 """
 
 from __future__ import annotations

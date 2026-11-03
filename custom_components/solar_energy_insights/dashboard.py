@@ -1,12 +1,4 @@
-"""What a dashboard needs from the integration, and the script it ships.
-
-The dashboard's JavaScript used to carry this home's entity names, history start
-and string sizes. Here they come from the integration's own settings instead:
-the counters it is configured with, the first day the recorder has, and
-PowerOcean's per-string power sensors, found on the same installation as the
-battery. The script itself ships with the integration and is loaded on every
-page, so nothing goes in /config/www.
-"""
+"""What a dashboard needs from the integration, and the script it ships."""
 
 from __future__ import annotations
 
@@ -39,11 +31,9 @@ if TYPE_CHECKING:
     from .coordinator import InsightsCoordinator
 
 POWEROCEAN = "ef_powerocean_tcpmodbus"
-# PowerOcean reports up to three strings: pv1_power, pv2_power, pv3_power.
 STRINGS = (1, 2, 3)
-# A string's size: its number of panels and the watts on their label, whole
-# numbers anyone can read off the installer's plan or a panel (no decimals,
-# which some phone keypads cannot enter). An older option held the kWp itself.
+# Panels and watts per panel: whole numbers anyone can read off a panel, and no
+# decimals, which some phone keypads can't enter. The kWp option is older.
 STRING_PANELS = "string_panels_pv{}"
 STRING_PANEL_W = "string_panel_w_pv{}"
 STRING_KWP = "string_kwp_pv{}"
@@ -225,8 +215,8 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
     from homeassistant.components.frontend import add_extra_js_url
 
     hass.data[_REGISTERED] = True
-    # The address changes with the script's contents, so browsers fetch every
-    # new copy (the integration's version alone did not change between updates).
+    # Fingerprinted, not versioned: the integration's version doesn't change
+    # between updates, so browsers would keep an old copy.
     script = Path(__file__).parent / "frontend" / SCRIPT
     content = await hass.async_add_executor_job(script.read_bytes)
     version = hashlib.sha256(content).hexdigest()[:12]
@@ -237,5 +227,4 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
             )
         ]
     )
-    # Versioned, so an update is not stuck behind a cached copy.
     add_extra_js_url(hass, f"{URL_BASE}/{SCRIPT}?v={version}")

@@ -148,7 +148,6 @@ def as_dict(
         "today": {
             "score": score(live, floor_pct) if live else None,
             "parts": {k: round(v, 3) for k, v in live_parts.items()},
-            # The sun so far today, for chasing the best day.
             "solar_kwh": None if live is None else live.solar_kwh,
         },
         "last_day": {"day": last[0].isoformat(), "score": last[1]} if last else None,

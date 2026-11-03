@@ -13,8 +13,7 @@ import numpy as np
 type Rate = Callable[[datetime], float]
 
 STEP = timedelta(minutes=30)
-# Within this many points of its charge limit, a battery counts as full.
-FULL_MARGIN_PCT = 0.5
+FULL_WITHIN_PCT = 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,8 +25,7 @@ class Battery:
     floor_pct: float
     max_power_kw: float = 5.0
     round_trip: float = 0.92
-    # The level charging stops at: 100, or lower when the battery is set to
-    # spare its cells. "Full" means reaching it.
+    # Below 100 when set to spare the cells; "full" means reaching it.
     ceiling_pct: float = 100.0
 
     @property
@@ -54,7 +52,7 @@ class Battery:
 
     @property
     def is_full(self) -> bool:
-        return self.soc_pct >= self.ceiling_pct - FULL_MARGIN_PCT
+        return self.soc_pct >= self.ceiling_pct - FULL_WITHIN_PCT
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,9 +77,9 @@ class Simulation:
     low_kwh: float
     end_kwh: float
     mark_kwh: float | None
-    # The lowest level from the mark on, such as overnight after sunset.
+    # From the mark on, e.g. overnight after sunset.
     low_after_mark_kwh: float | None
-    # From the mark on (or the whole run without one): the night, in the day.
+    # From the mark on, or the whole run without one.
     night_reserve_at: datetime | None
     night_grid_kwh: float
     night_load_kwh: float
@@ -140,13 +138,8 @@ def simulate(
 ) -> Simulation:
     """Step the battery from *start* to *end* in slices of at most 30 minutes.
 
-    Surplus solar charges the battery up to its power limit, with charging losses,
-    and the rest is exported. A deficit is covered from the battery down to the
-    reserve floor, then from the grid. *mark_at* records the level at that moment,
-    such as sunset.
-
-    It is one battery through the same engine as the nights (batch.run), so the
-    day and the night are stepped by the same code.
+    One battery through `batch.run`, so the day and the night share one engine.
+    *mark_at* records the level at that moment, such as sunset.
     """
     from . import batch
 

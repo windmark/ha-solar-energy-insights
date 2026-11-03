@@ -31,7 +31,7 @@ def facts(hour: int, minute: int = 0, **kw: Any) -> Facts:
     base = Facts(
         now=now,
         tz=TZ,
-        day=8 <= hour < 17,
+        sun_up=8 <= hour < 17,
         soc=60.0,
         outlook="lasts",
         replayed=14,
@@ -52,9 +52,6 @@ def facts(hour: int, minute: int = 0, **kw: Any) -> Facts:
 
 def row(s: Any, label: str) -> Row:
     return next(r for r in s.rows if r.label == label)
-
-
-# ── Real moments ──
 
 
 def test_monday_morning_after_the_guests() -> None:
@@ -181,8 +178,6 @@ def test_last_nights_call_each_morning() -> None:
     )
     assert all(r.label != "Last night" for r in afternoon.rows)
 
-
-# ── Every moment ──
 
 MOMENTS = [(9, 0), (12, 30), (15, 30), (16, 45), (19, 30), (23, 0), (2, 0)]
 MIX = {

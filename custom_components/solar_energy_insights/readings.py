@@ -85,7 +85,6 @@ class ReadingsMixin:
     hass: HomeAssistant
     config_entry: InsightsConfigEntry
     memory: MemoryStore
-    # Readings taken from memory because the battery reports none right now.
     remembered: set[str]
     correction: Correction
 
@@ -237,8 +236,7 @@ class ReadingsMixin:
         return option if floor < option <= 100 else 100.0
 
     def battery(self) -> Battery:
-        # A battery switched off below its reserve reports nothing: its last
-        # readings stand, since nothing changes while it is off.
+        # Nothing changes while a battery is switched off, so its last readings stand.
         soc = _number(self._state(CONF_BATTERY_SOC))
         soc = (
             self._keep_reading("soc_pct", soc)

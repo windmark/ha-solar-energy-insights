@@ -52,19 +52,16 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-# Raised whenever stored facts would come out differently from the same history:
-# they are then rebuilt from the recorder, and nothing is announced for it.
-# 2: implausible counter jumps dropped. 3: no battery cycle counts.
+# Raise when the same history would give different facts: they are rebuilt
+# quietly. 2: counter jumps dropped. 3: no cycle counts. 4: load spikes.
 FACTS_VERSION = 4
-# Days of hourly history the load spikes' share is learned from.
 SPIKE_DAYS = 30
 
 
 class Achievements:
     """Keeps the day facts current and the trophy room computed."""
 
-    # The grid's share of the house's use during load spikes, learned, and the
-    # hours it was learned from: none until there are enough.
+    # None until learned.
     spike_share: float = 0.0
     spike_hours: int = 0
 
@@ -73,7 +70,6 @@ class Achievements:
         self.trophies: Trophies | None = None
         self.live: DayFacts | None = None
         self._built_for: date | None = None
-        # What the entities and the WebSocket command show, as of the last update.
         self.view: dict[str, Any] | None = None
         self._computed_key: tuple[Any, ...] | None = None
 
@@ -90,8 +86,6 @@ class Achievements:
             key
         )
         return str(value) if value else None
-
-    # ── Reading the recorder ──
 
     async def _series(
         self, start: datetime, end: datetime
@@ -204,8 +198,6 @@ class Achievements:
         ):
             said["outlook"] = night["outlook"]
         return said
-
-    # ── Keeping up ──
 
     async def async_update(self) -> None:
         """Called with each history read: closes days, sets and judges quests,
@@ -361,8 +353,6 @@ class Achievements:
         slots = [s for s in forecast.slots if dt_util.as_local(s.start).date() == day]
         return round(sum(s.p50 for s in slots) / 2, 2) if slots else None
 
-    # ── Announcing ──
-
     def _announce(self, t: Trophies) -> None:
         memory = self.memory
         state = {
@@ -455,8 +445,6 @@ class Achievements:
                 },
             )
 
-    # ── For entities and the WebSocket API ──
-
     def as_dict(self) -> dict[str, Any] | None:
         if self.trophies is None:
             return None
@@ -468,7 +456,6 @@ class Achievements:
             self.c.battery().floor_pct,
             (self.c.price, self.c.feed_in),
         )
-        # Last week in one line, and what yesterday was the best at in a while.
         history = [DayFacts.from_dict(v) for _, v in sorted(self.memory.facts.items())]
         earned = [
             (b.badge.name, on) for b in self.trophies.badges for on in b.earned_on

@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-from .battery import FULL_MARGIN_PCT, STEP, Battery
+from .battery import FULL_WITHIN_PCT, STEP, Battery
 
 type Floats = NDArray[np.float64]
 type Bools = NDArray[np.bool_]
@@ -28,7 +28,7 @@ class Slices:
 
     starts: tuple[datetime, ...]
     hours: Floats
-    # From the mark on: the night. Without a mark, the whole run.
+    # From the mark on, or the whole run without one.
     night: Bools
 
     @classmethod
@@ -68,10 +68,8 @@ class Runs:
     grid_kwh: Floats
     load_kwh: Floats
     spare_kwh: Floats
-    # When the battery first handed over to the grid at night; NaT-like: None.
     reserve_at: tuple[datetime | None, ...]
-    # The level in % at the start and after each slice: (runs, slices + 1).
-    # Only kept when asked for, to draw the runs.
+    # (runs, slices + 1): at the start and after each slice.
     levels_pct: Floats | None = None
     # With detail: the whole run, as battery.simulate reports it.
     detail: dict[str, Any] | None = None
@@ -87,13 +85,10 @@ def run(
     record: bool = False,
     detail: bool = False,
 ) -> Runs:
-    """Step every run through the slices. *loads* is (runs, slices) kW.
+    """Step every run through the slices; *loads* is (runs, slices) kW.
 
-    With *record*, the level of every run after every slice is kept too. With
-    *detail*, the books battery.simulate reports are kept as well: when the
-    battery filled (within its slice), export before and after that, the whole
-    run's solar, use and grid, the first handover, the peak and when, the low,
-    and the level at the mark.
+    *record* keeps every level; *detail* keeps the bookkeeping `simulate` reports,
+    which the nightly batch doesn't need.
     """
     socs = np.asarray(socs, dtype=float)
     count = len(socs)
@@ -110,7 +105,7 @@ def run(
     trace = [level * 100 / cap] if record else []
     if detail:
         full_h = np.where(
-            level >= top - battery.capacity_kwh * FULL_MARGIN_PCT / 100, 0.0, np.nan
+            level >= top - battery.capacity_kwh * FULL_WITHIN_PCT / 100, 0.0, np.nan
         )
         export = np.zeros(count)
         export_before = np.zeros(count)
@@ -127,7 +122,6 @@ def run(
         hours = slices.hours[k]
         use = np.maximum(loads[:, k], 0.0)
         net = max(sun[k], 0.0) - use
-        # Surplus charges, up to the power limit and room left, with losses.
         charge_kw = np.minimum(np.maximum(net, 0.0), p_max)
         into = np.clip(np.minimum(charge_kw * hours, (top - level) / eta), 0.0, None)
         level = np.maximum(np.minimum(level + into * eta, top), level)
@@ -141,8 +135,8 @@ def run(
             )
             was_full = ~np.isnan(full_h)
             over = np.maximum(net - charge_kw, 0.0)
-            # Filling in this slice: before it, the excess over the power limit
-            # goes out; after it, all of the surplus.
+            # Filling within this slice: before that, only the excess over the power
+            # limit is exported; after it, all of the surplus.
             export += np.where(
                 filled,
                 np.where(was_full, over * filled_h, 0.0) + net * (hours - filled_h),
@@ -152,7 +146,6 @@ def run(
             export += np.where(surplus & ~filled & was_full, over * hours, 0.0)
             export_before += np.where(surplus & ~filled & ~was_full, over * hours, 0.0)
             full_h = np.where(filled & ~was_full, elapsed + filled_h, full_h)
-        # A deficit is covered from the battery down to the floor, then the grid.
         need = np.maximum(-net, 0.0) * hours
         out = np.clip(
             np.minimum.reduce(
@@ -186,7 +179,6 @@ def run(
             reserve_hours = np.where(first, elapsed + hours * share, reserve_hours)
             low = np.minimum(low, level)
         elif k + 1 < len(slices) and slices.night[k + 1]:
-            # The level at the mark itself.
             low = np.minimum(low, level)
         elapsed += hours
         if record:
@@ -217,7 +209,6 @@ def run(
             "low_kwh": low_all,
             "end_kwh": level,
             "mark_kwh": mark_level,
-            # The lowest level from the mark on, counting the level at the mark.
             "night_low_kwh": np.where(np.isinf(low), level, low),
             "ends": ends,
         }

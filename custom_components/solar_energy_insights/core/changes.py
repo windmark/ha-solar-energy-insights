@@ -1,11 +1,4 @@
-"""What changed in the plan's answers over the last half hour, and why.
-
-The plan answers afresh whenever the battery, the forecast or the house moves;
-a changed answer simply replaces the old one. Here the last half hour of answers
-is kept, so a meaningful change can be shown beside the new answer: what it was,
-since when, and the likely cause (the house using more than usual, or Solcast
-expecting more or less sun). It clears itself once the half hour has passed.
-"""
+"""What changed in the plan's answers recently, since when, and why."""
 
 from __future__ import annotations
 
@@ -13,7 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-# How far back changes are shown; an option, from half an hour to two hours.
+# The default; the option allows 30 minutes to 2 hours.
 WINDOW = timedelta(minutes=30)
 # Smaller moves are the plan's ordinary drift.
 TIME_STEP = timedelta(minutes=15)
@@ -93,8 +86,7 @@ def detect(
     if len(samples) < 2:
         return {}
     now = samples[-1]
-    # The answers as they stood half an hour ago: the last ones at or before
-    # then, or the first ones there are.
+    # As they stood a window ago, or the oldest there are.
     before = [s for s in samples if s.at <= now.at - window]
     was = before[-1] if before else samples[0]
     recent = [s for s in samples if s.at >= was.at]

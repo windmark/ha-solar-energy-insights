@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, NamedTuple
 
 from .facts import DayFacts
 
@@ -53,11 +53,16 @@ def last_week(
     }
 
 
-# (key, what it measures, higher is better)
-MEASURES: tuple[tuple[str, Callable[[DayFacts], float | None], bool], ...] = (
-    ("best_day", lambda f: f.solar_kwh, True),
-    ("self_sufficient", lambda f: f.self_sufficiency, True),
-    ("thriftiest", lambda f: f.house_kwh, False),
+class Measure(NamedTuple):
+    key: str
+    of: Callable[[DayFacts], float | None]
+    higher_is_better: bool
+
+
+MEASURES: tuple[Measure, ...] = (
+    Measure("best_day", lambda f: f.solar_kwh, True),
+    Measure("self_sufficient", lambda f: f.self_sufficiency, True),
+    Measure("thriftiest", lambda f: f.house_kwh, False),
 )
 
 

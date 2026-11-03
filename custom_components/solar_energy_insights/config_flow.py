@@ -72,7 +72,7 @@ from .dashboard import (
 )
 
 POWEROCEAN = "ef_powerocean_tcpmodbus"
-# Our field → PowerOcean entity keys (its unique ids end in _<key>), preferred first.
+# PowerOcean unique ids end in _<key>; preferred first.
 POWEROCEAN_KEYS: dict[str, tuple[str, ...]] = {
     CONF_BATTERY_SOC: ("battery_soc",),
     CONF_BATTERY_CAPACITY: ("battery_capacity",),
@@ -161,7 +161,6 @@ OPTIONS_SCHEMA = vol.Schema(
 )
 
 
-# Options: the counters that unlock more achievements and the Solcast correction.
 POWEROCEAN_OPTION_KEYS: dict[str, tuple[str, ...]] = {
     CONF_SOLAR_ENERGY: ("solar_total",),
     CONF_GRID_IMPORT_ENERGY: ("grid_import_total",),
@@ -261,7 +260,6 @@ class InsightsOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         if user_input is not None:
             return self.async_create_entry(data=user_input)
-        # Each string PowerOcean reports gets a size field; none if there are none.
         strings = discover_strings(self.hass, self.config_entry)
         roof_choices = [
             SelectOptionDict(
