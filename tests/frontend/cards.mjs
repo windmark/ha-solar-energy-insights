@@ -186,6 +186,12 @@ check(
     "Last week: 4 of 7 nights without the grid · best day Sunday (26 kWh) · €37.80 kept at home · Night owl earned",
   ),
 );
+check(
+  "a started badge's progress bar has room to show",
+  badges.shadowRoot.innerHTML.includes(
+    '<div style="flex:1;min-width:0"><div style="height:4px',
+  ),
+);
 // Long text wraps on a phone instead of running off the card.
 const streaks = cards["solar-energy-insights-streaks"].shadowRoot.innerHTML;
 check(

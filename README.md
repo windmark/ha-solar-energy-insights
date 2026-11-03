@@ -1,123 +1,81 @@
 # Solar Energy Insights
 
-A Home Assistant integration that answers three questions about a home battery:
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5?style=flat-square&logo=homeassistantcommunitystore&logoColor=white)](https://hacs.xyz/docs/faq/custom_repositories)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.9.0%2B-18BCF2?style=flat-square&logo=homeassistant&logoColor=white)](https://www.home-assistant.io/)
+[![Status](https://img.shields.io/badge/status-alpha-orange?style=flat-square)](#)
+[![Validate](https://img.shields.io/github/actions/workflow/status/windmark/ha-solar-energy-insights/validate.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=validate)](https://github.com/windmark/ha-solar-energy-insights/actions/workflows/validate.yml)
+[![License: MIT](https://img.shields.io/github/license/windmark/ha-solar-energy-insights?style=flat-square&color=lightgrey)](LICENSE)
 
-1. **Will it fill today?** And when, if the sun comes as forecast or if it's cloudier.
-2. **Will it last the night?** And if not, when does it reach the reserve?
-3. **When should heavy loads run?** The window with the most solar to spare.
+> **Alpha.** Built for an EcoFlow PowerOcean read through
+> [EF-PowerOcean-TcpModbus](https://github.com/MaxGrmm/EF-PowerOcean-TcpModbus), with Solcast.
+> Other batteries may work, but aren't tested.
 
-It reads entities you already have and never talks to a device. With [EF-PowerOcean-TcpModbus](https://github.com/MaxGrmm/EF-PowerOcean-TcpModbus) and [Solcast](https://github.com/BJReplay/ha-solcast-solar) installed, setup fills itself in.
+A Home Assistant integration that turns battery and solar numbers into answers:
+will the battery last the night, when to run the dishwasher, and how far to
+trust the forecast.
 
-## How it answers
+<table>
+<tr>
+<td><img src="docs/images/now.png" width="260" alt="The day at a glance"></td>
+<td><img src="docs/images/until-sunrise.png" width="260" alt="Until sunrise"></td>
+<td><img src="docs/images/best-time.png" width="260" alt="Best time to run heavy loads"></td>
+</tr>
+<tr>
+<td><img src="docs/images/forecast-trust.png" width="260" alt="Can I trust the forecast?"></td>
+<td><img src="docs/images/level.png" width="260" alt="Level, quest and last week"></td>
+<td><img src="docs/images/badges.png" width="260" alt="Badges"></td>
+</tr>
+</table>
 
-**The night is replayed, not modelled.** The battery as it is now is run, in half-hour steps, against each of the last 14 nights as your house actually used power in them, read from the recorder. The answer is how many of those nights it would have lasted:
+The top row and the forecast card are from the author's dashboard (built on the
+sensors below); only the achievement cards ship with the integration so far.
 
-> Lasts the night on 11 of the last 14 nights. On a heavy night, the reserve is reached around 04:10.
+## What it does
 
-Cooking, the dishwasher and a cold night's heat pump are already in those nights, metered or not, so nothing has to be classified. A day the recorder mostly missed is skipped rather than replayed, and the day's usual load comes from the same recent days, not from months back.
+- **Tonight.** Replays your last 14 real nights from the battery as it is now:
+  does it last, when does the grid take over, and how much the evening may use.
+- **Today.** When the battery will be full, and the best window for heavy loads.
+- **The forecast.** Freezes Solcast at 18:00, 21:00, 06:00 and 12:00 and scores
+  each against what came, so you know how far to trust it when you decide.
+- **Strings.** Energy and yield per kWp for each PowerOcean string.
+- **Achievements** (optional). Levels, streaks, records and badges.
 
-**Every recent night counts the same.** Weighting nights by how today looked (the afternoon so far, weekday or weekend, temperature, presence) was built and measured: on a month of real evenings it predicted no better than counting them equally, so it was taken out.
-
-**The score needs no stored predictions.** Each hour, the integration replays each of the recent evenings as it would have at 21:00, using only the days before it, and compares the result with the lowest level the battery actually reached before sunrise. Three things keep that honest:
-
-- **Contested evenings only.** An evening that starts nearly empty ends at the reserve whatever is predicted, so only evenings where the prediction or the battery said "lasted" are scored.
-- **Clean history.** A battery can't go below its floor. A reading under it is either a glitch (the hour otherwise sat well above) or the battery asleep at its reserve; both are corrected and counted.
-- **The hidden load.** The house counter doesn't see everything the battery feeds, such as the inverter's own standby. One constant is learned from the evenings and kept only if it predicts evenings it wasn't fitted on better. On the first real installation it was 50 W, and it took the predictions from 0.5 kWh optimistic to unbiased.
-
-**The last 30 evenings** are scored: about a month, enough to learn from and recent enough to follow the season. Each is replayed once against every past night and every hidden-load candidate, as arrays (numpy). **How heavy "a heavy night" is** is calibrated too: where real nights fell among the replayed ones decides it, so it's exceeded about as often as intended.
-
-**What the recorder can't give back is kept** in `.storage`: Solcast's forecast each morning, the plan's own answers (the night at 21:00, "full at" in the morning), so they survive a restart. The answers are scored against what happened. With a solar energy counter configured, the morning forecasts are compared with what the panels made, and a correction per clock hour is used once it beats raw Solcast on left-out days (after at least 14 days).
-
-**The day** runs Solcast's expected and cloudy case against the house's typical use at each hour. Both runs account for the battery's power limit, round-trip losses and reserve.
+It learns from your own history, and only keeps what a backtest shows predicts
+better. Everything is a sensor, so it works in automations too.
 
 ## Installation
 
-1. HACS → ⋮ → Custom repositories → add `https://github.com/windmark/ha-solar-energy-insights` as an Integration.
-2. Install **Solar Energy Insights** and restart Home Assistant.
-3. Settings → Devices & services → Add integration → **Solar Energy Insights**.
+### Via HACS (recommended)
 
-Requires Home Assistant 2026.9 or newer (and so Python 3.14) and the recorder.
+[![Open your Home Assistant instance and open the repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=windmark&repository=ha-solar-energy-insights&category=integration)
 
-## Setup
+Or add it from within HACS:
 
-| Field                      | Entity                                                                                                  |
-| -------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Battery state of charge    | %                                                                                                       |
-| Battery capacity           | Wh or kWh; while it reports none, the last value is used                                                |
-| Battery reserve (optional) | %, the reserve in force; for PowerOcean, Effective Battery Reserve                                      |
-| Charge limit (optional)    | %, the level charging stops at if set below 100 %; for PowerOcean, Charge Limit SOC                     |
-| House energy               | A counter of the house's use, daily or lifetime; its recorded hours are what the night is replayed from |
-| Grid power (optional)      | To tell when a full battery is exporting                                                                |
-| Solcast today and tomorrow | The forecast sensors, with `detailedForecast`                                                           |
+1. Open **HACS** in Home Assistant
+2. Open the menu (⋮) › **Custom repositories**
+3. Add `https://github.com/windmark/ha-solar-energy-insights` with type **Integration**
+4. Search for **Solar Energy Insights**, open it and click **Download**
+5. Restart Home Assistant
 
-**Options:**
+### Manual
 
-- **Prices:** the electricity price and feed-in tariff, in cents per kWh. For a dynamic tariff, an optional price entity overrides the price while it has a value.
-- **Optional inputs:** a solar energy counter, for learning a Solcast correction (used only once it predicts better) and for achievements.
-- **The night test:** how many nights to replay (default 14), and the lowest state of charge the inverter discharges to by itself (5 %).
-- **The battery:** its charge limit when no entity gives one (100 %), its power limit (5 kW), round-trip efficiency (92 %), and which sign of grid power means importing.
+1. Download the repository
+2. Copy the `custom_components/solar_energy_insights` folder to your HA `config/custom_components/` directory
+3. Restart Home Assistant
 
-Prices only turn kWh into money. They never change the plan: a price entity's current value applies to every hour ahead, and nothing is timed to cheap hours.
+### Setup
 
-## Entities
+[![Open your Home Assistant instance and start setting up Solar Energy Insights.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=solar_energy_insights)
 
-| Entity                        |                                                                                                                                                                                                                                                                                                           |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Battery full at               | Expected; attributes: the cloudy case, and peak % in both                                                                                                                                                                                                                                                 |
-| Battery at sunset             | %                                                                                                                                                                                                                                                                                                         |
-| Nights covered                | % of recent nights the battery would last, replayed from its level now; attributes: nights, lasting, and what really happened: recent_nights, recent_nights_lasted, last_night_lasted                                                                                                                     |
-| Reserve reached at            | On a typical recent night; attribute: on a heavy one                                                                                                                                                                                                                                                      |
-| Spare at sunrise              | kWh above the reserve on a typical night; attributes: a heavy night, grid kWh                                                                                                                                                                                                                             |
-| Charge needed for the night   | The lowest level from which even a heavy night lasts: at sunset during the day (compare it with "Battery at sunset"), now at night; attributes: for when, a typical night                                                                                                                                 |
-| Solar surplus until sunset    | kWh the battery can't take, for an EV, water heater or dryer; attributes: after full, while charging (power-limited), cloudy case                                                                                                                                                                         |
-| Best window for heavy loads   | Its start; attributes: end, spare kWh                                                                                                                                                                                                                                                                     |
-| Grid cost until sunrise       | The typical night's grid energy at the current price; attributes: a heavy night, the price, where it came from                                                                                                                                                                                            |
-| Saving from using the surplus | What using the surplus at home saves instead of exporting it (price minus feed-in); attribute: what exporting it earns                                                                                                                                                                                    |
-| Night outlook                 | Lasts (even a heavy night), borderline (only if it's not a heavy night), or needs the grid; attributes: budget_kwh, evening_budget_kwh (what the evening may use until midnight), usual_evening_kwh, evening_used_kwh (since sunset, live), short_nights                                                  |
-| Night prediction error        | How far off "spare at sunrise" would have been, in kWh, on recent evenings that could have gone either way, and left out of any fitting; attributes: weighting in use, each weighting's error, hidden load, heavy-night share, bias, corrected battery readings, and how the plan's own 21:00 answers did |
-| Full-at error                 | How far the morning's "full at" was from when the battery really got full, in minutes; attributes: days scored, days where full was wrong                                                                                                                                                                 |
-| Solcast correction gain       | Diagnostic: how much a correction for your roof cuts Solcast's error on left-out days; attributes: in use, days learned from, the factor per hour                                                                                                                                                         |
-| Days of history               | Diagnostic: days of house use the recorder holds                                                                                                                                                                                                                                                          |
-| Battery lasts the night       | On when a typical recent night lasts                                                                                                                                                                                                                                                                      |
-| Free power                    | On when the battery is full and exporting; attribute: until when; the `solar_energy_insights_free_power` event fires when it turns on                                                                                                                                                                     |
+Or **Settings › Devices & services › Add integration › Solar Energy Insights**.
+PowerOcean and Solcast entities are suggested.
 
-The entities hold facts, not sentences: word them in your dashboard.
+Requires Home Assistant 2026.9, the recorder, Solcast PV Forecast and
+[EF-PowerOcean-TcpModbus](https://github.com/MaxGrmm/EF-PowerOcean-TcpModbus).
 
-## Simulate
+## Cards
 
-The plan with an extra load started now, such as a dryer:
-
-```yaml
-action: solar_energy_insights.simulate
-data:
-  extra_kwh: 2.5
-  extra_hours: 2
-response_variable: with_dryer
-```
-
-## For dashboard cards
-
-```js
-await hass.callWS({ type: "solar_energy_insights/plan" });
-```
-
-returns the whole plan: each replayed night with its battery curve, the typical and heavy one, and the battery curve until sunset.
-
-```js
-await hass.callWS({ type: "solar_energy_insights/backtest" });
-```
-
-returns every scored evening (predicted and actual spare, whether it was contested), what was learned (hidden load, heavy share, honest error), and how the plan's own answers did.
-
-## Dashboards
-
-The integration ships the JavaScript its dashboard cards use (`window.SolarDash`) and loads it on every page, so there is nothing to copy to `/config/www` and no resource to add; it updates with the integration. If you added `solar-dash.js` as a resource before, remove that resource.
-
-The helpers read this home's details from the integration's settings: the energy counters you configured, the first day with statistics, and, with EF-PowerOcean-TcpModbus, the per-string power sensors it finds on your installation. For cards that compare strings per kWp, add each string's panels under **Configure**: for PV1, PV2 and PV3, the number of panels and the watts on their label (for example 12 panels of 420 W). Until then those cards say so.
-
-### Achievement cards
-
-With achievements on, four cards come with the integration, one line each:
+The cards ship with the integration:
 
 ```yaml
 - type: custom:solar-energy-insights-level
@@ -126,41 +84,13 @@ With achievements on, four cards come with the integration, one line each:
 - type: custom:solar-energy-insights-badges
 ```
 
-## Summary
+For your own cards, `sensor.solar_energy_insights_summary` has each tile's
+headline and details as attributes.
 
-`sensor.solar_energy_insights_summary` is the phase of the day (day, evening, night), with the rows a dashboard shows as attributes: for each of Battery, Tonight, Heavy loads, Surplus (and Last night until noon), an icon, a tone, a headline and at most two short clauses, plus the earlier answer and its cause when it changed recently. Its attributes are kept out of the recorder.
+## More
 
-## Read from your devices
+- [Entities, options and actions](docs/reference.md)
+- [How achievements work](docs/achievements.md)
 
-Where the information exists, it is read rather than asked for or guessed, and the options come prefilled:
-
-| What                                         | From                                                   | Used for                                                            |
-| -------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------- |
-| The array's size, and where each plane faces | Solcast's rooftop sites (DC capacity, direction, tilt) | Badges measured per kWp, scaled for planes facing away from the sun |
-| Energy counters, solar power                 | EF-PowerOcean-TcpModbus                                | Achievements, the Solcast correction                                |
-
-An east–west roof makes less per kWp in a year than one facing the equator. A sun model over the whole year gives each plane's yield against the best plane at your latitude (east or west at 30°: about 0.81 in central Europe; north: about 0.6), and per-kWp thresholds scale with it.
-
-## Achievements
-
-Switch them on in the options. The integration then replays your history and keeps a trophy room in the spirit of a game, computed only from closed days:
-
-- **A daily score** (self-sufficiency, solar kept at home, battery put to work, performance against the morning forecast), **XP and named levels**, and **a rank** from the 30-day average that follows the season.
-- **Four streaks** with a weather shield, **records** with the season's best, and **22 badges**: seasonal by your hemisphere, some hidden until earned, each with a rarity measured in your own days.
-- **A quest** each evening for the next day, sized from your days with a similar forecast, and one each Monday for the week.
-
-Thresholds are relative to your home: per kWp of panels, per kWh of battery, or percentiles of your own days. Badges whose data your home cannot supply are not offered; adding the grid import and export counters and a solar counter in the options unlocks more. Earning a tier, breaking a record, levelling up, completing a quest or closing a month fires `solar_energy_insights_achievement` with a ready-made message. The design is in [docs/achievements.md](docs/achievements.md).
-
-To be told on your phone, import the blueprint and pick what to announce:
-
-[![Open your Home Assistant instance and show the blueprint import dialog.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fwindmark%2Fha-solar-energy-insights%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fsolar_energy_insights%2Fannounce_achievements.yaml)
-
-The monthly recap says what the sun kept at home was worth at your price.
-
-## Reporting something that looks wrong
-
-Download diagnostics (Settings → Devices & services → Solar Energy Insights → ⋮ → Download diagnostics) at the moment it looks wrong, and attach the file with a screenshot. The file replays that exact moment as a test (see CONTRIBUTING.md). It holds your energy data and entity ids, nothing else.
-
-## Development
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Something looks wrong? Download the diagnostics from the integration's page
+and attach them to an issue.

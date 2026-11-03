@@ -4,6 +4,8 @@
 
 ### Changed
 
+- A shorter README with pictures of the tiles; the reference moved to `docs/reference.md`.
+
 - "Longest off the grid" is the longest consecutive stretch off the grid, across midnight and across days, instead of the most off-grid hours within one day, which stopped at 24.
 - Load spikes no longer count as grid use. When a load switches on, the inverter takes a moment to ramp the battery up and the grid covers it. An hour the battery carried (above its reserve all hour) whose import was only that small share of the house's use counts as off the grid. The share is learned from hours the battery had plenty (their 95th percentile, at most 10 %), and shows as the diagnostic sensor "Grid share during load spikes". It applies to the record, Island mode, grid-free days and the self-sufficiency streak, which leave out only the import excused this way. Stored facts are rebuilt once with it.
 
@@ -68,6 +70,7 @@ Complications that, measured on real data, did not earn their place:
 
 ### Fixed
 
+- The badges card's progress bar had no width and didn't show.
 - The streaks card's explanation and the streaks' and records' descriptions ran off the card on a phone: they now wrap.
 
 - Dashboard tiles showed "Could not read the plan: 3" after Home Assistant restarted or the app lost its connection: 3 is the frontend's code for a lost connection, and a failed request replaced the last good answer with the error. A failed request now keeps the last answer, retries by itself after 5 s and then longer, retries at once when the connection is back, and says in words what happened when there is nothing to show yet.
