@@ -192,4 +192,15 @@ check(
     '<div style="flex:1;min-width:0"><div style="height:4px',
   ),
 );
+// Long text wraps on a phone instead of running off the card.
+const streaks = cards["solar-energy-insights-streaks"].shadowRoot.innerHTML;
+check(
+  "the streaks' explanation wraps",
+  /white-space:normal[^"]*">Shields come with each/.test(streaks),
+);
+check(
+  "and so do their descriptions, in a column that may shrink",
+  streaks.includes('<div style="min-width:0">') &&
+    /white-space:normal;line-height:1.35">/.test(streaks),
+);
 console.log("ok");

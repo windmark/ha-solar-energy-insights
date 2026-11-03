@@ -1012,9 +1012,9 @@
       <ha-icon icon="${s.icon}" style="--mdc-icon-size:19px;color:${
         hot ? "#ff9f43" : "#636366"
       }"></ha-icon></div>
-    <div><div style="font-size:14px;color:#fff">${
+    <div style="min-width:0"><div style="font-size:14px;color:#fff;white-space:normal">${
       s.name
-    }${shields}</div><div style="font-size:11px;color:#8e8e93">${
+    }${shields}</div><div style="font-size:11px;color:#8e8e93;white-space:normal;line-height:1.35">${
       s.description
     }</div></div>
     <div style="text-align:right"><div style="font-size:22px;color:${
@@ -1031,7 +1031,7 @@
       }</div></div></div>`;
         })
         .join("");
-      return `<div style="font-size:12px;color:#8e8e93">Shields come with each week-long run and absorb one break the weather caused.</div>${rows}`;
+      return `<div style="font-size:12px;color:#8e8e93;white-space:normal;line-height:1.4">Shields come with each week-long run and absorb one break the weather caused.</div>${rows}`;
     },
   );
 
@@ -1140,10 +1140,12 @@
     <ha-icon icon="${
       r.icon
     }" style="--mdc-icon-size:18px;color:#f5b83d;margin-top:1px"></ha-icon>
-    <div><div style="font-size:14px;color:#fff">${r.name}</div>
-      <div style="font-size:11px;color:#8e8e93">${dmy(r.day)}${
-        season ? " · " + season : ""
-      }${
+    <div style="min-width:0"><div style="font-size:14px;color:#fff;white-space:normal">${
+      r.name
+    }</div>
+      <div style="font-size:11px;color:#8e8e93;white-space:normal;line-height:1.35">${dmy(
+        r.day,
+      )}${season ? " · " + season : ""}${
         top ? ` · <span style="color:#8be36a">${top}</span>` : ""
       }</div>${chase}</div>
     <div style="font-size:16px;color:#fff;text-align:right">${f(
