@@ -1301,11 +1301,11 @@
         const when = b.season ? `until ${dm(b.season_until)} · ` : "";
         const progress =
           b.next_tier_at && b.count > 0
-            ? `<div style="display:flex;gap:8px;align-items:center;margin-top:4px">${bar(
+            ? `<div style="display:flex;gap:8px;align-items:center;margin-top:4px"><div style="flex:1;min-width:0">${bar(
                 pct,
                 "#9ad7e6",
                 4,
-              )}<span style="font-size:11px;color:${
+              )}</div><span style="font-size:11px;color:${
                 C.muted
               };white-space:nowrap">${fmt(b.count)} of ${
                 b.next_tier_at
