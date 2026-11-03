@@ -1,15 +1,7 @@
-"""The solar array as configured: its planes, their size and where they face.
+"""The solar array: its planes, their size and where they face.
 
-Size is read, not guessed: Solcast's rooftop sites carry each plane's DC
-capacity, compass direction and tilt. Where a plane faces changes how much a
-kWp makes in a year: an east–west roof makes less per kWp than one facing the
-equator, so anything measured per kWp is scaled by the array's relative yield.
-
-Relative yield comes from a sun model over a whole year: the energy a plane
-would catch, direct and diffuse, against the best plane at the same latitude
-(facing the equator at its best tilt). It ignores shading; what it captures is
-geometry. It agrees with PVGIS for central Europe to a few percent: east or west
-at 30° about 0.83, north at 30° about 0.6, flat about 0.88.
+Read from Solcast's rooftop sites rather than guessed; the direction model says
+what share of a south-facing plane's yearly energy each plane makes.
 """
 
 from __future__ import annotations

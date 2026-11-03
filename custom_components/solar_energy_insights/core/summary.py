@@ -1,17 +1,7 @@
 """What the dashboard says: each answer as a headline and at most two clauses.
 
-The plan answers in numbers; people read sentences. Here the numbers become
-short rows (Battery, Tonight, Heavy loads, Surplus, and Last night in the
-morning), each a headline of at most ~25 characters and at most two clauses of
-at most ~45, chosen by the time of day from four kinds:
-
-- why: what explains the state (which nights ran short, and why);
-- act: what can be done (what the evening may use, when to run heavy loads);
-- live: how it is going (what is left of the evening's budget);
-- history: what really happened, once there is nothing left to act on.
-
-The day's phases come from the plan's own sunset and sunrise, so every row and
-every answer agree on whether it is day, evening or after midnight.
+Phases come from the plan's own sunset and sunrise, so every row agrees on
+whether it is day, evening or after midnight.
 """
 
 from __future__ import annotations

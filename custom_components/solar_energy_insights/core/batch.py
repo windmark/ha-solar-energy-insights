@@ -85,13 +85,10 @@ def run(
     record: bool = False,
     detail: bool = False,
 ) -> Runs:
-    """Step every run through the slices. *loads* is (runs, slices) kW.
+    """Step every run through the slices; *loads* is (runs, slices) kW.
 
-    With *record*, the level of every run after every slice is kept too. With
-    *detail*, the books battery.simulate reports are kept as well: when the
-    battery filled (within its slice), export before and after that, the whole
-    run's solar, use and grid, the first handover, the peak and when, the low,
-    and the level at the mark.
+    *record* keeps every level; *detail* keeps the bookkeeping `simulate` reports,
+    which the nightly batch doesn't need.
     """
     socs = np.asarray(socs, dtype=float)
     count = len(socs)

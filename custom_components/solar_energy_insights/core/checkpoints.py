@@ -1,19 +1,7 @@
-"""How far the forecast can be trusted at the moments decisions are made.
+"""How far the forecast held at the moments decisions are made.
 
-The forecast keeps rewriting itself during the day, erasing what it said when
-someone acted on it. So at fixed checkpoints the forecast is frozen, and each
-is later judged against what the sun really did over the stretch it was about:
-
-- 18:00 and 21:00: tomorrow, the whole day (the evening's decisions);
-- 06:00: today, the whole day;
-- 12:00: today from noon (the morning is already measured).
-
-Scores per checkpoint, over a rolling window: the typical miss in kWh, the bias
-(positive: the forecast promised more than came), and how often the real sun
-fell inside the forecast's low-to-high range. They are also split by what the
-forecast said (sunny, mixed or dull, against what a clear day could give), since
-a confident sunny forecast and a mixed one deserve different trust, and set
-beside the same weeks a year earlier once there is a year.
+The live forecast rewrites itself, erasing what it said when someone acted on
+it, so it is frozen at fixed checkpoints and later judged against the sun.
 """
 
 from __future__ import annotations

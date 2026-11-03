@@ -1,12 +1,4 @@
-"""What a dashboard needs from the integration, and the script it ships.
-
-The dashboard's JavaScript used to carry this home's entity names, history start
-and string sizes. Here they come from the integration's own settings instead:
-the counters it is configured with, the first day the recorder has, and
-PowerOcean's per-string power sensors, found on the same installation as the
-battery. The script itself ships with the integration and is loaded on every
-page, so nothing goes in /config/www.
-"""
+"""What a dashboard needs from the integration, and the script it ships."""
 
 from __future__ import annotations
 

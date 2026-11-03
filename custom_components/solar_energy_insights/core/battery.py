@@ -138,13 +138,8 @@ def simulate(
 ) -> Simulation:
     """Step the battery from *start* to *end* in slices of at most 30 minutes.
 
-    Surplus solar charges the battery up to its power limit, with charging losses,
-    and the rest is exported. A deficit is covered from the battery down to the
-    reserve floor, then from the grid. *mark_at* records the level at that moment,
-    such as sunset.
-
-    It is one battery through the same engine as the nights (batch.run), so the
-    day and the night are stepped by the same code.
+    One battery through `batch.run`, so the day and the night share one engine.
+    *mark_at* records the level at that moment, such as sunset.
     """
     from . import batch
 

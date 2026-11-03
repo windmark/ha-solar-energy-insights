@@ -1,14 +1,4 @@
-"""What the recorder cannot give back, kept in .storage.
-
-- Solcast's forecast as it stood each morning: the recorder does not keep the
-  half-hourly detail, and without it the day side cannot be scored, nor a
-  correction for this roof learned.
-- The plan's own answers when they were given: the night at 21:00, "full at"
-  in the morning, so live predictions are scored, not only replays.
-
-Everything else is still read from the recorder. Losing this file loses only
-history for the day side; the integration carries on without it.
-"""
+"""What the recorder can't give back, kept in .storage."""
 
 from __future__ import annotations
 
