@@ -17,12 +17,11 @@ from .battery import Rate
 # The most a house plausibly uses in one hour; more is a counter glitch.
 MAX_HOURLY_KWH = 15.0
 
-# kWh used in each local clock hour, keyed by (local date, hour).
+# kWh per local clock hour, keyed by (local date, hour).
 type HourlyUse = Mapping[tuple[date, int], float]
 
 
-# An hour's energy above this, and far above the counter's usual hour, is a
-# glitch: typically a counter that first reported 0 and then its lifetime total.
+# Typically a counter that first reported 0 and then its lifetime total.
 JUMP_FLOOR_KWH = 25.0
 JUMP_FACTOR = 10.0
 
@@ -82,8 +81,10 @@ class PastDay:
 def hourly_means(
     rows: Mapping[datetime, float], tz: tzinfo
 ) -> dict[tuple[date, int], float]:
-    """Key the recorder's hourly means (°C, people home) by local date and hour;
-    an hour seen twice (the autumn clock change) holds their average."""
+    """Key the recorder's hourly means by local date and hour.
+
+    An hour seen twice (the autumn clock change) holds their average.
+    """
     sums: dict[tuple[date, int], list[float]] = {}
     for start, value in rows.items():
         local = start.astimezone(tz)
@@ -99,10 +100,8 @@ def typical_by_hour(use: HourlyUse) -> dict[int, float]:
     return {hour: statistics.median(values) for hour, values in by_hour.items()}
 
 
-# A past day needs this many recorded hours to be replayed as a night.
 MIN_DAY_HOURS = 12
-# How far back to look for days with data, as a multiple of the days wanted.
-LOOK_BACK = 3
+LOOK_BACK_MULTIPLE = 3
 
 
 def _today(use: HourlyUse) -> date | None:
@@ -118,12 +117,10 @@ def _today(use: HourlyUse) -> date | None:
 def past_days(
     use: HourlyUse, tz: tzinfo, count: int, today: date | None = None
 ) -> list[PastDay]:
-    """The last *count* days with data, each ready to stand in for the hours ahead.
+    """The last *count* days with data, each standing in for the hours ahead.
 
-    A day the recorder mostly missed is skipped, and an older one takes its
-    place: an outage is not a night. An hour missed within a day takes that
-    hour's median over the days replayed, so a gap does not read as a night
-    without load; older history plays no part.
+    A mostly missed day is skipped (an outage isn't a night), and a missed hour
+    takes that hour's median, so a gap doesn't read as no load.
     """
     today = today or _today(use)
     if today is None or count <= 0:
@@ -133,12 +130,10 @@ def past_days(
         hours_per_day[day] = hours_per_day.get(day, 0) + 1
     chosen = [
         n
-        for n in range(1, count * LOOK_BACK + 1)
+        for n in range(1, count * LOOK_BACK_MULTIPLE + 1)
         if hours_per_day.get(today - timedelta(days=n), 0) >= MIN_DAY_HOURS
     ][:count]
-    # The usual value of each hour: from the days replayed, and for an hour none
-    # of them recorded, from the recent days looked at.
-    window = recent_use(use, today, range(1, count * LOOK_BACK + 1))
+    window = recent_use(use, today, range(1, count * LOOK_BACK_MULTIPLE + 1))
     fallback = typical_by_hour(window) | typical_by_hour(recent_use(use, today, chosen))
     return [PastDay(n, use, tz, fallback) for n in chosen]
 
@@ -174,5 +169,5 @@ def quantile(values: Sequence[float], share: float) -> float:
     return ordered[index]
 
 
-# Any hourly series keyed by (local date, clock hour): kWh, °C, people home.
+# Any hourly series keyed by (local date, clock hour).
 type HourlySeries = Mapping[tuple[date, int], float]

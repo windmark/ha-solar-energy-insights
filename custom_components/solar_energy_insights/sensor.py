@@ -130,10 +130,8 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         suggested_display_precision=0,
-        # The lowest level from which even a heavy night lasts: at sunset in the
-        # day, compare it with "battery at sunset"; at night it is needed now.
-        # When even a full battery is short, 100 %, and how much would still
-        # come from the grid: the most important thing it can say, not unknown.
+        # When even a full battery falls short: 100 % and the shortfall, not
+        # unknown, because that is the most useful thing it can say.
         value_fn=lambda p: (
             None
             if p.needed is None
@@ -268,7 +266,7 @@ STATUS: tuple[InsightsStatusDescription, ...] = (
         device_class=SensorDeviceClass.ENERGY_STORAGE,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=2,
-        # The honest error: on evenings left out of any fitting.
+        # On evenings left out of any fitting.
         value_fn=lambda c: (
             None
             if c.calibration is None or c.calibration.error_kwh is None
@@ -284,7 +282,6 @@ STATUS: tuple[InsightsStatusDescription, ...] = (
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.MINUTES,
         suggested_display_precision=0,
-        # What the plan said in the morning, against when the battery got full.
         value_fn=lambda c: (
             None
             if c.live_full is None or c.live_full.error_minutes is None
@@ -303,7 +300,6 @@ STATUS: tuple[InsightsStatusDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         native_unit_of_measurement=PERCENTAGE,
         suggested_display_precision=0,
-        # How much the roof's correction cuts Solcast's error on left-out days.
         value_fn=lambda c: _r(c.correction.improvement_pct, 1),
         attrs_fn=lambda c: {
             "active": c.correction.active,
@@ -434,9 +430,6 @@ class InsightsCostSensor(InsightsEntity, SensorEntity):
             "feed_in": values["feed_in"],
             "price_source": self.coordinator.price_source,
         }
-
-
-# ── Achievements ──
 
 
 def _streak(key: str) -> Callable[[dict[str, Any]], dict[str, Any] | None]:
@@ -585,8 +578,6 @@ def _evening(p: Plan, coordinator: InsightsCoordinator) -> dict[str, Any]:
     }
 
 
-# ── The summary: what the dashboard says ──
-
 SUMMARY = SensorEntityDescription(key="summary", translation_key="summary")
 
 
@@ -594,8 +585,7 @@ class SummarySensor(InsightsEntity, SensorEntity):
     """The phase of the day, with the dashboard's rows as attributes: each
     answer as a headline and at most two short clauses."""
 
-    # The rows change with every update and are only for display: keep them
-    # out of the recorder.
+    # Display-only and changing with every update: not worth recording.
     _unrecorded_attributes = frozenset(
         {"rows", "home", "time", "soc", "asleep", "ring"}
     )
@@ -615,11 +605,9 @@ class SummarySensor(InsightsEntity, SensorEntity):
         return data
 
 
-# ── The strings, from PowerOcean's per-string power and their sizes ──
-
 ENERGY_REFRESH = timedelta(minutes=5)
-# Power per kWp: a change of this much (about 1 % of full output) is written at
-# once; smaller drift at most this often.
+# Every write goes into the recorder: write a meaningful change at once and
+# small drift at most this often.
 SIGNIFICANT_KW_PER_KWP = 0.01
 DRIFT_EVERY = timedelta(seconds=30)
 
@@ -646,7 +634,7 @@ class _StringSensor(InsightsEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
-        # A string's sensors do not need the plan, only the string's power.
+        # Only the string's power is needed, not the plan.
         return self.coordinator.last_update_success
 
     @property
@@ -668,7 +656,7 @@ class StringEnergySensor(_StringSensor):
             async_track_time_interval(self.hass, self._async_refresh, ENERGY_REFRESH)
         )
         await self._async_refresh()
-        # Once: the past, from the string's power history, for charts.
+        # Once, so charts on this sensor keep the string's past days.
         start = await history_start(self.hass, self.power)
         await backfill_energy(
             self.hass, self.power, self.entity_id, f"PV{self.n} energy", start
@@ -691,8 +679,6 @@ class StringPowerPerKwpSensor(_StringSensor):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = "kW/kWp"
     _attr_suggested_display_precision = 3
-    # Every write goes through the recorder: a change this big is written at
-    # once, smaller drift at most every so often.
     _written: float | None = None
     _written_at: datetime | None = None
 
@@ -785,8 +771,6 @@ class StringYieldSensor(_StringSensor):
             return None
 
 
-# ── This morning's forecast, kept by the integration, day by day ──
-
 MORNING = SensorEntityDescription(
     key="morning_forecast",
     translation_key="morning_forecast",
@@ -836,8 +820,6 @@ class MorningForecastSensor(InsightsEntity, SensorEntity):
         }
 
 
-# ── Forecast checkpoints: how far the forecast held at the moments that matter ──
-
 CHECKPOINTS_SENSOR = SensorEntityDescription(
     key="forecast_checkpoints", translation_key="forecast_checkpoints"
 )
@@ -865,8 +847,6 @@ class CheckpointsSensor(InsightsEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         return self.coordinator.checkpoints.view()
 
-
-# ── Load spikes: the grid's share while the battery ramps up ──
 
 SPIKE_SHARE = SensorEntityDescription(
     key="spike_grid_share",

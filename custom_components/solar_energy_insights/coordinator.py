@@ -118,8 +118,6 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
         self._answers: list[Answers] = []
         self.changes: dict[str, Change] = {}
 
-    # ── Reading ──
-
     def inputs(
         self, extra: Rate | None = None, now: datetime | None = None
     ) -> PlanInputs:
@@ -138,8 +136,6 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
             standby_kw=self.standby_kw,
             heavy_share=self.heavy_share,
         )
-
-    # ── History ──
 
     async def async_refresh_history(self) -> None:
         """Re-read the history now, whether or not a new hour has been recorded."""
@@ -247,8 +243,6 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
         )
         self.standby_kw = self.calibration.standby_kw
         self.heavy_share = self.calibration.heavy_share
-
-    # ── Remembering and scoring the plan's own answers ──
 
     async def _async_update_data(self) -> Plan:
         await self.async_load_use()

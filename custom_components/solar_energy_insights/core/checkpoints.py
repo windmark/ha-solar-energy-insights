@@ -22,24 +22,29 @@ import statistics
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, NamedTuple
 
-# (name, hour, days ahead the forecast is about, judged from noon only)
-CHECKPOINTS: tuple[tuple[str, int, int, bool], ...] = (
-    ("18:00", 18, 1, False),
-    ("21:00", 21, 1, False),
-    ("06:00", 6, 0, False),
-    ("12:00", 12, 0, True),
+
+class Checkpoint(NamedTuple):
+    name: str
+    hour: int
+    days_ahead: int
+    from_noon: bool
+
+
+CHECKPOINTS: tuple[Checkpoint, ...] = (
+    Checkpoint("18:00", 18, 1, False),
+    Checkpoint("21:00", 21, 1, False),
+    Checkpoint("06:00", 6, 0, False),
+    Checkpoint("12:00", 12, 0, True),
 )
 WINDOW_DAYS = 30
 MIN_DAYS = 10
 MIN_GROUP_DAYS = 8
 LAST_YEAR_SPAN = 30
-# A forecast at this share of a clear day's energy or more is sunny; below the
-# second, dull; in between, mixed.
+# Shares of a clear day's energy: at least SUNNY is sunny, below DULL dull.
 SUNNY, DULL = 0.7, 0.35
-# Waiting from one checkpoint to the next "pays" when it cuts the miss this much.
-PAYS = 0.2
+WAITING_PAYS_CUT = 0.2
 
 
 def checkpoint(name: str) -> tuple[str, int, int, bool]:
@@ -53,7 +58,7 @@ class Snapshot:
     name: str
     day: date
     taken_at: datetime
-    # When Solcast last refreshed before the checkpoint, if known.
+    # Solcast's last refresh before the checkpoint.
     polled_at: datetime | None
     # Half hours: (start, likely, low, high) kW.
     slots: tuple[tuple[datetime, float, float, float], ...]
@@ -223,5 +228,5 @@ def _waiting(
         "days": len(days),
         "early_kwh": round(e, 2),
         "late_kwh": round(lt, 2),
-        "pays": lt <= e * (1 - PAYS),
+        "pays": lt <= e * (1 - WAITING_PAYS_CUT),
     }

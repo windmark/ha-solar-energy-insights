@@ -14,7 +14,7 @@ type Rate = Callable[[datetime], float]
 
 STEP = timedelta(minutes=30)
 # Within this many points of its charge limit, a battery counts as full.
-FULL_MARGIN_PCT = 0.5
+FULL_WITHIN_PCT = 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,7 +54,7 @@ class Battery:
 
     @property
     def is_full(self) -> bool:
-        return self.soc_pct >= self.ceiling_pct - FULL_MARGIN_PCT
+        return self.soc_pct >= self.ceiling_pct - FULL_WITHIN_PCT
 
 
 @dataclass(frozen=True, slots=True)

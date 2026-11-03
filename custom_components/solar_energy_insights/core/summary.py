@@ -204,8 +204,6 @@ class _Words:
             return f"cloudier: only {_round(f.peak_cloudy)}%"
         return "cloudier: won’t fill"
 
-    # ── Tonight ──
-
     def tonight(self) -> Row:
         f = self.f
         n, k = f.replayed, len(f.short_evenings)
@@ -336,8 +334,6 @@ class _Words:
             "Learning your nights",
             ("needs a day of history",),
         )
-
-    # ── Battery ──
 
     def drift(self) -> tuple[str, str] | None:
         """This morning's expectation, when the full time has moved since."""
@@ -498,8 +494,6 @@ class _Words:
             "forecast",
         )
 
-    # ── Heavy loads and surplus ──
-
     def loads(self, tomorrow: bool) -> Row:
         f = self.f
         target = "forecast" if tomorrow else "today"
@@ -625,8 +619,6 @@ class _Words:
             _two(said, f"{c['right_calls']} of the last {c['calls']} calls right"),
             "sunrise",
         )
-
-    # ── What changed ──
 
     def mark_changes(self, rows: list[Row]) -> list[Row]:
         """An answer that changed recently shows what it was, since when, and why."""

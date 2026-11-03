@@ -91,8 +91,6 @@ class Achievements:
         )
         return str(value) if value else None
 
-    # ── Reading the recorder ──
-
     async def _series(
         self, start: datetime, end: datetime
     ) -> tuple[Series, dict[datetime, float]]:
@@ -204,8 +202,6 @@ class Achievements:
         ):
             said["outlook"] = night["outlook"]
         return said
-
-    # ── Keeping up ──
 
     async def async_update(self) -> None:
         """Called with each history read: closes days, sets and judges quests,
@@ -361,8 +357,6 @@ class Achievements:
         slots = [s for s in forecast.slots if dt_util.as_local(s.start).date() == day]
         return round(sum(s.p50 for s in slots) / 2, 2) if slots else None
 
-    # ── Announcing ──
-
     def _announce(self, t: Trophies) -> None:
         memory = self.memory
         state = {
@@ -454,8 +448,6 @@ class Achievements:
                     "icon": "mdi:calendar-star",
                 },
             )
-
-    # ── For entities and the WebSocket API ──
 
     def as_dict(self) -> dict[str, Any] | None:
         if self.trophies is None:

@@ -356,5 +356,3 @@ class AnswersMixin(ReadingsMixin):
     def score(self) -> Score | None:
         """How the night answer did on recent evenings, as it is used now."""
         return self.calibration.score if self.calibration else None
-
-    # ── Updating ──

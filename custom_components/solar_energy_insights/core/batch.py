@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-from .battery import FULL_MARGIN_PCT, STEP, Battery
+from .battery import FULL_WITHIN_PCT, STEP, Battery
 
 type Floats = NDArray[np.float64]
 type Bools = NDArray[np.bool_]
@@ -110,7 +110,7 @@ def run(
     trace = [level * 100 / cap] if record else []
     if detail:
         full_h = np.where(
-            level >= top - battery.capacity_kwh * FULL_MARGIN_PCT / 100, 0.0, np.nan
+            level >= top - battery.capacity_kwh * FULL_WITHIN_PCT / 100, 0.0, np.nan
         )
         export = np.zeros(count)
         export_before = np.zeros(count)

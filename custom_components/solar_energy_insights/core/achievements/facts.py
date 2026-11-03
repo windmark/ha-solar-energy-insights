@@ -17,15 +17,12 @@ from ..backtest import Evening
 
 type Hourly = Mapping[tuple[date, int], float]
 
-# A day needs this many hours of house use to count.
 MIN_HOURS = 20
 # An hour importing less than this counts as off the grid.
 OFF_GRID_KWH = 0.02
-# Load spikes: when a load switches on, the inverter takes a moment to ramp the
-# battery up and the grid covers that moment. An hour the battery carried (above
-# its reserve all hour) whose import was only a small share of the house's use
-# is off the grid too. The share is learned from hours the battery had plenty,
-# and never more than this, so sustained grid use cannot pass as spikes.
+# When a load switches on, the grid covers the moment the inverter takes to ramp
+# the battery up. The learned share is capped so sustained grid use can't pass
+# as spikes.
 MAX_SPIKE_SHARE = 0.10
 PLENTY_ABOVE_FLOOR_PCT = 10.0
 CARRYING_ABOVE_FLOOR_PCT = 1.0
@@ -33,10 +30,8 @@ MIN_SPIKE_HOURS = 48
 SPIKE_QUANTILE = 0.95
 # Rounding noise in the hourly statistics.
 NOISE_KWH = 0.0001
-# Within this many points of the charge limit counts as full.
-FULL_MARGIN_PCT = 1.0
-# Under this many kWh imported in a day is a grid-free day.
-GRID_FREE_KWH = 0.05
+FULL_WITHIN_PCT = 1.0
+GRID_FREE_DAY_MAX_KWH = 0.05
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,19 +39,17 @@ class DayFacts:
     day: date
     house_kwh: float
     solar_kwh: float | None = None
-    # The best hour's yield: how big the array is, seen from its output.
+    # Stands in for the array's size where it isn't configured.
     solar_best_hour_kwh: float | None = None
     import_kwh: float | None = None
     export_kwh: float | None = None
     offgrid_hours: float | None = None
-    # Off the grid from midnight on, up to midnight, and the longest run in the day.
+    # Hours off the grid from midnight, until midnight, and the longest run.
     offgrid_head: float | None = None
     offgrid_tail: float | None = None
     offgrid_run: float | None = None
-    # Import excused as load spikes: in hours the battery carried the house.
     spike_kwh: float | None = None
-    # The longest stretch off the grid ending this day, hours, across midnight
-    # and across days: derived from the days before, not stored.
+    # Derived from the days before, so not stored.
     offgrid_stretch: float | None = None
     soc_max: float | None = None
     soc_min: float | None = None
@@ -67,12 +60,9 @@ class DayFacts:
     # Solcast's forecast for the day, as saved that morning.
     forecast_kwh: float | None = None
     peak_kw: float | None = None
-    # What the plan said: "full at" that morning, the night outlook that evening.
     said_full_at: datetime | None = None
     said_full: bool | None = None
     said_outlook: str | None = None
-
-    # ── Derived ──
 
     @property
     def own_import_kwh(self) -> float | None:
@@ -97,7 +87,7 @@ class DayFacts:
     @property
     def grid_free(self) -> bool | None:
         own = self.own_import_kwh
-        return None if own is None else own < GRID_FREE_KWH
+        return None if own is None else own < GRID_FREE_DAY_MAX_KWH
 
     @property
     def full(self) -> bool | None:
@@ -114,8 +104,6 @@ class DayFacts:
             return None
         local = self.full_at.astimezone(tz)
         return local.hour * 60 + local.minute
-
-    # ── Storage ──
 
     def as_dict(self) -> dict[str, Any]:
         out = asdict(self)
@@ -190,7 +178,7 @@ def build(
     imported = _day(s.imported, day, min_hours)
     exported = _day(s.exported, day, min_hours)
     highs, lows = _day(s.soc_max, day, min_hours), _day(s.soc_min, day, min_hours)
-    full_pct = ceiling_pct - FULL_MARGIN_PCT
+    full_pct = ceiling_pct - FULL_WITHIN_PCT
     full_at = None
     if highs is not None:
         fine = sorted(
