@@ -18,7 +18,6 @@
     g.strH = g.strH || {};
     return g;
   };
-  /* This home's settings, from the integration, fetched once and shared. */
   const RETRY_CONFIG_MS = 30000;
   const notify = function () {
     G().waiters.forEach(function (f) {
@@ -61,7 +60,6 @@
       });
     return g.cfgP;
   };
-  /* The counters by role; [] where not configured. */
   const hid = function () {
     const e = (config() || {}).entities || {};
     const one = function (x) {
@@ -79,7 +77,6 @@
   const prefix = function () {
     return (config() || {}).prefix || "";
   };
-  /* The first day with statistics; 0 until the settings are in. */
   const start = function () {
     const d = (config() || {}).history_start;
     return d ? new Date(d + "T00:00").getTime() : 0;
@@ -507,7 +504,6 @@
     if (CONNECTION[code]) return CONNECTION[code] + "; retrying";
     return String(e?.message || e);
   };
-  /* When the connection is back, retry everything that failed, at once. */
   const watchConnection = (hass) => {
     const conn = hass && hass.connection;
     if (!conn || conn.__seiWatched || !conn.addEventListener) return;
@@ -567,9 +563,8 @@
         } catch (x) {}
       });
     }
-    // A request that fails keeps the last good answer, so tiles show slightly
-    // older data rather than an error, and is retried soon by itself (5 s, 15 s,
-    // 30 s, … up to the normal interval) and at once when the connection is back.
+    // A failed request keeps the last good answer, so tiles show slightly older
+    // data instead of an error while it retries.
     const ws = (key, type, maxAgeS) => {
       const c = W[key];
       const due =
@@ -635,7 +630,6 @@
     calMode,
     jump,
     jumpMark,
-    /* Read when a card renders, from the integration's settings. */
     get PFX() {
       return prefix();
     },
@@ -652,10 +646,7 @@
     if (ha && ha.hass) loadConfig(ha.hass);
   } catch (x) {}
 
-  /* ── Achievement cards: real cards, not button-card templates ──
-     Each renders into its own shadow DOM inside a standard ha-card, so taps,
-     redraws and state work the ordinary way. Each draws only when what it would
-     show has changed. */
+  /* Real cards rather than button-card templates: taps and redraws work the ordinary way. */
   const CARD_STYLE =
     "display:block;background:#1c1c1e;border-radius:18px;border:none;box-shadow:none;" +
     "padding:18px 20px 20px;color:#e5e5e7;text-align:left;white-space:nowrap;" +
@@ -773,7 +764,7 @@
             )
           : waiting("ach", "the trophy room");
 
-      // Level, rank and today's score, led by the open quest: what is closest to happening.
+      // The open quest leads: it is what's closest to happening.
       if (!a) return notReady();
       const L = a.level,
         R = a.rank,
@@ -833,7 +824,6 @@
           }</div>`
         : "";
       const month = (a.months || []).slice(-2, -1)[0];
-      // What yesterday was the best at in a while, and last week in one line.
       const dayMonth = (d) =>
         new Date(d + "T00:00").toLocaleDateString("en-GB", {
           day: "numeric",
@@ -995,7 +985,6 @@
             )
           : waiting("ach", "the trophy room");
 
-      // Streaks: current run and best, with weather shields (a shield absorbs a break the weather caused).
       if (!a) return notReady();
       const rows = a.streaks
         .map((s) => {
@@ -1095,7 +1084,6 @@
             )
           : waiting("ach", "the trophy room");
 
-      // Records: the best day of each kind, the season's best, and how yesterday ranked.
       if (!a) return notReady();
       const clock = (m) =>
         `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(
@@ -1217,17 +1205,13 @@
             )
           : waiting("ach", "the trophy room");
 
-      // Badges: the closest few in full, then rows of icons (any time, later,
-      // complete) and one line explaining whichever badge is selected; the latest
-      // completed one to begin with. Every badge is in exactly one place.
+      // Every badge appears in exactly one place.
       if (!a) return notReady();
-      // The selection lives in the shared state: button-card redraws the card
-      // whenever a watched sensor changes, which would otherwise undo every tap.
+      // In shared state, so a redraw from new data keeps the selection.
       const UI = (W.badgeUi = W.badgeUi || { spot: null });
       if (!el.__seiBadgeTaps) {
         el.__seiBadgeTaps = true;
-        // iOS gets no click here (the card's own tap handling cancels the touch), so
-        // a tap is a pointer that goes down and up in about the same place.
+        // A tap is a pointer down and up in about the same place, so a scroll isn't one.
         const hitOf = (ev) =>
           ev.composedPath().find((n) => n.dataset && n.dataset.badge);
         let down = null;
@@ -1327,7 +1311,6 @@
       b,
     )}</div>${progress}</div></div>`;
       };
-      // A row of tappable icons under a small label; an optional note under each.
       const strip = (label, badges, bg, fg, note, pips) =>
         !badges.length
           ? ""
@@ -1359,7 +1342,6 @@
               )
               .join("") +
             `</div></div>`;
-      // One line for whichever badge is selected, in words that fit where it stands.
       const spot = (b) => {
         if (!b) return "";
         const name = `<b style="color:${C.text};font-weight:500">${named(

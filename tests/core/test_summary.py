@@ -54,9 +54,6 @@ def row(s: Any, label: str) -> Row:
     return next(r for r in s.rows if r.label == label)
 
 
-# ── Real moments ──
-
-
 def test_monday_morning_after_the_guests() -> None:
     # 2 Nov, 09:16: 7 of 14 nights short from 92 % at sunset.
     s = summarize(
@@ -181,8 +178,6 @@ def test_last_nights_call_each_morning() -> None:
     )
     assert all(r.label != "Last night" for r in afternoon.rows)
 
-
-# ── Every moment ──
 
 MOMENTS = [(9, 0), (12, 30), (15, 30), (16, 45), (19, 30), (23, 0), (2, 0)]
 MIX = {
