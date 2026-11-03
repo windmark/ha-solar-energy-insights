@@ -68,6 +68,8 @@ Complications that, measured on real data, did not earn their place:
 
 ### Fixed
 
+- The streaks card's explanation and the streaks' and records' descriptions ran off the card on a phone: they now wrap.
+
 - Dashboard tiles showed "Could not read the plan: 3" after Home Assistant restarted or the app lost its connection: 3 is the frontend's code for a lost connection, and a failed request replaced the last good answer with the error. A failed request now keeps the last answer, retries by itself after 5 s and then longer, retries at once when the connection is back, and says in words what happened when there is nothing to show yet.
 - The shipped script's address carried the integration's version, which did not change between updates, so browsers could keep an old copy. It now carries a fingerprint of the script itself.
 
