@@ -1,5 +1,11 @@
 # Solar Energy Insights
 
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5?style=flat-square&logo=homeassistantcommunitystore&logoColor=white)](https://hacs.xyz/docs/faq/custom_repositories)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.9.0%2B-18BCF2?style=flat-square&logo=homeassistant&logoColor=white)](https://www.home-assistant.io/)
+[![Status](https://img.shields.io/badge/status-alpha-orange?style=flat-square)](#)
+[![Validate](https://img.shields.io/github/actions/workflow/status/windmark/ha-solar-energy-insights/validate.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=validate)](https://github.com/windmark/ha-solar-energy-insights/actions/workflows/validate.yml)
+[![License: MIT](https://img.shields.io/github/license/windmark/ha-solar-energy-insights?style=flat-square&color=lightgrey)](LICENSE)
+
 > **Alpha.** Built for an EcoFlow PowerOcean read through
 > [EF-PowerOcean-TcpModbus](https://github.com/MaxGrmm/EF-PowerOcean-TcpModbus), with Solcast.
 > Other batteries may work, but aren't tested.
@@ -37,13 +43,32 @@ sensors below); only the achievement cards ship with the integration so far.
 It learns from your own history, and only keeps what a backtest shows predicts
 better. Everything is a sensor, so it works in automations too.
 
-## Install
+## Installation
 
-1. In HACS, add `https://github.com/windmark/ha-solar-energy-insights` as a
-   custom repository (type: Integration) and install it.
-2. Restart Home Assistant.
-3. **Settings › Devices & services › Add integration › Solar Energy Insights.**
-   PowerOcean and Solcast entities are suggested.
+### Via HACS (recommended)
+
+[![Open your Home Assistant instance and open the repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=windmark&repository=ha-solar-energy-insights&category=integration)
+
+Or add it from within HACS:
+
+1. Open **HACS** in Home Assistant
+2. Open the menu (⋮) › **Custom repositories**
+3. Add `https://github.com/windmark/ha-solar-energy-insights` with type **Integration**
+4. Search for **Solar Energy Insights**, open it and click **Download**
+5. Restart Home Assistant
+
+### Manual
+
+1. Download the repository
+2. Copy the `custom_components/solar_energy_insights` folder to your HA `config/custom_components/` directory
+3. Restart Home Assistant
+
+### Setup
+
+[![Open your Home Assistant instance and start setting up Solar Energy Insights.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=solar_energy_insights)
+
+Or **Settings › Devices & services › Add integration › Solar Energy Insights**.
+PowerOcean and Solcast entities are suggested.
 
 Requires Home Assistant 2026.9, the recorder, Solcast PV Forecast and
 [EF-PowerOcean-TcpModbus](https://github.com/MaxGrmm/EF-PowerOcean-TcpModbus).
