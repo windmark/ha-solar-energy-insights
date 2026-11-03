@@ -186,4 +186,15 @@ check(
     "Last week: 4 of 7 nights without the grid · best day Sunday (26 kWh) · €37.80 kept at home · Night owl earned",
   ),
 );
+// Long text wraps on a phone instead of running off the card.
+const streaks = cards["solar-energy-insights-streaks"].shadowRoot.innerHTML;
+check(
+  "the streaks' explanation wraps",
+  /white-space:normal[^"]*">Shields come with each/.test(streaks),
+);
+check(
+  "and so do their descriptions, in a column that may shrink",
+  streaks.includes('<div style="min-width:0">') &&
+    /white-space:normal;line-height:1.35">/.test(streaks),
+);
 console.log("ok");
