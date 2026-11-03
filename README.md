@@ -21,6 +21,9 @@ trust the forecast.
 </tr>
 </table>
 
+The top row and the forecast card are from the author's dashboard (built on the
+sensors below); only the achievement cards ship with the integration so far.
+
 ## What it does
 
 - **Tonight.** Replays your last 14 real nights from the battery as it is now:
