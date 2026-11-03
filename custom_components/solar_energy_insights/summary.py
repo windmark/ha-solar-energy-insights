@@ -47,7 +47,7 @@ def facts_for(c: InsightsCoordinator, p: Plan) -> Facts:
     return Facts(
         now=p.now,
         tz=dt_util.get_default_time_zone(),
-        day=p.sunset < p.sunrise,
+        sun_up=p.sun_up,
         soc=battery.soc_pct if battery else None,
         asleep="soc_pct" in c.remembered,
         limit=p.charge_limit_pct,

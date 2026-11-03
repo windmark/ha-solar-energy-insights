@@ -89,33 +89,27 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
         )
         self.use: HourlyUse = {}
         self._use_until: datetime | None = None
-        # The house counter at the end of the last recorded hour, and when that was.
         self.calibration: Calibration | None = None
         self.evenings: list[Evening] = []
-        # Hours of battery history that held impossible readings, now corrected.
         self.corrected_readings = 0
-        # What the house counter does not see, learned from real nights.
+        # Unmetered load, learned from real nights.
         self.standby_kw = 0.0
-        # Where a heavy night sits among the replayed nights, calibrated.
         self.heavy_share = HEAVY_SHARE
-        # What the recorder cannot give back: morning forecasts, own answers.
+        # What the recorder can't give back: morning forecasts and our own answers.
         self.memory = MemoryStore(hass, entry.entry_id)
         self.correction = Correction.none()
         self.live_nights: NightScore | None = None
         self.live_full: FullScore | None = None
         self.achievements = Achievements(self)
         self.checkpoints = Checkpoints(self)
-        # The inputs behind the plan shown, for an exact replay.
+        # For an exact replay in diagnostics.
         self.last_inputs: PlanInputs | None = None
-        # The last capacity reported, for a battery that reports none while asleep.
         # Readings taken from memory because the battery reports none right now.
         self.remembered: set[str] = set()
-        # What the house has used since this evening's sunset, kWh; None by day.
+        # None by day.
         self.evening_used_kwh: float | None = None
-        # Each night's 21:00 call and what happened: the live score's record.
         self.calls: list[live.Call] = []
-        # The last half hour of answers, and what changed in it.
-        self._answers: list[Answers] = []
+        self._recent_answers: list[Answers] = []
         self.changes: dict[str, Change] = {}
 
     def inputs(

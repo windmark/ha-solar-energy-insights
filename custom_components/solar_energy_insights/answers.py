@@ -57,7 +57,7 @@ class AnswersMixin(ReadingsMixin):
     last_inputs: PlanInputs | None
     evening_used_kwh: float | None
     calls: list[live.Call]
-    _answers: list[Answers]
+    _recent_answers: list[Answers]
     changes: dict[str, Change]
 
     def _note_solar_day(self, p: Plan) -> None:
@@ -78,8 +78,8 @@ class AnswersMixin(ReadingsMixin):
     def this_morning(self, p: Plan) -> dict[str, Any] | None:
         """In the day: what this morning's plan said about the battery being
         full, and the sun so far against the morning forecast for those hours."""
-        if not p.sunset < p.sunrise:
-            return None  # the sun is down
+        if not p.sun_up:
+            return None
         local = dt_util.as_local(p.now)
         day = local.date().isoformat()
         said = self.memory.memory.days.get(day)
@@ -137,8 +137,8 @@ class AnswersMixin(ReadingsMixin):
             forecast_kwh=self._sun_left_today(p.now),
         )
         window = timedelta(minutes=self._option(CONF_LOOKBACK, DEFAULT_LOOKBACK_MIN))
-        self._answers = keep(self._answers, now, window)
-        self.changes = detect(self._answers, self._usual_kw(p.now), window)
+        self._recent_answers = keep(self._recent_answers, now, window)
+        self.changes = detect(self._recent_answers, self._usual_kw(p.now), window)
 
     def _sun_left_today(self, now: datetime) -> float | None:
         """What Solcast still expects today, kWh."""
@@ -168,8 +168,8 @@ class AnswersMixin(ReadingsMixin):
         sunset (Home Assistant started in the evening), the recorder's hours
         between sunset and then are added.
         """
-        if not i.sunrise < i.sunset:
-            return None  # daytime: the sun is up
+        if i.sun_up:
+            return None
         night_of = (i.sunset - timedelta(days=1)).astimezone(self.tz).date()
         counter = self._house_counter_kwh()
         if counter is None:
@@ -211,7 +211,7 @@ class AnswersMixin(ReadingsMixin):
         local = dt_util.as_local(p.now)
         day = local.date().isoformat()
         changed = False
-        daytime = p.sunset < p.sunrise
+        daytime = p.sun_up
         if daytime and local.hour < MORNING_UNTIL_HOUR and day not in memory.days:
             memory.forecasts[day] = [
                 [s.start.isoformat(), s.p50, s.p10, s.p90]
@@ -307,7 +307,6 @@ class AnswersMixin(ReadingsMixin):
             for day, a in memory.days.items()
         }
         self.live_full = live.score_full(predicted_full, actual_full)
-        # This roof's correction, from the saved mornings and what the panels made.
         solar = self.config_entry.options.get(CONF_SOLAR_ENERGY)
         if not solar:
             self.correction = Correction.none()

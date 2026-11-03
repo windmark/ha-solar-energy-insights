@@ -21,16 +21,12 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, tzinfo
 from typing import Any
 
-# An evening above this many times the usual one is heavy.
-HEAVY = 1.3
-# A time that moved by this much has moved.
-MOVED = timedelta(minutes=15)
+HEAVY_EVENING_FACTOR = 1.3
+MOVED_AT_LEAST = timedelta(minutes=15)
 # Below this much spare, a budget "just fits"; at or below none, it is spent.
 JUST_FITS_KWH = 1.0
 SPENT_KWH = 0.05
-# "Last night" shows until noon.
 MORNING_UNTIL_HOUR = 12
-# The evening runs from noon (after sunset) until this hour; then it is night.
 NIGHT_FROM_HOUR = 22
 
 HEADLINE_MAX = 25
@@ -44,8 +40,7 @@ class Facts:
 
     now: datetime
     tz: tzinfo
-    # The sun is up: tonight's sunset comes before the next sunrise.
-    day: bool
+    sun_up: bool
     soc: float | None
     asleep: bool = False
     limit: float = 100.0
@@ -93,9 +88,9 @@ class Row:
     tone: str
     main: str
     detail: tuple[str, ...] = ()
-    # Where tapping the row leads on the Solar page.
+    # Where a tap leads on the Solar page.
     target: str = ""
-    # The answer before a recent change, and since when and why it changed.
+    # Before a recent change, and since when and why it changed.
     was: str | None = None
     change: str | None = None
 
@@ -154,10 +149,10 @@ class _Words:
         self.f = f
         local = f.now.astimezone(f.tz)
         self.hour = local.hour
-        self.after_midnight = not f.day and self.hour < MORNING_UNTIL_HOUR
+        self.after_midnight = not f.sun_up and self.hour < MORNING_UNTIL_HOUR
         self.phase = (
             "day"
-            if f.day
+            if f.sun_up
             else "evening"
             if MORNING_UNTIL_HOUR <= self.hour < NIGHT_FROM_HOUR
             else "late"
@@ -165,7 +160,7 @@ class _Words:
         self.full = f.soc is not None and f.soc >= f.limit - 0.5
         # The expected peak is where the battery is now: charging is over.
         self.done_charging = (
-            f.day
+            f.sun_up
             and not self.full
             and f.full_at is None
             and f.peak is not None
@@ -173,7 +168,7 @@ class _Words:
             and f.peak <= f.soc + 0.5
         )
         self.next_day = (
-            "today" if f.day or self.hour < MORNING_UNTIL_HOUR else "tomorrow"
+            "today" if f.sun_up or self.hour < MORNING_UNTIL_HOUR else "tomorrow"
         )
         self.night_tight = f.outlook in ("borderline", "grid")
         eb = f.evening_budget
@@ -209,7 +204,7 @@ class _Words:
         n, k = f.replayed, len(f.short_evenings)
         usual, eb = f.usual_evening, f.evening_budget
         heavy_n = (
-            sum(1 for e in f.short_evenings if e > HEAVY * usual)
+            sum(1 for e in f.short_evenings if e > HEAVY_EVENING_FACTOR * usual)
             if usual is not None
             else k
         )
@@ -338,13 +333,13 @@ class _Words:
     def drift(self) -> tuple[str, str] | None:
         """This morning's expectation, when the full time has moved since."""
         f, m = self.f, self.f.this_morning
-        if not m or not f.day:
+        if not m or not f.sun_up:
             return None
         said = _when(m.get("said_full_at"))
         moved = (said is None) != (f.full_at is None) or (
             said is not None
             and f.full_at is not None
-            and abs(said - f.full_at) >= MOVED
+            and abs(said - f.full_at) >= MOVED_AT_LEAST
         )
         if not moved:
             return None
@@ -370,7 +365,7 @@ class _Words:
         drift = self.drift()
         at_sunset = (
             f"{_round(f.sunset_pct)}% at sunset"
-            if f.day and f.sunset_pct is not None
+            if f.sun_up and f.sunset_pct is not None
             else ""
         )
         if self.done_charging and f.soc is not None:

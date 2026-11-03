@@ -13,7 +13,6 @@ import numpy as np
 type Rate = Callable[[datetime], float]
 
 STEP = timedelta(minutes=30)
-# Within this many points of its charge limit, a battery counts as full.
 FULL_WITHIN_PCT = 0.5
 
 
@@ -26,8 +25,7 @@ class Battery:
     floor_pct: float
     max_power_kw: float = 5.0
     round_trip: float = 0.92
-    # The level charging stops at: 100, or lower when the battery is set to
-    # spare its cells. "Full" means reaching it.
+    # Below 100 when set to spare the cells; "full" means reaching it.
     ceiling_pct: float = 100.0
 
     @property
@@ -79,9 +77,9 @@ class Simulation:
     low_kwh: float
     end_kwh: float
     mark_kwh: float | None
-    # The lowest level from the mark on, such as overnight after sunset.
+    # From the mark on, e.g. overnight after sunset.
     low_after_mark_kwh: float | None
-    # From the mark on (or the whole run without one): the night, in the day.
+    # From the mark on, or the whole run without one.
     night_reserve_at: datetime | None
     night_grid_kwh: float
     night_load_kwh: float

@@ -45,6 +45,10 @@ class PlanInputs:
     typical_share: float = 0.5
     heavy_share: float = HEAVY_SHARE
 
+    @property
+    def sun_up(self) -> bool:
+        return self.sunset < self.sunrise
+
 
 class Outlook(StrEnum):
     LASTS = "lasts"
@@ -171,6 +175,10 @@ class Plan:
     curve: tuple[tuple[datetime, float], ...] = field(repr=False)
     day: Day | None = field(default=None, repr=False, compare=False)
 
+    @property
+    def sun_up(self) -> bool:
+        return self.sunset < self.sunrise
+
 
 def _plus(base: Rate, extra: Rate | None) -> Rate:
     if extra is None:
@@ -216,7 +224,7 @@ def _night(
     """
     if not days:
         return None
-    mark = i.sunset if i.sunset < i.sunrise else None
+    mark = i.sunset if i.sun_up else None
     slices = Slices.between(i.now, i.sunrise, mark)
     runs = batch.run(
         i.battery,
@@ -269,7 +277,7 @@ def _needed(
     """
     if not days:
         return None
-    start = i.sunset if i.sunset < i.sunrise else i.now
+    start = i.sunset if i.sun_up else i.now
     slices = Slices.between(start, i.sunrise, None)
     # A level the battery never charges to is no answer.
     ceiling = i.battery.ceiling_pct
@@ -307,7 +315,7 @@ def _needed(
 
 
 def _day(i: PlanInputs, load: Rate, expected: Simulation, cloudy: Simulation) -> Day:
-    start = _slot(i.now if i.sunset < i.sunrise else i.sunrise)
+    start = _slot(i.now if i.sun_up else i.sunrise)
     slots = []
     t = start
     while t < i.sunset:
@@ -350,7 +358,7 @@ def _slot(t: datetime) -> datetime:
 
 def _best_window(i: PlanInputs, load: Rate) -> Window | None:
     """The run of half hours before sunset with the most solar to spare."""
-    t = _slot(i.now if i.sunset < i.sunrise else i.sunrise)
+    t = _slot(i.now if i.sun_up else i.sunrise)
     best: Window | None = None
     run_start: datetime | None = None
     run_kwh = 0.0
@@ -375,7 +383,7 @@ def _free_until(i: PlanInputs, load: Rate) -> datetime | None:
         if i.pv.kw_at(t) - load(t) < FREE_POWER_MIN_EXPORT_KW:
             return t
         t += HALF_HOUR
-    return i.sunset if i.sunset < i.sunrise else None
+    return i.sunset if i.sun_up else None
 
 
 NOON = 12
@@ -383,7 +391,7 @@ NOON = 12
 
 def night_start(i: PlanInputs) -> datetime:
     """When the night begins: tonight's sunset, or now if it has set."""
-    return i.sunset if i.sunset < i.sunrise else i.now
+    return i.sunset if i.sun_up else i.now
 
 
 def _midnight(i: PlanInputs) -> datetime:
@@ -438,7 +446,7 @@ def plan(i: PlanInputs) -> Plan:
     sun = _sun(i.pv, Quantile.P50)
     night = _night(i, days, weights, sun)
     if night is not None:
-        start_pct = charge.sunset_pct if i.sunset < i.sunrise else i.battery.soc_pct
+        start_pct = charge.sunset_pct if i.sun_up else i.battery.soc_pct
         night = _budget(
             i, night, start_pct if start_pct is not None else i.battery.soc_pct
         )

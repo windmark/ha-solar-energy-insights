@@ -22,14 +22,11 @@ from functools import lru_cache
 
 import numpy as np
 
-# Clear-sky beam irradiance, W/m²: 1353 W/m² outside the air, thinned with the
-# air mass the light passes through (Meinel's approximation).
+# W/m² outside the atmosphere; thinned by air mass (Meinel's approximation).
 _SOLAR = 1353.0
-# Diffuse light, as a share of the year's light on a horizontal surface. Around
-# half in a cloudy climate like central Europe's; light from the whole sky is
-# what keeps planes facing away from the sun useful.
+# About half in a cloudy climate like central Europe's: what keeps planes
+# facing away from the sun useful.
 _DIFFUSE_SHARE = 0.45
-# Light reflected from the ground, seen by tilted planes.
 _ALBEDO = 0.2
 
 
@@ -38,9 +35,8 @@ class Plane:
     """One direction of panels."""
 
     kwp: float
-    # Where it faces, degrees clockwise from north: 90 east, 180 south.
+    # Clockwise from north: 90 east, 180 south.
     compass_deg: float
-    # Degrees from horizontal.
     tilt_deg: float
     name: str = ""
 
@@ -49,7 +45,7 @@ class Plane:
 class Array:
     planes: tuple[Plane, ...]
     latitude: float
-    # Set by hand when no planes are known; otherwise the planes' total.
+    # Overrides the planes' total when set.
     kwp_override: float | None = None
 
     @property
@@ -156,8 +152,8 @@ def _number(value: object) -> float | None:
         return None
 
 
-# A clear sky: little diffuse light. And the share of the sunlight on the panels
-# a system turns into energy (inverter, wiring, heat): a standard 85 %.
+# A clear sky has little diffuse light; 85 % is a standard system efficiency
+# (inverter, wiring, heat).
 _CLEAR_DIFFUSE_SHARE = 0.12
 _PERFORMANCE = 0.85
 

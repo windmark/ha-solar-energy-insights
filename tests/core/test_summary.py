@@ -31,7 +31,7 @@ def facts(hour: int, minute: int = 0, **kw: Any) -> Facts:
     base = Facts(
         now=now,
         tz=TZ,
-        day=8 <= hour < 17,
+        sun_up=8 <= hour < 17,
         soc=60.0,
         outlook="lasts",
         replayed=14,
