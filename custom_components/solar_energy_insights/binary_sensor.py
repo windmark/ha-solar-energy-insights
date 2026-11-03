@@ -29,7 +29,7 @@ BINARY_SENSORS: tuple[InsightsBinaryDescription, ...] = (
     InsightsBinaryDescription(
         key="lasts_the_night",
         translation_key="lasts_the_night",
-        # A typical recent night lasts: the middle one by load.
+        # The middle night by load.
         is_on_fn=lambda p: None if p.night is None else p.night.typical.lasts,
         attrs_fn=lambda p: (
             {}

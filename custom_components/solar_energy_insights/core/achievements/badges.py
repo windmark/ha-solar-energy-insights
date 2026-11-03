@@ -29,7 +29,6 @@ from .profile import (
 )
 
 TIERS = ("bronze", "silver", "gold")
-# XP for reaching each tier.
 TIER_XP = (50, 100, 200)
 # Days of history before a percentile threshold is trusted.
 MIN_PAST = 14
@@ -483,7 +482,6 @@ class BadgeState:
     # Share of the days it applied to that earned it; None for runs and milestones.
     rarity: float | None
     earned_on: tuple[date, ...]
-    # When each tier was reached.
     tier_days: tuple[date, ...]
 
     @property

@@ -28,30 +28,25 @@ SAVE_DELAY_S = 60
 
 @dataclass
 class Memory:
-    # The battery's last good readings (capacity_kwh, soc_pct, reserve_pct), for
-    # when it is switched off below its reserve and its entities go unavailable.
+    # capacity_kwh, soc_pct, reserve_pct: stand in while the battery is switched off.
     battery: dict[str, float] = field(default_factory=dict)
-    # The house energy counter at this evening's sunset: {"day", "counter", "at"},
-    # for how much the evening has used so far.
+    # The house counter at sunset: {"day", "counter", "at"}.
     evening: dict[str, Any] = field(default_factory=dict)
-    # Forecast checkpoints: "day|name" → the frozen forecast, and its judgement.
+    # "day|name" → the frozen forecast, and its judgement.
     checkpoints: dict[str, dict[str, Any]] = field(default_factory=dict)
     judged: dict[str, dict[str, Any]] = field(default_factory=dict)
-    # The solar energy counter at the start of the day: {"day", "counter", "at"},
-    # for what the panels have made so far.
+    # The solar counter at the start of the day: {"day", "counter", "at"}.
     solar_day: dict[str, Any] = field(default_factory=dict)
-    # Day → [[start, p50, p10, p90], …], Solcast's half hours that morning.
+    # Day → [[start, p50, p10, p90], …] as Solcast had it that morning.
     forecasts: dict[str, list[list[Any]]] = field(default_factory=dict)
     # Day → {"at": when, "full_at": time or None}, said in the morning.
     days: dict[str, dict[str, Any]] = field(default_factory=dict)
     # Day → {"at": when, "spare_kwh": …, "lasts": …, "outlook": …}, said at 21:00.
     nights: dict[str, dict[str, Any]] = field(default_factory=dict)
-    # Achievements: each closed day's facts, the quests set, and what has been
-    # announced (so a restart or a rebuild does not announce it again).
+    # What was announced is kept so a restart or rebuild doesn't announce it again.
     facts: dict[str, dict[str, Any]] = field(default_factory=dict)
     quests: dict[str, dict[str, Any]] = field(default_factory=dict)
     announced: dict[str, Any] | None = None
-    # Which way the stored facts were built; an older one is rebuilt.
     facts_version: int = 0
 
     def prune(self, today: date) -> None:

@@ -57,7 +57,7 @@ class Quest:
     # The last day it covers (a week's quest runs Monday to Sunday).
     until: date
     result: bool | None = None
-    # The plan's advice for meeting it, as it stood when the quest was set.
+    # As the plan advised when the quest was set.
     hint: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -128,7 +128,6 @@ def next_day(
             hint=advice.evening(),
         )
     similar = _similar(facts, profile, day, forecast_kwh)
-    # Each option with the share of similar days that met it.
     options: list[tuple[Quest, float]] = []
     if profile.has(Cap.BATTERY):
         times = [m for f in similar if (m := f.full_minutes(tz)) is not None]

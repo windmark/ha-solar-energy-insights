@@ -15,7 +15,7 @@ import numpy as np
 from .facts import DayFacts
 from .profile import Season, season_of
 
-# ── The daily score: four parts, weighted; parts a home cannot measure drop out.
+# Parts a home can't measure drop out of the weighting.
 
 WEIGHTS = {
     "self_sufficiency": 40,
@@ -49,8 +49,6 @@ def score(f: DayFacts, floor_pct: float = 5.0) -> int:
     total = sum(WEIGHTS[k] for k in parts)
     return round(100 * sum(WEIGHTS[k] * v for k, v in parts.items()) / total)
 
-
-# ── Levels: the same curve as before, with names.
 
 LEVEL_NAMES = (
     "Spark",
@@ -104,7 +102,7 @@ def _roman(n: int) -> str:
     return out
 
 
-# ── Ranks from the 30-day average, with cut-offs that follow the season.
+# Cut-offs follow the season, so winter isn't a demotion.
 
 RANKS = (("Bronze", 0), ("Silver", 45), ("Gold", 60), ("Platinum", 72), ("Diamond", 85))
 
@@ -143,8 +141,6 @@ def rank_of(scores: Sequence[tuple[date, int]], today: date, southern: bool) -> 
         season_factor=round(factor, 2),
     )
 
-
-# ── Streaks, with a weather shield.
 
 SHIELD_EVERY = 7
 MAX_SHIELDS = 2
@@ -202,7 +198,7 @@ class Streak:
     current: int
     best: int
     shields: int
-    # True if the current run is the best so far (and longer than one day).
+    # Longer than one day.
     personal_best: bool
 
 
@@ -256,9 +252,6 @@ def streaks(facts: Sequence[DayFacts], southern: bool) -> list[Streak]:
             )
         )
     return out
-
-
-# ── Records.
 
 
 @dataclass(frozen=True, slots=True)
