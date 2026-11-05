@@ -1995,13 +1995,18 @@
           ...APPS.map((a) => a.kwh.toFixed(2)),
           val("sensor.solar_energy_insights_night_outlook"),
         ].join("|");
-        const c = W.sims;
+        const c = W.applianceRuns;
         if (
           (!c || c.key !== key || (!c.pending && Date.now() - c.t > 300e3)) &&
           !(c && c.pending && c.key === key) &&
           hass?.callWS
         ) {
-          W.sims = { key, t: Date.now(), pending: true, data: c?.data };
+          W.applianceRuns = {
+            key,
+            t: Date.now(),
+            pending: true,
+            data: c?.data,
+          };
           const call = (list) =>
             hass
               .callWS({
@@ -2020,7 +2025,7 @@
             APPS.length > 1 ? call(APPS) : null,
           ])
             .then((res) => {
-              W.sims = {
+              W.applianceRuns = {
                 key,
                 t: Date.now(),
                 data: {
@@ -2030,11 +2035,15 @@
               };
             })
             .catch((e) => {
-              W.sims = { key, t: Date.now(), error: String(e?.message || e) };
+              W.applianceRuns = {
+                key,
+                t: Date.now(),
+                error: String(e?.message || e),
+              };
             })
             .finally(() => (W.listeners || []).forEach((f) => f()));
         }
-        return W.sims?.data;
+        return W.applianceRuns?.data;
       };
 
       // Until sunrise, from Solar Energy Insights: your recent nights replayed from the battery as it
@@ -2179,8 +2188,8 @@
           ? "Started now, in daylight, the sun covers them and the battery still fills: tonight is the same."
           : "",
         `Replays your last ${n.nights} nights from the battery as it is now; ${n.lasting} of them last`,
-        S === undefined && W.sims?.error
-          ? "Could not simulate the appliances: " + W.sims.error
+        S === undefined && W.applianceRuns?.error
+          ? "Could not simulate the appliances: " + W.applianceRuns.error
           : "",
       ]
         .filter(Boolean)
@@ -2274,13 +2283,18 @@
           ...APPS.map((a) => a.kwh.toFixed(2)),
           val("sensor.solar_energy_insights_night_outlook"),
         ].join("|");
-        const c = W.sims;
+        const c = W.applianceRuns;
         if (
           (!c || c.key !== key || (!c.pending && Date.now() - c.t > 300e3)) &&
           !(c && c.pending && c.key === key) &&
           hass?.callWS
         ) {
-          W.sims = { key, t: Date.now(), pending: true, data: c?.data };
+          W.applianceRuns = {
+            key,
+            t: Date.now(),
+            pending: true,
+            data: c?.data,
+          };
           const call = (list) =>
             hass
               .callWS({
@@ -2299,7 +2313,7 @@
             APPS.length > 1 ? call(APPS) : null,
           ])
             .then((res) => {
-              W.sims = {
+              W.applianceRuns = {
                 key,
                 t: Date.now(),
                 data: {
@@ -2309,11 +2323,15 @@
               };
             })
             .catch((e) => {
-              W.sims = { key, t: Date.now(), error: String(e?.message || e) };
+              W.applianceRuns = {
+                key,
+                t: Date.now(),
+                error: String(e?.message || e),
+              };
             })
             .finally(() => (W.listeners || []).forEach((f) => f()));
         }
-        return W.sims?.data;
+        return W.applianceRuns?.data;
       };
 
       // Best time to run: spare sun per half hour until sunset, and for each appliance the start that
