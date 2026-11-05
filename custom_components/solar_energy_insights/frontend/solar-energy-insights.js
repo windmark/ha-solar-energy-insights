@@ -686,7 +686,170 @@
           : tag;
       },
     );
-  const defineCard = (tag, name, description, render) => {
+  const APPLIANCES = {
+    name: "appliances",
+    selector: {
+      object: {
+        multiple: true,
+        label_field: "name",
+        fields: {
+          name: { label: "Name", required: true, selector: { text: {} } },
+          icon: { label: "Icon", selector: { icon: {} } },
+          // Sliders, not boxes: some phone keypads can't type a decimal point.
+          kwh: {
+            label: "Typical energy per run",
+            selector: {
+              number: {
+                min: 0.1,
+                max: 10,
+                step: 0.1,
+                mode: "slider",
+                unit_of_measurement: "kWh",
+              },
+            },
+          },
+          hours: {
+            label: "Typical duration",
+            selector: {
+              number: {
+                min: 0.5,
+                max: 8,
+                step: 0.5,
+                mode: "slider",
+                unit_of_measurement: "h",
+              },
+            },
+          },
+          energy_per_run: {
+            label: "Sensor that learns energy per run",
+            selector: { entity: { domain: "sensor" } },
+          },
+        },
+      },
+    },
+  };
+  const RUNNING = {
+    name: "running",
+    selector: {
+      object: {
+        fields: {
+          entity: { label: "Entity", selector: { entity: {} } },
+          state: { label: "State while running", selector: { text: {} } },
+          name: { label: "Name", selector: { text: {} } },
+        },
+      },
+    },
+  };
+  const choose = (options) => ({
+    select: {
+      multiple: true,
+      options: options.map(([value, label]) => ({ value, label })),
+    },
+  });
+  const NOW_ROWS = [
+    ["battery", "Battery"],
+    ["tonight", "Tonight"],
+    ["next_day", "Today or tomorrow"],
+    ["loads", "Heavy loads"],
+    ["surplus", "Surplus"],
+    ["last_night", "Last night"],
+  ];
+  const CHECKPOINTS = [
+    ["18:00", "18:00 for tomorrow"],
+    ["21:00", "21:00 for tomorrow"],
+    ["06:00", "06:00 for today"],
+    ["12:00", "12:00 for the afternoon"],
+  ];
+  const SECTIONS = [
+    ["within_reach", "Within reach"],
+    ["any_time", "Any time"],
+    ["later", "Later"],
+    ["complete", "Complete"],
+  ];
+  const FORMS = {
+    now: {
+      schema: [
+        { name: "rows", selector: choose(NOW_ROWS) },
+        { name: "header", selector: { boolean: {} } },
+        {
+          name: "tap",
+          selector: {
+            select: {
+              mode: "dropdown",
+              options: [
+                { value: "jump", label: "Jump to the card that explains it" },
+                { value: "none", label: "Nothing" },
+              ],
+            },
+          },
+        },
+      ],
+      labels: {
+        rows: "Rows",
+        header: "Show the time and today's own power",
+        tap: "Tapping a row",
+      },
+      stub: { rows: NOW_ROWS.map(([k]) => k), header: true, tap: "jump" },
+    },
+    untilSunrise: {
+      schema: [
+        {
+          name: "columns",
+          selector: choose([
+            ["typical", "Typical night"],
+            ["heavy", "Heavy night"],
+          ]),
+        },
+        { name: "footnotes", selector: { boolean: {} } },
+        APPLIANCES,
+        RUNNING,
+      ],
+      labels: {
+        columns: "Columns",
+        footnotes: "Show the notes underneath",
+        appliances: "Appliances you might start",
+        running: "An appliance that may already be running",
+      },
+      stub: { columns: ["typical", "heavy"], footnotes: true, appliances: [] },
+    },
+    bestTime: {
+      schema: [{ name: "chart", selector: { boolean: {} } }, APPLIANCES],
+      labels: {
+        chart: "Show the chart of spare sun",
+        appliances: "Appliances",
+      },
+      stub: { chart: true, appliances: [] },
+    },
+    forecastTrust: {
+      schema: [
+        { name: "checkpoints", selector: choose(CHECKPOINTS) },
+        { name: "footnotes", selector: { boolean: {} } },
+      ],
+      labels: {
+        checkpoints: "Checkpoints",
+        footnotes: "Show the notes underneath",
+      },
+      stub: { checkpoints: CHECKPOINTS.map(([k]) => k), footnotes: true },
+    },
+    level: {
+      schema: [
+        { name: "quest", selector: { boolean: {} } },
+        { name: "recap", selector: { boolean: {} } },
+      ],
+      labels: {
+        quest: "Show the quest",
+        recap: "Show yesterday and last week",
+      },
+      stub: { quest: true, recap: true },
+    },
+    badges: {
+      schema: [{ name: "sections", selector: choose(SECTIONS) }],
+      labels: { sections: "Sections" },
+      stub: { sections: SECTIONS.map(([k]) => k) },
+    },
+  };
+
+  const defineCard = (tag, name, description, render, form) => {
     if (!window.customElements || customElements.get(tag)) return;
     class Card extends HTMLElement {
       setConfig(config) {
@@ -732,6 +895,13 @@
           this._hass,
         )}">${body}</ha-card>`;
       }
+    }
+    if (form) {
+      Card.getConfigForm = () => ({
+        schema: form.schema,
+        computeLabel: (field) => form.labels[field.name],
+      });
+      Card.getStubConfig = () => structuredClone(form.stub);
     }
     customElements.define(tag, Card);
     (window.customCards = window.customCards || []).push({
@@ -945,7 +1115,9 @@
       a.today.score ?? "–"
     }</div>
       <div style="font-size:10px;color:var(--secondary-text-color, #8e8e93)">today</div></div>
-  </div>${quest}${lastLine}${rows}${yesterdayLine}${weekLine}
+  </div>${(this._config || {}).quest === false ? "" : quest + lastLine}${rows}${
+    (this._config || {}).recap === false ? "" : yesterdayLine + weekLine
+  }
   ${
     month
       ? `<div style="font-size:11px;color:var(--disabled-text-color, #636366);margin-top:12px;white-space:normal">${new Date(
@@ -969,6 +1141,7 @@
       : ""
   }`;
     },
+    FORMS.level,
   );
 
   defineCard(
@@ -1439,28 +1612,37 @@
         "Badges",
         `${done.length} of ${a.badges.length} complete`,
       );
-      out += rows.map(reach).join("");
-      out += strip(
-        "Any time",
-        anyTime,
-        "color-mix(in srgb, var(--sei-info, var(--sei-info-auto, #9ad7e6)) 18%, transparent)",
-        "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
-      );
-      out += strip(
-        "Later",
-        later,
-        "var(--sei-track, var(--divider-color, #2c2c2e))",
-        "var(--secondary-text-color, #8e8e93)",
-        (b) => dm(b.season_from),
-      );
-      out += strip(
-        "Complete",
-        done,
-        "color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 18%, transparent)",
-        "var(--sei-good, var(--sei-good-auto, #8be36a))",
-        null,
-        true,
-      );
+      const SECTIONS = (this._config || {}).sections || [
+        "within_reach",
+        "any_time",
+        "later",
+        "complete",
+      ];
+      if (SECTIONS.includes("within_reach")) out += rows.map(reach).join("");
+      if (SECTIONS.includes("any_time"))
+        out += strip(
+          "Any time",
+          anyTime,
+          "color-mix(in srgb, var(--sei-info, var(--sei-info-auto, #9ad7e6)) 18%, transparent)",
+          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
+        );
+      if (SECTIONS.includes("later"))
+        out += strip(
+          "Later",
+          later,
+          "var(--sei-track, var(--divider-color, #2c2c2e))",
+          "var(--secondary-text-color, #8e8e93)",
+          (b) => dm(b.season_from),
+        );
+      if (SECTIONS.includes("complete"))
+        out += strip(
+          "Complete",
+          done,
+          "color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 18%, transparent)",
+          "var(--sei-good, var(--sei-good-auto, #8be36a))",
+          null,
+          true,
+        );
       out += `<div style="font-size:12px;color:${
         C.muted
       };line-height:1.45;margin-top:12px;padding-top:10px;border-top:1px solid ${
@@ -1472,6 +1654,7 @@
       }${spot(lit)}</div>`;
       return out;
     },
+    FORMS.badges,
   );
 
   defineCard(
@@ -1584,6 +1767,23 @@
         ...r,
         detail: (r.detail || []).join(" · "),
       }));
+      // The rows' keys, for the card's `rows` setting: which, in what order.
+      const ROW_KEY = {
+        Battery: "battery",
+        Tonight: "tonight",
+        Today: "next_day",
+        Tomorrow: "next_day",
+        "Heavy loads": "loads",
+        Surplus: "surplus",
+        "Last night": "last_night",
+      };
+      const wanted = (this._config || {}).rows;
+      if (Array.isArray(wanted) && wanted.length)
+        lines.splice(
+          0,
+          lines.length,
+          ...wanted.flatMap((k) => lines.filter((l) => ROW_KEY[l.label] === k)),
+        );
       const targets = lines.map((r) => r.target);
       const SDX = window.SolarDash,
         ENT = ((SDX.config && SDX.config()) || {}).entities || {};
@@ -1695,7 +1895,9 @@
       const rows = g.lines
         .map((l, i) => {
           const c = C[l.tone] || C.neutral;
-          return `<div data-tap="jump" data-arg="${
+          return `<div ${
+            (this._config || {}).tap === "none" ? "" : 'data-tap="jump"'
+          } data-arg="${
             g.targets[i]
           }" style="${ROW};cursor:pointer;padding:10px 0;${
             i
@@ -1731,10 +1933,15 @@
     <ha-icon icon="mdi:chevron-right" style="--mdc-icon-size:18px;color:var(--disabled-text-color, #48484a);flex-shrink:0"></ha-icon></div>`;
         })
         .join("");
-      return `<div style="${ROW};justify-content:space-between;margin-bottom:2px">
-    <span style="font-size:13px;color:var(--secondary-text-color, #8e8e93)">${g.label} · ${g.time}</span>${right}</div>
+      return `${
+        (this._config || {}).header === false
+          ? ""
+          : `<div style="${ROW};justify-content:space-between;margin-bottom:2px">
+    <span style="font-size:13px;color:var(--secondary-text-color, #8e8e93)">${g.label} · ${g.time}</span>${right}</div>`
+      }
   <div style="display:grid;justify-items:stretch;width:100%">${rows}</div>`;
     },
+    FORMS.now,
   );
 
   defineCard(
@@ -1911,6 +2118,9 @@
         note,
       ) => `<div style="text-align:center;font-size:12px;color:var(--secondary-text-color, #c7c7cc)">${label}
   <div style="font-size:10px;color:${C.faint}">${note}</div></div>`;
+      const COLS = (
+        (this._config || {}).columns || ["typical", "heavy"]
+      ).filter((c) => c === "typical" || c === "heavy");
       const rowHtml = (
         r,
       ) => `<div style="display:flex;align-items:center;justify-content:flex-start;justify-self:stretch;gap:8px;font-size:13px;color:var(--primary-text-color, #fff);min-width:0;text-align:left">
@@ -1920,7 +2130,7 @@
     <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${
       r.label
     }</span></div>
-  ${cell(r.night?.typical)}${cell(r.night?.heavy)}`;
+  ${COLS.map((k) => cell(r.night?.[k])).join("")}`;
       const RUN = (el._config || {}).running;
       const washerOn = !!RUN && val(RUN.entity) === String(RUN.state ?? "on");
       const est = APPS.filter((a) => a.est).map((a) => a.name.toLowerCase());
@@ -1990,20 +2200,27 @@
         ? ` · ${setPct}% at sunset`
         : ""
     }</div>
-  <div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr);gap:6px 8px;align-items:center;justify-items:stretch;margin-top:14px">
+  <div style="display:grid;grid-template-columns:minmax(0,1.4fr)${" minmax(0,1fr)".repeat(
+    COLS.length,
+  )};gap:6px 8px;align-items:center;justify-items:stretch;margin-top:14px">
     <div style="font-size:11px;color:${
       C.muted
     };text-align:left">If you run…</div>
-    ${colHead("Typical night", "the middle one")}${colHead(
-      "Heavy night",
-      `heavier than ${heavyPct}%`,
-    )}
+    ${
+      COLS.includes("typical") ? colHead("Typical night", "the middle one") : ""
+    }${
+      COLS.includes("heavy")
+        ? colHead("Heavy night", `heavier than ${heavyPct}%`)
+        : ""
+    }
     ${ROWS.map(rowHtml).join("")}
-  </div>
-  <div style="font-size:10px;color:${
-    C.faint
-  };margin-top:12px;line-height:1.5;white-space:normal;text-align:left">${foot}</div>`;
+  </div>${
+    (this._config || {}).footnotes === false
+      ? ""
+      : `<div style="font-size:10px;color:${C.faint};margin-top:12px;line-height:1.5;white-space:normal;text-align:left">${foot}</div>`
+  }`;
     },
+    FORMS.untilSunrise,
   );
 
   defineCard(
@@ -2257,10 +2474,12 @@
           "Best time to run",
           tomorrow ? "tomorrow" : beforeSun ? "from sunrise" : "until sunset",
         ) +
-        svg +
-        sub(
-          `<span style="color:${C.ok}">Green</span>: sun to spare with the battery full, which would be exported · <span style="color:${C.heavy}">amber</span>: it would charge the battery · shaded: the best window.`,
-        ) +
+        ((this._config || {}).chart === false
+          ? ""
+          : svg +
+            sub(
+              `<span style="color:${C.ok}">Green</span>: sun to spare with the battery full, which would be exported · <span style="color:${C.heavy}">amber</span>: it would charge the battery · shaded: the best window.`,
+            )) +
         rows +
         (!APPS.length
           ? ""
@@ -2275,6 +2494,7 @@
               ))
       );
     },
+    FORMS.bestTime,
   );
 
   defineCard(
@@ -2312,6 +2532,11 @@
         ["06:00", "for today"],
         ["12:00", "for the afternoon"],
       ];
+      const only = (this._config || {}).checkpoints;
+      const SHOWN =
+        Array.isArray(only) && only.length
+          ? ROWS.filter(([n]) => only.includes(n))
+          : ROWS;
       const lean = (b) =>
         Math.abs(b) < 0.3
           ? "no clear lean"
@@ -2394,18 +2619,21 @@
           "Can I trust the forecast?",
           days ? `${days} days scored` : "",
         ) +
-        ROWS.map(row).join("") +
-        (waits.length ? sub(waits.join("<br>")) : "") +
-        sub(
-          [
-            today ? `Frozen for today: ${today}` : "",
-            tomorrow ? `for tomorrow: ${tomorrow}` : "",
-          ]
-            .filter(Boolean)
-            .join(" · ") +
-            "<br>± is the typical miss over the last 30 days; the range is Solcast’s low-to-high.",
-        )
+        SHOWN.map(row).join("") +
+        ((this._config || {}).footnotes === false
+          ? ""
+          : (waits.length ? sub(waits.join("<br>")) : "") +
+            sub(
+              [
+                today ? `Frozen for today: ${today}` : "",
+                tomorrow ? `for tomorrow: ${tomorrow}` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ") +
+                "<br>± is the typical miss over the last 30 days; the range is Solcast’s low-to-high.",
+            ))
       );
     },
+    FORMS.forecastTrust,
   );
 })();

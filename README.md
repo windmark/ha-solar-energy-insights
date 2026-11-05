@@ -72,7 +72,7 @@ Requires Home Assistant 2026.9, the recorder, Solcast PV Forecast and
 
 ## Cards
 
-The cards ship with the integration:
+The cards ship with the integration, each with settings in the dashboard editor:
 
 ```yaml
 - type: custom:solar-energy-insights-now
@@ -97,6 +97,7 @@ headline and details as attributes.
 
 ## More
 
+- [Card settings, colours and building your own](docs/cards.md)
 - [Entities, options and actions](docs/reference.md)
 - [How achievements work](docs/achievements.md)
 

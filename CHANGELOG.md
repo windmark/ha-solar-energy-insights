@@ -15,6 +15,8 @@
 
 ### Added
 
+- Card settings, in the dashboard's visual editor: which rows the now card shows and in what order, its header and taps; until sunrise's columns and notes; best time's chart; which forecast checkpoints show; the level card's quest and recap; which badge sections show. `docs/cards.md` lists them and shows how to build your own card from the Summary sensor.
+
 - The cards follow the theme: text, divider and card colours from Home Assistant, status colours chosen for light or dark themes, and `--sei-good`, `--sei-warn`, `--sei-bad`, `--sei-info` and `--sei-track` to override them.
 
 - The solar cards ship with the integration: `custom:solar-energy-insights-now`, `-until-sunrise`, `-best-time` and `-forecast-trust`. Appliances (name, icon, typical kWh and hours, optionally a sensor that learns energy per run) and an appliance already running are card settings; without them the cards show the house alone. Everything else comes from the integration's settings.

@@ -205,4 +205,69 @@ check(
   "svg colours arrive as styles, never as attributes",
   !/\s(fill|stroke)="var\(/.test(light) && /style="fill:var\(/.test(light),
 );
+// Settings: each does what it says, and the editor's defaults look like none.
+const html = async (key, config) => {
+  const card = new (registry.get("solar-energy-insights-" + key))();
+  card.setConfig(config);
+  for (let k = 0; k < 6; k++) {
+    card.hass = hass;
+    await settle();
+  }
+  return card.shadowRoot.innerHTML;
+};
+for (const key of ["now", "until-sunrise", "best-time", "forecast-trust"]) {
+  const Card = registry.get("solar-energy-insights-" + key);
+  const stub = Card.getStubConfig();
+  const plainHtml = await html(key, {});
+  const stubHtml = await html(key, stub);
+  check(
+    key + ": the editor's defaults look like no settings",
+    plainHtml === stubHtml,
+  );
+  const names = Card.getConfigForm().schema.map((f) => f.name);
+  check(
+    key + ": every default has a field in the editor",
+    Object.keys(stub).every((k) => names.includes(k)),
+  );
+}
+const rows = text(await html("now", { rows: ["tonight", "battery"] }));
+check(
+  "now: rows filtered and ordered",
+  rows.indexOf("Tonight") < rows.indexOf("Battery") &&
+    !rows.includes("Heavy loads"),
+);
+check(
+  "now: the header can go",
+  !text(await html("now", { header: false })).includes("own power"),
+);
+check(
+  "now: taps can be switched off",
+  !(await html("now", { tap: "none" })).includes('data-tap="jump"'),
+);
+const typicalOnly = text(await html("until-sunrise", { columns: ["typical"] }));
+check(
+  "until sunrise: one column",
+  typicalOnly.includes("Typical night") && !typicalOnly.includes("Heavy night"),
+);
+check(
+  "until sunrise: notes can go",
+  !text(await html("until-sunrise", { footnotes: false })).includes(
+    "kWh left above the reserve",
+  ),
+);
+check(
+  "best time: the chart can go",
+  !(await html("best-time", { chart: false })).includes("<svg"),
+);
+const six = text(await html("forecast-trust", { checkpoints: ["06:00"] }));
+check(
+  "forecast: checkpoints filtered",
+  six.includes("06:00") && !six.includes("18:00 for tomorrow"),
+);
+check(
+  "forecast: notes can go",
+  !text(await html("forecast-trust", { footnotes: false })).includes(
+    "Frozen for today",
+  ),
+);
 console.log("ok");

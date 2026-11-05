@@ -203,4 +203,41 @@ check(
   streaks.includes('<div style="min-width:0">') &&
     /white-space:normal;line-height:1.35">/.test(streaks),
 );
+// Settings: each does what it says, and the editor's defaults look like none.
+const drawn = async (tag, config) => {
+  const card = new (registry.get(tag))();
+  card.setConfig(config);
+  card.hass = hass;
+  await settle();
+  await settle();
+  await settle();
+  return card.shadowRoot.innerHTML;
+};
+for (const tag of [
+  "solar-energy-insights-level",
+  "solar-energy-insights-badges",
+]) {
+  const Card = registry.get(tag);
+  check(
+    tag + ": the editor's defaults look like no settings",
+    (await drawn(tag, {})) === (await drawn(tag, Card.getStubConfig())),
+  );
+}
+const levelPlain = text(
+  await drawn("solar-energy-insights-level", { quest: false, recap: false }),
+);
+check(
+  "level: quest and recap can go",
+  !levelPlain.includes("keep the rest of the evening") &&
+    !levelPlain.includes("Last week"),
+);
+const onlyDone = text(
+  await drawn("solar-energy-insights-badges", { sections: ["complete"] }),
+);
+check(
+  "badges: sections can go",
+  onlyDone.includes("Complete") &&
+    !onlyDone.includes("Any time") &&
+    !onlyDone.includes("MWh club"),
+);
 console.log("ok");
