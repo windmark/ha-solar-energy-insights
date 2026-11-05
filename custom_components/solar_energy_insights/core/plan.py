@@ -172,6 +172,7 @@ class Plan:
     free_power: bool
     free_until: datetime | None
     charge_limit_pct: float
+    floor_pct: float
     curve: tuple[tuple[datetime, float], ...] = field(repr=False)
     day: Day | None = field(default=None, repr=False, compare=False)
 
@@ -466,6 +467,7 @@ def plan(i: PlanInputs) -> Plan:
         free_power=free,
         free_until=_free_until(i, load) if free else None,
         charge_limit_pct=i.battery.ceiling_pct,
+        floor_pct=i.battery.floor_pct,
         curve=expected.points,
         day=_day(i, load, expected, cloudy),
     )

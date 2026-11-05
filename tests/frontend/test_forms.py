@@ -23,7 +23,7 @@ def test_every_editor_form_is_valid_for_home_assistant() -> None:
     )
     forms = json.loads(result.stdout)
 
-    assert len(forms) == 6
+    assert len(forms) == 9
     for tag, form in forms.items():
         names = [field["name"] for field in form["schema"]]
         for field in form["schema"]:
