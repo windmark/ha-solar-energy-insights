@@ -27,9 +27,6 @@ trust the forecast.
 </tr>
 </table>
 
-The top row and the forecast card are from the author's dashboard (built on the
-sensors below); only the achievement cards ship with the integration so far.
-
 ## What it does
 
 - **Tonight.** Replays your last 14 real nights from the battery as it is now:
@@ -75,9 +72,20 @@ Requires Home Assistant 2026.9, the recorder, Solcast PV Forecast and
 
 ## Cards
 
-The cards ship with the integration:
+The cards ship with the integration, each with settings in the dashboard editor:
 
 ```yaml
+- type: custom:solar-energy-insights-now
+- type: custom:solar-energy-insights-until-sunrise
+  appliances: # optional: what you might start tonight
+    - name: Dishwasher
+      icon: mdi:dishwasher
+      kwh: 1.0 # typical per run
+      hours: 2.5
+      energy_per_run: sensor.dishwasher_energy_per_run # optional, learned
+- type: custom:solar-energy-insights-best-time
+  appliances: [] # the same list
+- type: custom:solar-energy-insights-forecast-trust
 - type: custom:solar-energy-insights-level
 - type: custom:solar-energy-insights-streaks
 - type: custom:solar-energy-insights-records
@@ -89,6 +97,7 @@ headline and details as attributes.
 
 ## More
 
+- [Card settings, colours and building your own](docs/cards.md)
 - [Entities, options and actions](docs/reference.md)
 - [How achievements work](docs/achievements.md)
 

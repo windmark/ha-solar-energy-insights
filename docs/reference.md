@@ -55,3 +55,16 @@ The plan with an extra load started now.
 `solar_energy_insights/plan`, `/backtest`, `/achievements` and `/config`
 return the full plan, the scored evenings, the trophy room and this home's
 settings.
+
+## Card colours
+
+The cards follow your theme's text, divider and card colours. Status colours
+adapt to light and dark themes; set any of these in a theme to override them:
+
+| Variable      | Used for                       |
+| ------------- | ------------------------------ |
+| `--sei-good`  | Lasts, full, earned            |
+| `--sei-warn`  | Borderline, peaks below full   |
+| `--sei-bad`   | The grid, short nights         |
+| `--sei-info`  | Typical night, any-time badges |
+| `--sei-track` | Bar backgrounds                |

@@ -519,14 +519,14 @@
   const ui = (el, hass, states) => {
     const W = (window.__sei = window.__sei || {});
     const C = {
-      text: "#fff",
-      muted: "#8e8e93",
-      faint: "#636366",
-      track: "#2c2c2e",
-      typical: "#5ac8fa",
-      heavy: "#ffb74d",
-      ok: "#8be36a",
-      bad: "#ff8a80",
+      text: "var(--primary-text-color, #fff)",
+      muted: "var(--secondary-text-color, #8e8e93)",
+      faint: "var(--disabled-text-color, #636366)",
+      track: "var(--sei-track, var(--divider-color, #2c2c2e))",
+      typical: "var(--sei-info, var(--sei-info-auto, #5ac8fa))",
+      heavy: "var(--sei-warn, var(--sei-warn-auto, #ffb74d))",
+      ok: "var(--sei-good, var(--sei-good-auto, #8be36a))",
+      bad: "var(--sei-bad, var(--sei-bad-auto, #ff8a80))",
     };
     const st = (id) => states[id];
     const val = (id) => {
@@ -648,10 +648,208 @@
 
   /* Real cards rather than button-card templates: taps and redraws work the ordinary way. */
   const CARD_STYLE =
-    "display:block;background:#1c1c1e;border-radius:18px;border:none;box-shadow:none;" +
-    "padding:18px 20px 20px;color:#e5e5e7;text-align:left;white-space:nowrap;" +
+    "display:block;background:var(--ha-card-background, var(--card-background-color, #1c1c1e));border-radius:18px;border:none;box-shadow:none;" +
+    "padding:18px 20px 20px;color:var(--primary-text-color, #e5e5e7);text-align:left;white-space:nowrap;" +
     "font-family:var(--ha-font-family-body, Roboto, sans-serif);font-size:14px;line-height:1.4";
-  const defineCard = (tag, name, description, render) => {
+  // Status colours chosen for the theme: pastels read well on dark, deeper tones on
+  // light. A --sei-good (and so on) set in a theme overrides both.
+  const TONES = {
+    dark: { good: "#8be36a", warn: "#ffb74d", bad: "#ff8a80", info: "#9ad7e6" },
+    light: {
+      good: "#2e7d32",
+      warn: "#e65100",
+      bad: "#c62828",
+      info: "#0277bd",
+    },
+  };
+  const toneDefaults = (hass) => {
+    const set = hass?.themes?.darkMode === false ? TONES.light : TONES.dark;
+    return Object.entries(set)
+      .map(([tone, colour]) => `--sei-${tone}-auto:${colour}`)
+      .join(";");
+  };
+  // SVG presentation attributes don't take var(): theme colours go into a style.
+  const svgColours = (html) =>
+    html.replace(
+      /<(rect|line|path|circle|text|polyline|polygon)\b([^>]*)>/g,
+      (tag, name, attrs) => {
+        const moved = [];
+        const rest = attrs.replace(
+          /\s(fill|stroke)="((?:var|color-mix)\([^"]*)"/g,
+          (_, prop, value) => {
+            moved.push(`${prop}:${value}`);
+            return "";
+          },
+        );
+        return moved.length
+          ? `<${name}${rest} style="${moved.join(";")}">`
+          : tag;
+      },
+    );
+  const APPLIANCES = {
+    name: "appliances",
+    selector: {
+      object: {
+        multiple: true,
+        label_field: "name",
+        fields: {
+          name: { label: "Name", required: true, selector: { text: {} } },
+          icon: { label: "Icon", selector: { icon: {} } },
+          // Sliders, not boxes: some phone keypads can't type a decimal point.
+          kwh: {
+            label: "Typical energy per run",
+            selector: {
+              number: {
+                min: 0.1,
+                max: 10,
+                step: 0.1,
+                mode: "slider",
+                unit_of_measurement: "kWh",
+              },
+            },
+          },
+          hours: {
+            label: "Typical duration",
+            selector: {
+              number: {
+                min: 0.5,
+                max: 8,
+                step: 0.5,
+                mode: "slider",
+                unit_of_measurement: "h",
+              },
+            },
+          },
+          energy_per_run: {
+            label: "Sensor that learns energy per run",
+            selector: { entity: { domain: "sensor" } },
+          },
+        },
+      },
+    },
+  };
+  const RUNNING = {
+    name: "running",
+    selector: {
+      object: {
+        fields: {
+          entity: { label: "Entity", selector: { entity: {} } },
+          state: { label: "State while running", selector: { text: {} } },
+          name: { label: "Name", selector: { text: {} } },
+        },
+      },
+    },
+  };
+  const choose = (options) => ({
+    select: {
+      multiple: true,
+      options: options.map(([value, label]) => ({ value, label })),
+    },
+  });
+  const NOW_ROWS = [
+    ["battery", "Battery"],
+    ["tonight", "Tonight"],
+    ["next_day", "Today or tomorrow"],
+    ["loads", "Heavy loads"],
+    ["surplus", "Surplus"],
+    ["last_night", "Last night"],
+  ];
+  const CHECKPOINTS = [
+    ["18:00", "18:00 for tomorrow"],
+    ["21:00", "21:00 for tomorrow"],
+    ["06:00", "06:00 for today"],
+    ["12:00", "12:00 for the afternoon"],
+  ];
+  const SECTIONS = [
+    ["within_reach", "Within reach"],
+    ["any_time", "Any time"],
+    ["later", "Later"],
+    ["complete", "Complete"],
+  ];
+  const FORMS = {
+    now: {
+      schema: [
+        { name: "rows", selector: choose(NOW_ROWS) },
+        { name: "header", selector: { boolean: {} } },
+        {
+          name: "tap",
+          selector: {
+            select: {
+              mode: "dropdown",
+              options: [
+                { value: "jump", label: "Jump to the card that explains it" },
+                { value: "none", label: "Nothing" },
+              ],
+            },
+          },
+        },
+      ],
+      labels: {
+        rows: "Rows",
+        header: "Show the time and today's own power",
+        tap: "Tapping a row",
+      },
+      stub: { rows: NOW_ROWS.map(([k]) => k), header: true, tap: "jump" },
+    },
+    untilSunrise: {
+      schema: [
+        {
+          name: "columns",
+          selector: choose([
+            ["typical", "Typical night"],
+            ["heavy", "Heavy night"],
+          ]),
+        },
+        { name: "footnotes", selector: { boolean: {} } },
+        APPLIANCES,
+        RUNNING,
+      ],
+      labels: {
+        columns: "Columns",
+        footnotes: "Show the notes underneath",
+        appliances: "Appliances you might start",
+        running: "An appliance that may already be running",
+      },
+      stub: { columns: ["typical", "heavy"], footnotes: true, appliances: [] },
+    },
+    bestTime: {
+      schema: [{ name: "chart", selector: { boolean: {} } }, APPLIANCES],
+      labels: {
+        chart: "Show the chart of spare sun",
+        appliances: "Appliances",
+      },
+      stub: { chart: true, appliances: [] },
+    },
+    forecastTrust: {
+      schema: [
+        { name: "checkpoints", selector: choose(CHECKPOINTS) },
+        { name: "footnotes", selector: { boolean: {} } },
+      ],
+      labels: {
+        checkpoints: "Checkpoints",
+        footnotes: "Show the notes underneath",
+      },
+      stub: { checkpoints: CHECKPOINTS.map(([k]) => k), footnotes: true },
+    },
+    level: {
+      schema: [
+        { name: "quest", selector: { boolean: {} } },
+        { name: "recap", selector: { boolean: {} } },
+      ],
+      labels: {
+        quest: "Show the quest",
+        recap: "Show yesterday and last week",
+      },
+      stub: { quest: true, recap: true },
+    },
+    badges: {
+      schema: [{ name: "sections", selector: choose(SECTIONS) }],
+      labels: { sections: "Sections" },
+      stub: { sections: SECTIONS.map(([k]) => k) },
+    },
+  };
+
+  const defineCard = (tag, name, description, render, form) => {
     if (!window.customElements || customElements.get(tag)) return;
     class Card extends HTMLElement {
       setConfig(config) {
@@ -686,14 +884,24 @@
         try {
           body = render.call(this, this._hass.states, this._hass);
         } catch (e) {
-          body = `<div style="font-size:12px;color:#ff8a80;white-space:normal">${String(
+          body = `<div style="font-size:12px;color:var(--sei-bad, var(--sei-bad-auto, #ff8a80));white-space:normal">${String(
             (e && e.message) || e,
           )}</div>`;
         }
+        body = svgColours(body);
         if (body === this._drawn) return;
         this._drawn = body;
-        this.shadowRoot.innerHTML = `<ha-card style="${CARD_STYLE}">${body}</ha-card>`;
+        this.shadowRoot.innerHTML = `<ha-card style="${CARD_STYLE};${toneDefaults(
+          this._hass,
+        )}">${body}</ha-card>`;
       }
+    }
+    if (form) {
+      Card.getConfigForm = () => ({
+        schema: form.schema,
+        computeLabel: (field) => form.labels[field.name],
+      });
+      Card.getStubConfig = () => structuredClone(form.stub);
     }
     customElements.define(tag, Card);
     (window.customCards = window.customCards || []).push({
@@ -737,11 +945,14 @@
         Bronze: ["#cd7f32", "mdi:shield-outline"],
         Silver: ["#c0c0c8", "mdi:shield-half-full"],
         Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: ["#9ad7e6", "mdi:shield-crown"],
+        Platinum: [
+          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
+          "mdi:shield-crown",
+        ],
         Diamond: ["#b9f2ff", "mdi:diamond-stone"],
       };
       const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:#000;border-radius:${
+        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
           h / 2
         }px;overflow:hidden"><div style="width:${Math.max(
           0,
@@ -770,7 +981,12 @@
         R = a.rank,
         [rc, ricon] = RANK[R.name] || RANK.Bronze;
       const PARTS = [
-        ["self_sufficiency", "Self-sufficiency", 40, "#8be36a"],
+        [
+          "self_sufficiency",
+          "Self-sufficiency",
+          40,
+          "var(--sei-good, var(--sei-good-auto, #8be36a))",
+        ],
         ["kept_at_home", "Solar kept at home", 30, "#f5b83d"],
         ["battery_used", "Battery put to work", 15, "#4c7cf3"],
         ["performance", "Against the forecast", 15, "#b07cf0"],
@@ -782,7 +998,7 @@
         .map(([k, label, w, c]) => {
           const pts = Math.round((parts[k] * w * 100) / total);
           return `<div style="margin-top:9px"><div style="display:flex;justify-content:space-between;font-size:12px">
-    <span style="color:#c7c7cc">${label}</span><span style="color:#fff">${pts}<span style="color:#636366"> / ${Math.round(
+    <span style="color:var(--secondary-text-color, #c7c7cc)">${label}</span><span style="color:var(--primary-text-color, #fff)">${pts}<span style="color:var(--disabled-text-color, #636366)"> / ${Math.round(
       (w * 100) / total,
     )}</span></span></div>
     <div style="margin-top:4px">${bar(parts[k] * 100, c)}</div></div>`;
@@ -795,8 +1011,8 @@
         .reverse()
         .find((q) => q.result === true || q.result === false);
       const quest = open
-        ? `<div style="background:#1f2a1f;border-radius:12px;padding:10px 12px;margin:12px 0 4px">
-    <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#8be36a">
+        ? `<div style="background:color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 12%, transparent);border-radius:12px;padding:10px 12px;margin:12px 0 4px">
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--sei-good, var(--sei-good-auto, #8be36a))">
       <span><ha-icon icon="mdi:flag-variant-outline" style="--mdc-icon-size:14px"></ha-icon> ${
         open.kind === "grid_free_nights"
           ? "This week"
@@ -808,11 +1024,11 @@
               })
       }</span>
       <span style="font-weight:500">+${open.reward} XP</span></div>
-    <div style="font-size:15px;color:#fff;font-weight:500;margin-top:4px;white-space:normal">${
+    <div style="font-size:15px;color:var(--primary-text-color, #fff);font-weight:500;margin-top:4px;white-space:normal">${
       open.title
     }</div>${
       open.hint
-        ? `<div style="font-size:12px;color:#a8d5a0;margin-top:3px;white-space:normal">${open.hint}</div>`
+        ? `<div style="font-size:12px;color:var(--sei-good, var(--sei-good-auto, #8be36a));margin-top:3px;white-space:normal">${open.hint}</div>`
         : ""
     }</div>`
         : "";
@@ -845,7 +1061,7 @@
             : NEWS[x.key][1],
         );
       const yesterdayLine = news.length
-        ? `<div style="font-size:11px;color:#8be36a;margin-top:12px;white-space:normal">Yesterday: ${news.join(
+        ? `<div style="font-size:11px;color:var(--sei-good, var(--sei-good-auto, #8be36a));margin-top:12px;white-space:normal">Yesterday: ${news.join(
             " · ",
           )}</div>`
         : "";
@@ -856,7 +1072,7 @@
           currency: hass?.config?.currency || "EUR",
         }).format(v);
       const weekLine = lw
-        ? `<div style="font-size:11px;color:#8e8e93;margin-top:${
+        ? `<div style="font-size:11px;color:var(--secondary-text-color, #8e8e93);margin-top:${
             news.length ? 4 : 12
           }px;white-space:normal">Last week: ${[
             lw.nights
@@ -879,30 +1095,32 @@
             .join(" · ")}</div>`
         : "";
       return `<div style="display:flex;align-items:center;gap:14px">
-    <div style="width:56px;height:56px;border-radius:50%;background:#2c2c2e;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px ${rc}55;flex-shrink:0">
+    <div style="width:56px;height:56px;border-radius:50%;background:var(--sei-track, var(--divider-color, #2c2c2e));display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px ${rc}55;flex-shrink:0">
       <ha-icon icon="${ricon}" style="--mdc-icon-size:30px;color:${rc}"></ha-icon></div>
     <div style="flex:1;min-width:0">
-      <div style="font-size:18px;color:#fff;font-weight:500;white-space:normal;line-height:1.25">Level ${
+      <div style="font-size:18px;color:var(--primary-text-color, #fff);font-weight:500;white-space:normal;line-height:1.25">Level ${
         L.level
       } · ${L.name}</div>
-      <div style="font-size:12px;color:#8e8e93;white-space:normal;line-height:1.35">${
+      <div style="font-size:12px;color:var(--secondary-text-color, #8e8e93);white-space:normal;line-height:1.35">${
         R.name
       } rank · 30-day average ${R.average}${
         R.next_name ? ` · ${R.next_name} at ${R.next_at}` : ""
       }</div>
       <div style="margin-top:6px">${bar(L.progress * 100, rc, 5)}</div>
-      <div style="font-size:11px;color:#636366;margin-top:3px">${(
+      <div style="font-size:11px;color:var(--disabled-text-color, #636366);margin-top:3px">${(
         L.next_xp - L.xp
       ).toLocaleString("en-GB")} XP to level ${L.level + 1}</div>
     </div>
-    <div style="text-align:center;flex-shrink:0"><div style="font-size:30px;color:#fff;font-weight:500;line-height:1">${
+    <div style="text-align:center;flex-shrink:0"><div style="font-size:30px;color:var(--primary-text-color, #fff);font-weight:500;line-height:1">${
       a.today.score ?? "–"
     }</div>
-      <div style="font-size:10px;color:#8e8e93">today</div></div>
-  </div>${quest}${lastLine}${rows}${yesterdayLine}${weekLine}
+      <div style="font-size:10px;color:var(--secondary-text-color, #8e8e93)">today</div></div>
+  </div>${(this._config || {}).quest === false ? "" : quest + lastLine}${rows}${
+    (this._config || {}).recap === false ? "" : yesterdayLine + weekLine
+  }
   ${
     month
-      ? `<div style="font-size:11px;color:#636366;margin-top:12px;white-space:normal">${new Date(
+      ? `<div style="font-size:11px;color:var(--disabled-text-color, #636366);margin-top:12px;white-space:normal">${new Date(
           month.month + "-01",
         ).toLocaleDateString("en-GB", { month: "long" })}: average ${
           month.score
@@ -923,6 +1141,7 @@
       : ""
   }`;
     },
+    FORMS.level,
   );
 
   defineCard(
@@ -958,11 +1177,14 @@
         Bronze: ["#cd7f32", "mdi:shield-outline"],
         Silver: ["#c0c0c8", "mdi:shield-half-full"],
         Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: ["#9ad7e6", "mdi:shield-crown"],
+        Platinum: [
+          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
+          "mdi:shield-crown",
+        ],
         Diamond: ["#b9f2ff", "mdi:diamond-stone"],
       };
       const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:#000;border-radius:${
+        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
           h / 2
         }px;overflow:hidden"><div style="width:${Math.max(
           0,
@@ -990,37 +1212,43 @@
         .map((s) => {
           const hot = s.current > 0;
           const shields = s.shields
-            ? ` <span style="color:#9ad7e6;font-size:11px">${'<ha-icon icon="mdi:shield-half-full" style="--mdc-icon-size:13px"></ha-icon>'.repeat(
+            ? ` <span style="color:var(--sei-info, var(--sei-info-auto, #9ad7e6));font-size:11px">${'<ha-icon icon="mdi:shield-half-full" style="--mdc-icon-size:13px"></ha-icon>'.repeat(
                 s.shields,
               )}</span>`
             : "";
           return `<div style="display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;margin-top:12px">
     <div style="width:36px;height:36px;border-radius:50%;background:${
-      hot ? "#3a2412" : "#2c2c2e"
+      hot
+        ? "color-mix(in srgb, var(--sei-warn, var(--sei-warn-auto, #ffb74d)) 18%, transparent)"
+        : "var(--sei-track, var(--divider-color, #2c2c2e))"
     };display:flex;align-items:center;justify-content:center">
       <ha-icon icon="${s.icon}" style="--mdc-icon-size:19px;color:${
-        hot ? "#ff9f43" : "#636366"
+        hot
+          ? "var(--sei-warn, var(--sei-warn-auto, #ffb74d))"
+          : "var(--disabled-text-color, #636366)"
       }"></ha-icon></div>
-    <div style="min-width:0"><div style="font-size:14px;color:#fff;white-space:normal">${
+    <div style="min-width:0"><div style="font-size:14px;color:var(--primary-text-color, #fff);white-space:normal">${
       s.name
-    }${shields}</div><div style="font-size:11px;color:#8e8e93;white-space:normal;line-height:1.35">${
+    }${shields}</div><div style="font-size:11px;color:var(--secondary-text-color, #8e8e93);white-space:normal;line-height:1.35">${
       s.description
     }</div></div>
     <div style="text-align:right"><div style="font-size:22px;color:${
-      hot ? "#fff" : "#636366"
+      hot
+        ? "var(--primary-text-color, #fff)"
+        : "var(--disabled-text-color, #636366)"
     }">${s.current}${
       hot
-        ? ' <ha-icon icon="mdi:fire" style="--mdc-icon-size:16px;color:#ff9f43"></ha-icon>'
+        ? ' <ha-icon icon="mdi:fire" style="--mdc-icon-size:16px;color:var(--sei-warn, var(--sei-warn-auto, #ffb74d))"></ha-icon>'
         : ""
     }</div>
       <div style="font-size:11px;color:${
-        s.personal_best ? "#f5b83d" : "#8e8e93"
+        s.personal_best ? "#f5b83d" : "var(--secondary-text-color, #8e8e93)"
       }">${
         s.personal_best ? "personal best!" : `best ${s.best}`
       }</div></div></div>`;
         })
         .join("");
-      return `<div style="font-size:12px;color:#8e8e93;white-space:normal;line-height:1.4">Shields come with each week-long run and absorb one break the weather caused.</div>${rows}`;
+      return `<div style="font-size:12px;color:var(--secondary-text-color, #8e8e93);white-space:normal;line-height:1.4">Shields come with each week-long run and absorb one break the weather caused.</div>${rows}`;
     },
   );
 
@@ -1057,11 +1285,14 @@
         Bronze: ["#cd7f32", "mdi:shield-outline"],
         Silver: ["#c0c0c8", "mdi:shield-half-full"],
         Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: ["#9ad7e6", "mdi:shield-crown"],
+        Platinum: [
+          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
+          "mdi:shield-crown",
+        ],
         Diamond: ["#b9f2ff", "mdi:diamond-stone"],
       };
       const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:#000;border-radius:${
+        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
           h / 2
         }px;overflow:hidden"><div style="width:${Math.max(
           0,
@@ -1106,9 +1337,11 @@
             const p = Math.min((yieldToday / r.value) * 100, 100);
             chase = `<div style="margin-top:5px">${bar(
               p,
-              p >= 100 ? "#8be36a" : "#f5b83d",
+              p >= 100
+                ? "var(--sei-good, var(--sei-good-auto, #8be36a))"
+                : "#f5b83d",
               4,
-            )}</div><div style="font-size:10px;color:#636366;margin-top:2px">today ${Math.round(
+            )}</div><div style="font-size:10px;color:var(--disabled-text-color, #636366);margin-top:2px">today ${Math.round(
               p,
             )}% of the record</div>`;
           }
@@ -1128,15 +1361,17 @@
     <ha-icon icon="${
       r.icon
     }" style="--mdc-icon-size:18px;color:#f5b83d;margin-top:1px"></ha-icon>
-    <div style="min-width:0"><div style="font-size:14px;color:#fff;white-space:normal">${
+    <div style="min-width:0"><div style="font-size:14px;color:var(--primary-text-color, #fff);white-space:normal">${
       r.name
     }</div>
-      <div style="font-size:11px;color:#8e8e93;white-space:normal;line-height:1.35">${dmy(
+      <div style="font-size:11px;color:var(--secondary-text-color, #8e8e93);white-space:normal;line-height:1.35">${dmy(
         r.day,
       )}${season ? " · " + season : ""}${
-        top ? ` · <span style="color:#8be36a">${top}</span>` : ""
+        top
+          ? ` · <span style="color:var(--sei-good, var(--sei-good-auto, #8be36a))">${top}</span>`
+          : ""
       }</div>${chase}</div>
-    <div style="font-size:16px;color:#fff;text-align:right">${f(
+    <div style="font-size:16px;color:var(--primary-text-color, #fff);text-align:right">${f(
       r.value,
     )}</div></div>`;
         })
@@ -1178,11 +1413,14 @@
         Bronze: ["#cd7f32", "mdi:shield-outline"],
         Silver: ["#c0c0c8", "mdi:shield-half-full"],
         Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: ["#9ad7e6", "mdi:shield-crown"],
+        Platinum: [
+          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
+          "mdi:shield-crown",
+        ],
         Diamond: ["#b9f2ff", "mdi:diamond-stone"],
       };
       const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:#000;border-radius:${
+        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
           h / 2
         }px;overflow:hidden"><div style="width:${Math.max(
           0,
@@ -1289,7 +1527,7 @@
           b.next_tier_at && b.count > 0
             ? `<div style="display:flex;gap:8px;align-items:center;margin-top:4px"><div style="flex:1;min-width:0">${bar(
                 pct,
-                "#9ad7e6",
+                "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
                 4,
               )}</div><span style="font-size:11px;color:${
                 C.muted
@@ -1299,8 +1537,12 @@
             : "";
         return `<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0">${icon(
           b,
-          b.season ? "#3a2c12" : "#16303a",
-          b.season ? "#ffb74d" : "#9ad7e6",
+          b.season
+            ? "color-mix(in srgb, var(--sei-warn, var(--sei-warn-auto, #ffb74d)) 18%, transparent)"
+            : "color-mix(in srgb, var(--sei-info, var(--sei-info-auto, #9ad7e6)) 18%, transparent)",
+          b.season
+            ? "var(--sei-warn, var(--sei-warn-auto, #ffb74d))"
+            : "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
         )}
     <div style="flex:1;min-width:0"><div style="font-size:14px;color:${
       C.text
@@ -1370,22 +1612,1028 @@
         "Badges",
         `${done.length} of ${a.badges.length} complete`,
       );
-      out += rows.map(reach).join("");
-      out += strip("Any time", anyTime, "#16303a", "#9ad7e6");
-      out += strip("Later", later, "#2c2c2e", "#8e8e93", (b) =>
-        dm(b.season_from),
-      );
-      out += strip("Complete", done, "#1f3317", "#8be36a", null, true);
+      const SECTIONS = (this._config || {}).sections || [
+        "within_reach",
+        "any_time",
+        "later",
+        "complete",
+      ];
+      if (SECTIONS.includes("within_reach")) out += rows.map(reach).join("");
+      if (SECTIONS.includes("any_time"))
+        out += strip(
+          "Any time",
+          anyTime,
+          "color-mix(in srgb, var(--sei-info, var(--sei-info-auto, #9ad7e6)) 18%, transparent)",
+          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
+        );
+      if (SECTIONS.includes("later"))
+        out += strip(
+          "Later",
+          later,
+          "var(--sei-track, var(--divider-color, #2c2c2e))",
+          "var(--secondary-text-color, #8e8e93)",
+          (b) => dm(b.season_from),
+        );
+      if (SECTIONS.includes("complete"))
+        out += strip(
+          "Complete",
+          done,
+          "color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 18%, transparent)",
+          "var(--sei-good, var(--sei-good-auto, #8be36a))",
+          null,
+          true,
+        );
       out += `<div style="font-size:12px;color:${
         C.muted
       };line-height:1.45;margin-top:12px;padding-top:10px;border-top:1px solid ${
         C.track
       };white-space:normal">${
         lit === done[0] && !UI.spot
-          ? '<span style="font-size:11px;color:#636366">Latest · </span>'
+          ? '<span style="font-size:11px;color:var(--disabled-text-color, #636366)">Latest · </span>'
           : ""
       }${spot(lit)}</div>`;
       return out;
     },
+    FORMS.badges,
+  );
+
+  defineCard(
+    "solar-energy-insights-now",
+    "Solar now",
+    "The day at a glance: battery, tonight, heavy loads and surplus, worded for the time of day.",
+    function (states, hass) {
+      // Solar status: four answers that change with the time of day, from Solar Energy Insights.
+      // Tap a row → the card that explains it.
+      const el = this;
+      window.__tapHook =
+        window.__tapHook && window.__tapHook.v === 3
+          ? window.__tapHook
+          : Object.assign(
+              (el) => {
+                if (!el || el.__tap) return;
+                el.__tap = true;
+                try {
+                  const st = document.createElement("style");
+                  st.textContent =
+                    "[data-more-info],[data-tap]{pointer-events:auto!important;cursor:pointer}";
+                  (el.shadowRoot || el).appendChild(st);
+                } catch (x) {}
+                let sx = 0,
+                  sy = 0,
+                  hit = null;
+                const find = (ev) =>
+                  ev
+                    .composedPath()
+                    .find(
+                      (n) =>
+                        n && n.dataset && (n.dataset.moreInfo || n.dataset.tap),
+                    );
+                const run = (h) => {
+                  const d = h.dataset,
+                    SD = window.SolarDash;
+                  if (d.moreInfo)
+                    el.dispatchEvent(
+                      new CustomEvent("hass-more-info", {
+                        bubbles: true,
+                        composed: true,
+                        detail: { entityId: d.moreInfo },
+                      }),
+                    );
+                  else if (d.tap === "jump" && SD) SD.jump(d.arg);
+                  else if (d.tap === "pick" && SD) SD.pickDay(d.arg);
+                  else if (d.tap === "calmode" && SD) SD.setCalMode(h, d.arg);
+                };
+                el.addEventListener(
+                  "touchstart",
+                  (ev) => {
+                    hit = find(ev);
+                    if (!hit) return;
+                    const t = ev.touches[0];
+                    sx = t.clientX;
+                    sy = t.clientY;
+                    ev.stopPropagation();
+                  },
+                  { capture: true, passive: true },
+                );
+                el.addEventListener(
+                  "touchend",
+                  (ev) => {
+                    const h = hit;
+                    hit = null;
+                    if (!h) return;
+                    ev.stopPropagation();
+                    const t = ev.changedTouches[0];
+                    if (
+                      Math.abs(t.clientX - sx) > 10 ||
+                      Math.abs(t.clientY - sy) > 10
+                    )
+                      return;
+                    if (ev.cancelable) ev.preventDefault();
+                    run(h);
+                  },
+                  { capture: true },
+                );
+                el.addEventListener(
+                  "click",
+                  (ev) => {
+                    const h = find(ev);
+                    if (!h) return;
+                    ev.stopPropagation();
+                    ev.preventDefault();
+                    run(h);
+                  },
+                  { capture: true },
+                );
+              },
+              { v: 3 },
+            );
+      window.__tapHook(this);
+
+      // The words come from the integration's Summary sensor: rows of a headline and
+      // at most two clauses, chosen by the time of day. Here they are only drawn.
+      const P = "solar_energy_insights_";
+      const st = (id) => states[id];
+      const val = (id) => {
+        const s = st(id);
+        return !s || ["unknown", "unavailable", ""].includes(s.state)
+          ? null
+          : s.state;
+      };
+      const attr = (id, a) => st(id)?.attributes?.[a];
+      const num = (v) =>
+        v === null || v === undefined || v === "" || isNaN(+v) ? null : +v;
+      const summary = st("sensor." + P + "summary")?.attributes || null;
+      const lines = (summary?.rows || []).map((r) => ({
+        ...r,
+        detail: (r.detail || []).join(" · "),
+      }));
+      // The rows' keys, for the card's `rows` setting: which, in what order.
+      const ROW_KEY = {
+        Battery: "battery",
+        Tonight: "tonight",
+        Today: "next_day",
+        Tomorrow: "next_day",
+        "Heavy loads": "loads",
+        Surplus: "surplus",
+        "Last night": "last_night",
+      };
+      const wanted = (this._config || {}).rows;
+      if (Array.isArray(wanted) && wanted.length)
+        lines.splice(
+          0,
+          lines.length,
+          ...wanted.flatMap((k) => lines.filter((l) => ROW_KEY[l.label] === k)),
+        );
+      const targets = lines.map((r) => r.target);
+      const SDX = window.SolarDash,
+        ENT = ((SDX.config && SDX.config()) || {}).entities || {};
+      const soc = summary?.soc ?? num(val(ENT.soc || ""));
+      const g = summary
+        ? {
+            phase: summary.phase || st("sensor." + P + "summary")?.state,
+            lines,
+            targets,
+            ring: summary.ring,
+            home: summary.home,
+            soc,
+            label: summary.label,
+            time: summary.time,
+          }
+        : null;
+
+      if (!g)
+        return `<div style="font-size:13px;color:var(--secondary-text-color, #8e8e93);white-space:normal">Waiting for Solar Energy Insights’ summary.</div>`;
+      const C = {
+        good: [
+          "var(--sei-good, var(--sei-good-auto, #8be36a))",
+          "color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 18%, transparent)",
+        ],
+        warn: [
+          "var(--sei-warn, var(--sei-warn-auto, #ffb74d))",
+          "color-mix(in srgb, var(--sei-warn, var(--sei-warn-auto, #ffb74d)) 18%, transparent)",
+        ],
+        bad: [
+          "var(--sei-bad, var(--sei-bad-auto, #ff8a80))",
+          "color-mix(in srgb, var(--sei-bad, var(--sei-bad-auto, #ff8a80)) 18%, transparent)",
+        ],
+        neutral: [
+          "var(--secondary-text-color, #c7c7cc)",
+          "var(--sei-track, var(--divider-color, #2c2c2e))",
+        ],
+      };
+      // Explicit stretch + left alignment: button-card otherwise centres flex rows inside custom fields
+      const ROW =
+        "display:flex;align-items:center;justify-content:flex-start;justify-self:stretch;width:100%;box-sizing:border-box;text-align:left;gap:12px";
+      const pill = (txt, c) =>
+        `<span style="font-size:12px;color:${c[0]};background:${c[1]};border-radius:8px;padding:3px 9px;white-space:nowrap">${txt}</span>`;
+      // Today's energy from the configured counters, hour by hour.
+      const W = (window.__sei = window.__sei || {});
+      if (!el.__seiListen) {
+        el.__seiListen = true;
+        (W.listeners = W.listeners || []).push(
+          () => el.requestUpdate && el.requestUpdate(),
+        );
+      }
+      const d0 = new Date(),
+        todayIso = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(
+          2,
+          "0",
+        )}-${String(d0.getDate()).padStart(2, "0")}`;
+      if (
+        (!W.todayH ||
+          W.todayH.day !== todayIso ||
+          Date.now() - W.todayH.t > 300e3) &&
+        !W.todayHP &&
+        hass?.callWS &&
+        SDX.loadHourly
+      ) {
+        W.todayHP = SDX.loadHourly(hass, todayIso)
+          .then((r) => {
+            W.todayH = { day: todayIso, t: Date.now(), r };
+          })
+          .finally(() => {
+            W.todayHP = null;
+            (W.listeners || []).forEach((f) => f());
+          });
+      }
+      const dayTotal = (k) => {
+        const a = W.todayH?.r?.[k];
+        return a ? a.reduce((s, v) => s + (v || 0), 0) : null;
+      };
+      const house = dayTotal("house");
+      const imported = dayTotal("imp");
+      const own =
+        house && imported !== null
+          ? Math.max(0, Math.min(100, ((house - imported) / house) * 100))
+          : null;
+      const ownC =
+        own === null
+          ? C.neutral
+          : own >= 90
+            ? C.good
+            : own >= 60
+              ? C.warn
+              : C.bad;
+      const gridKw = /^kW$/i.test(
+        st(ENT.grid_power || "")?.attributes?.unit_of_measurement || "",
+      );
+      const gridW = (num(val(ENT.grid_power || "")) || 0) * (gridKw ? 1000 : 1);
+      const yieldT = dayTotal("solar");
+      const right =
+        gridW > 100
+          ? pill(`importing ${(gridW / 1000).toFixed(1)} kW`, C.bad)
+          : g.phase === "late" && yieldT !== null
+            ? pill(
+                `today ${yieldT.toFixed(1)} kWh${
+                  own !== null ? " · " + Math.round(own) + "% own" : ""
+                }`,
+                C.neutral,
+              )
+            : own !== null
+              ? pill(`${Math.round(own)}% own power today`, ownC)
+              : "";
+      const rows = g.lines
+        .map((l, i) => {
+          const c = C[l.tone] || C.neutral;
+          return `<div ${
+            (this._config || {}).tap === "none" ? "" : 'data-tap="jump"'
+          } data-arg="${
+            g.targets[i]
+          }" style="${ROW};cursor:pointer;padding:10px 0;${
+            i
+              ? "border-top:1px solid var(--sei-track, var(--divider-color, #2c2c2e))"
+              : ""
+          }">
+    <div style="width:36px;height:36px;border-radius:50%;background:${
+      c[1]
+    };display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <ha-icon icon="${l.icon}" style="--mdc-icon-size:19px;color:${
+        c[0]
+      }"></ha-icon></div>
+    <div style="flex:1;min-width:0;text-align:left">
+      <div style="font-size:11px;color:var(--secondary-text-color, #8e8e93);line-height:1.3">${
+        l.label
+      }</div>
+      <div style="font-size:15px;color:var(--primary-text-color, #fff);font-weight:500;line-height:1.3;white-space:normal">${
+        l.was
+          ? `<span style="text-decoration:line-through;color:var(--disabled-text-color, #636366);font-weight:400;font-size:13px;margin-right:6px">${l.was}</span>`
+          : ""
+      }${l.main}</div>
+      ${
+        l.detail
+          ? `<div style="font-size:12px;color:var(--secondary-text-color, #8e8e93);line-height:1.35;white-space:normal">${l.detail}</div>`
+          : ""
+      }
+      ${
+        l.change
+          ? `<div style="display:inline-flex;align-items:center;gap:4px;margin-top:5px;font-size:11px;color:var(--sei-warn, var(--sei-warn-auto, #ffb74d));background:color-mix(in srgb, var(--sei-warn, var(--sei-warn-auto, #ffb74d)) 18%, transparent);border-radius:6px;padding:2px 7px;white-space:normal"><ha-icon icon="mdi:history" style="--mdc-icon-size:13px"></ha-icon>${l.change}</div>`
+          : ""
+      }
+    </div>
+    <ha-icon icon="mdi:chevron-right" style="--mdc-icon-size:18px;color:var(--disabled-text-color, #48484a);flex-shrink:0"></ha-icon></div>`;
+        })
+        .join("");
+      return `${
+        (this._config || {}).header === false
+          ? ""
+          : `<div style="${ROW};justify-content:space-between;margin-bottom:2px">
+    <span style="font-size:13px;color:var(--secondary-text-color, #8e8e93)">${g.label} · ${g.time}</span>${right}</div>`
+      }
+  <div style="display:grid;justify-items:stretch;width:100%">${rows}</div>`;
+    },
+    FORMS.now,
+  );
+
+  defineCard(
+    "solar-energy-insights-until-sunrise",
+    "Until sunrise",
+    "Your recent nights replayed from the battery as it is now, with your appliances.",
+    function (states, hass) {
+      const el = this;
+      const {
+        W,
+        C,
+        st,
+        val,
+        attr,
+        num,
+        hm,
+        kwh,
+        sub,
+        head,
+        pill,
+        ws,
+        waiting,
+      } = window.SolarDash.ui(this, hass, states);
+
+      // Appliances from the card's settings; a sensor that learns energy per run beats the typical figures.
+      const APPS = ((el._config || {}).appliances || []).map((a, i) => {
+        const e = a.energy_per_run ? st(a.energy_per_run) : null;
+        const typical = +a.kwh || 1;
+        let k = parseFloat(e?.state);
+        const est = !(k > 0.05 && k <= 4 * typical);
+        if (est) k = typical;
+        const hrs = (e?.attributes?.hours || [])
+          .filter((h) => h > 0.2 && h < 8)
+          .slice(-5);
+        return {
+          id: "a" + i,
+          name: a.name || "Appliance",
+          icon: a.icon || "mdi:power-plug-outline",
+          kwh: k,
+          est: est && !!a.energy_per_run,
+          h: hrs.length
+            ? hrs.reduce((s, h) => s + h, 0) / hrs.length
+            : +a.hours || 2,
+        };
+      });
+      const sims = () => {
+        if (!APPS.length) return null;
+        const socNow = num(attr("sensor.solar_energy_insights_summary", "soc"));
+        const key = [
+          Math.round(socNow ?? -1),
+          ...APPS.map((a) => a.kwh.toFixed(2)),
+          val("sensor.solar_energy_insights_night_outlook"),
+        ].join("|");
+        const c = W.sims;
+        if (
+          (!c || c.key !== key || (!c.pending && Date.now() - c.t > 300e3)) &&
+          !(c && c.pending && c.key === key) &&
+          hass?.callWS
+        ) {
+          W.sims = { key, t: Date.now(), pending: true, data: c?.data };
+          const call = (list) =>
+            hass
+              .callWS({
+                type: "call_service",
+                domain: "solar_energy_insights",
+                service: "simulate",
+                service_data: {
+                  extra_kwh: +list.reduce((s, a) => s + a.kwh, 0).toFixed(2),
+                  extra_hours: +Math.max(...list.map((a) => a.h)).toFixed(2),
+                },
+                return_response: true,
+              })
+              .then((r) => r.response);
+          Promise.all([
+            ...APPS.map((a) => call([a])),
+            APPS.length > 1 ? call(APPS) : null,
+          ])
+            .then((res) => {
+              W.sims = {
+                key,
+                t: Date.now(),
+                data: {
+                  each: res.slice(0, APPS.length),
+                  all: APPS.length > 1 ? res[APPS.length] : null,
+                },
+              };
+            })
+            .catch((e) => {
+              W.sims = { key, t: Date.now(), error: String(e?.message || e) };
+            })
+            .finally(() => (W.listeners || []).forEach((f) => f()));
+        }
+        return W.sims?.data;
+      };
+
+      // Until sunrise, from Solar Energy Insights: your recent nights replayed from the battery as it
+      // is now. Columns: a typical night and a heavy one; rows: with an appliance started now.
+      const mark = window.SolarDash?.jumpMark
+        ? window.SolarDash.jumpMark("sunrise")
+        : "";
+      const plan = ws("plan", "solar_energy_insights/plan", 60);
+      if (!plan)
+        return (
+          mark +
+          head("mdi:weather-night", "Until sunrise") +
+          waiting("plan", "the plan")
+        );
+      if (!plan.night)
+        return (
+          mark +
+          head("mdi:weather-night", "Until sunrise") +
+          sub("Waiting for a day of history.")
+        );
+      const S = sims();
+      const ROWS = [
+        { label: "House only", icon: "mdi:home-outline", night: plan.night },
+        ...APPS.map((a, i) => ({
+          label: "+ " + a.name,
+          icon: a.icon,
+          night: S?.each?.[i]?.night,
+        })),
+        ...(APPS.length > 1
+          ? [
+              {
+                label: APPS.length === 2 ? "+ Both" : "+ All",
+                icon: "mdi:plus-circle-multiple-outline",
+                night: S?.all?.night,
+              },
+            ]
+          : []),
+      ];
+      const heavyPct =
+        num(
+          attr(
+            "sensor.solar_energy_insights_night_prediction_error",
+            "heavy_share_pct",
+          ),
+        ) ?? 80;
+      const cell = (o) => {
+        const base =
+          "border-radius:8px;padding:6px 4px;text-align:center;font-size:13px;";
+        if (!o)
+          return `<div style="${base}background:${C.track};color:${C.faint}">…</div>`;
+        return o.lasts
+          ? `<div style="${base}background:color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 18%, transparent);color:${
+              C.ok
+            }">✓ ${o.spare_kwh.toFixed(1)}</div>`
+          : `<div style="${base}background:color-mix(in srgb, var(--sei-bad, var(--sei-bad-auto, #ff8a80)) 18%, transparent);color:${
+              C.bad
+            }">grid ${hm(o.reserve_at)}</div>`;
+      };
+      const n = plan.night,
+        outlook = n.outlook;
+      const tag = (c, i, t) =>
+        `<span style="color:${c}"><ha-icon icon="${i}" style="--mdc-icon-size:15px"></ha-icon> ${t}</span>`;
+      const headline =
+        outlook === "lasts"
+          ? tag(C.ok, "mdi:check-circle", "Covered, even a heavy night")
+          : outlook === "borderline"
+            ? tag(
+                C.heavy,
+                "mdi:help-circle",
+                "Covered unless it is a heavy night",
+              )
+            : tag(C.bad, "mdi:close-circle", "Grid needed before sunrise");
+      const rise = new Date(plan.sunrise),
+        nowD = new Date(plan.at),
+        hours = Math.max((rise - nowD) / 3600e3, 0);
+      const socNow = plan.curve?.[0]?.[1];
+      const setPct = plan.charge?.sunset_pct,
+        beforeSunset = new Date(plan.sunset) < rise;
+      const colHead = (
+        label,
+        note,
+      ) => `<div style="text-align:center;font-size:12px;color:var(--secondary-text-color, #c7c7cc)">${label}
+  <div style="font-size:10px;color:${C.faint}">${note}</div></div>`;
+      const COLS = (
+        (this._config || {}).columns || ["typical", "heavy"]
+      ).filter((c) => c === "typical" || c === "heavy");
+      const rowHtml = (
+        r,
+      ) => `<div style="display:flex;align-items:center;justify-content:flex-start;justify-self:stretch;gap:8px;font-size:13px;color:var(--primary-text-color, #fff);min-width:0;text-align:left">
+    <ha-icon icon="${r.icon}" style="--mdc-icon-size:18px;width:18px;color:${
+      C.muted
+    };flex-shrink:0"></ha-icon>
+    <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${
+      r.label
+    }</span></div>
+  ${COLS.map((k) => cell(r.night?.[k])).join("")}`;
+      const RUN = (el._config || {}).running;
+      const washerOn = !!RUN && val(RUN.entity) === String(RUN.state ?? "on");
+      const est = APPS.filter((a) => a.est).map((a) => a.name.toLowerCase());
+      const foot = [
+        "✓ = kWh left above the reserve at the lowest point · grid = when the reserve is reached",
+        APPS.map(
+          (a) => `${a.name} ${a.kwh.toFixed(1)} kWh over ${a.h.toFixed(1)} h`,
+        ).join(" · ") +
+          (est.length
+            ? ` (${est.join(" and ")} estimated until first run)`
+            : ""),
+        washerOn
+          ? `${
+              RUN.name || "An appliance"
+            } is running – already in the battery level`
+          : "",
+        (() => {
+          const sh =
+            attr(
+              "sensor.solar_energy_insights_night_outlook",
+              "short_nights",
+            ) || [];
+          return sh.length
+            ? "Ran short: " +
+                sh
+                  .slice(0, 4)
+                  .map(
+                    (x) =>
+                      `${new Date(x.date).toLocaleDateString("en-GB", {
+                        weekday: "short",
+                        day: "numeric",
+                        month: "short",
+                      })} (${x.evening_kwh} kWh by midnight)`,
+                  )
+                  .join(" · ")
+            : "";
+        })(),
+        S &&
+        beforeSunset &&
+        ROWS.slice(1).every(
+          (r) =>
+            r.night &&
+            r.night.typical.spare_kwh === n.typical.spare_kwh &&
+            r.night.heavy.lasts === n.heavy.lasts,
+        )
+          ? "Started now, in daylight, the sun covers them and the battery still fills: tonight is the same."
+          : "",
+        `Replays your last ${n.nights} nights from the battery as it is now; ${n.lasting} of them last`,
+        S === undefined && W.sims?.error
+          ? "Could not simulate the appliances: " + W.sims.error
+          : "",
+      ]
+        .filter(Boolean)
+        .map((t) => `<div>${t}</div>`)
+        .join("");
+      return `${mark}
+  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
+    <div style="font-size:17px;color:var(--primary-text-color, #fff);font-weight:500">Until sunrise</div>
+    <div style="font-size:13px">${headline}</div></div>
+  <div style="font-size:12px;color:${C.muted};margin-top:2px">
+    ${hm(rise)} · ${Math.floor(hours)} h ${String(
+      Math.round((hours % 1) * 60),
+    ).padStart(2, "0")} min · ${
+      socNow !== undefined ? Math.round(socNow) + "% now" : ""
+    }${
+      beforeSunset && setPct !== null && setPct !== undefined
+        ? ` · ${setPct}% at sunset`
+        : ""
+    }</div>
+  <div style="display:grid;grid-template-columns:minmax(0,1.4fr)${" minmax(0,1fr)".repeat(
+    COLS.length,
+  )};gap:6px 8px;align-items:center;justify-items:stretch;margin-top:14px">
+    <div style="font-size:11px;color:${
+      C.muted
+    };text-align:left">If you run…</div>
+    ${
+      COLS.includes("typical") ? colHead("Typical night", "the middle one") : ""
+    }${
+      COLS.includes("heavy")
+        ? colHead("Heavy night", `heavier than ${heavyPct}%`)
+        : ""
+    }
+    ${ROWS.map(rowHtml).join("")}
+  </div>${
+    (this._config || {}).footnotes === false
+      ? ""
+      : `<div style="font-size:10px;color:${C.faint};margin-top:12px;line-height:1.5;white-space:normal;text-align:left">${foot}</div>`
+  }`;
+    },
+    FORMS.untilSunrise,
+  );
+
+  defineCard(
+    "solar-energy-insights-best-time",
+    "Best time to run",
+    "When spare sun is coming, and when to start your appliances.",
+    function (states, hass) {
+      const el = this;
+      const {
+        W,
+        C,
+        st,
+        val,
+        attr,
+        num,
+        hm,
+        kwh,
+        sub,
+        head,
+        pill,
+        ws,
+        waiting,
+      } = window.SolarDash.ui(this, hass, states);
+
+      // Appliances from the card's settings; a sensor that learns energy per run beats the typical figures.
+      const APPS = ((el._config || {}).appliances || []).map((a, i) => {
+        const e = a.energy_per_run ? st(a.energy_per_run) : null;
+        const typical = +a.kwh || 1;
+        let k = parseFloat(e?.state);
+        const est = !(k > 0.05 && k <= 4 * typical);
+        if (est) k = typical;
+        const hrs = (e?.attributes?.hours || [])
+          .filter((h) => h > 0.2 && h < 8)
+          .slice(-5);
+        return {
+          id: "a" + i,
+          name: a.name || "Appliance",
+          icon: a.icon || "mdi:power-plug-outline",
+          kwh: k,
+          est: est && !!a.energy_per_run,
+          h: hrs.length
+            ? hrs.reduce((s, h) => s + h, 0) / hrs.length
+            : +a.hours || 2,
+        };
+      });
+      const sims = () => {
+        if (!APPS.length) return null;
+        const socNow = num(attr("sensor.solar_energy_insights_summary", "soc"));
+        const key = [
+          Math.round(socNow ?? -1),
+          ...APPS.map((a) => a.kwh.toFixed(2)),
+          val("sensor.solar_energy_insights_night_outlook"),
+        ].join("|");
+        const c = W.sims;
+        if (
+          (!c || c.key !== key || (!c.pending && Date.now() - c.t > 300e3)) &&
+          !(c && c.pending && c.key === key) &&
+          hass?.callWS
+        ) {
+          W.sims = { key, t: Date.now(), pending: true, data: c?.data };
+          const call = (list) =>
+            hass
+              .callWS({
+                type: "call_service",
+                domain: "solar_energy_insights",
+                service: "simulate",
+                service_data: {
+                  extra_kwh: +list.reduce((s, a) => s + a.kwh, 0).toFixed(2),
+                  extra_hours: +Math.max(...list.map((a) => a.h)).toFixed(2),
+                },
+                return_response: true,
+              })
+              .then((r) => r.response);
+          Promise.all([
+            ...APPS.map((a) => call([a])),
+            APPS.length > 1 ? call(APPS) : null,
+          ])
+            .then((res) => {
+              W.sims = {
+                key,
+                t: Date.now(),
+                data: {
+                  each: res.slice(0, APPS.length),
+                  all: APPS.length > 1 ? res[APPS.length] : null,
+                },
+              };
+            })
+            .catch((e) => {
+              W.sims = { key, t: Date.now(), error: String(e?.message || e) };
+            })
+            .finally(() => (W.listeners || []).forEach((f) => f()));
+        }
+        return W.sims?.data;
+      };
+
+      // Best time to run: spare sun per half hour until sunset, and for each appliance the start that
+      // takes the most from sun that would otherwise be exported, against starting now.
+      const plan = ws("plan", "solar_energy_insights/plan", 60);
+      if (!plan)
+        return (
+          head("mdi:clock-check-outline", "Best time to run") +
+          waiting("plan", "the plan")
+        );
+      const slots = (plan.day?.slots || []).map(([t, pv, load]) => ({
+        t: new Date(t).getTime(),
+        spare: pv - load,
+      }));
+      if (!slots.length)
+        return (
+          head("mdi:clock-check-outline", "Best time to run") +
+          sub("No sun left before sunset.")
+        );
+      const limit = plan.charge_limit_pct ?? 100;
+      const curve = (plan.curve || []).map(([t, v]) => [
+        new Date(t).getTime(),
+        v,
+      ]);
+      const levelAt = (t) => {
+        let v = curve.length ? curve[0][1] : 0;
+        for (const [ct, cv] of curve) {
+          if (ct <= t) v = cv;
+          else break;
+        }
+        return v;
+      };
+      // Sun to spare once the battery is full would be exported: that is the free part.
+      slots.forEach((s) => {
+        s.full = levelAt(s.t + 1) >= limit - 0.5;
+        s.free = s.full ? Math.max(s.spare, 0) : 0;
+      });
+      const nowMs = new Date(plan.at).getTime();
+      const tomorrow =
+        new Date(slots[0].t).toDateString() !==
+        new Date(plan.at).toDateString();
+      // Before sunrise there is no "now" to compare with: the day has not started.
+      const beforeSun = nowMs < slots[0].t;
+      const share = (a, k) => {
+        const n = Math.max(1, Math.round(a.h * 2)),
+          kw = a.kwh / (n / 2);
+        let got = 0;
+        for (let j = k; j < Math.min(k + n, slots.length); j++)
+          got += Math.min(slots[j].free, kw) / 2;
+        return Math.min(got / a.kwh, 1);
+      };
+      const firstNow = Math.max(
+        0,
+        slots.findIndex((s) => s.t + 1800e3 > nowMs),
+      );
+      const plans = APPS.map((a) => {
+        let best = firstNow,
+          bestShare = -1;
+        for (let k = firstNow; k < slots.length; k++) {
+          const v = share(a, k);
+          if (v > bestShare + 1e-9) {
+            best = k;
+            bestShare = v;
+          }
+        }
+        return {
+          a,
+          best: slots[best].t,
+          bestShare,
+          nowShare: tomorrow || beforeSun ? null : share(a, firstNow),
+        };
+      });
+      const maxAbs = Math.max(...slots.map((s) => Math.abs(s.spare)), 0.5);
+      const Wd = 340,
+        H = 90,
+        mid = 58,
+        bw = Wd / slots.length;
+      const win = plan.best_window
+        ? [
+            new Date(plan.best_window.start).getTime(),
+            new Date(plan.best_window.end).getTime(),
+          ]
+        : null;
+      const X = (t) => ((t - slots[0].t) / 1800e3) * bw;
+      const bars = slots
+        .map((s, k) => {
+          const h =
+            (Math.abs(s.spare) / maxAbs) *
+            (s.spare >= 0 ? mid - 6 : H - mid - 14);
+          const color = s.spare < 0 ? C.faint : s.full ? C.ok : C.heavy;
+          return `<rect x="${(k * bw + 1).toFixed(1)}" y="${(s.spare >= 0
+            ? mid - h
+            : mid
+          ).toFixed(1)}" width="${Math.max(bw - 2, 1).toFixed(
+            1,
+          )}" height="${Math.max(h, 1).toFixed(1)}" rx="1.5" fill="${color}"/>`;
+        })
+        .join("");
+      const shade = win
+        ? `<rect x="${X(win[0]).toFixed(1)}" y="0" width="${(
+            X(win[1]) - X(win[0])
+          ).toFixed(1)}" height="${mid}" fill="${C.typical}" opacity=".12"/>`
+        : "";
+      const nowX =
+        !tomorrow && nowMs > slots[0].t
+          ? `<line x1="${X(nowMs)}" y1="0" x2="${X(nowMs)}" y2="${
+              H - 12
+            }" stroke="var(--primary-text-color, #fff)" stroke-opacity=".5" stroke-dasharray="2 2"/>`
+          : "";
+      const svg = `<svg viewBox="0 0 ${Wd} ${H}" style="width:100%;display:block;margin-top:4px">${shade}
+  <line x1="0" y1="${mid}" x2="${Wd}" y2="${mid}" stroke="${
+    C.track
+  }"/>${bars}${nowX}
+  <text x="0" y="${H - 1}" fill="${C.muted}" font-size="10">${hm(
+    slots[0].t,
+  )}</text>
+  <text x="${Wd}" y="${H - 1}" fill="${
+    C.muted
+  }" font-size="10" text-anchor="end">sunset ${hm(plan.sunset)}</text></svg>`;
+      const pct = (v) => Math.round(v * 100) + "%";
+      const anyFree = slots.some((s) => s.free > 0.2);
+      const rows = plans
+        .map(
+          (
+            p,
+          ) => `<div style="display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:8px;align-items:center;margin:8px 0;font-size:13px;color:${
+            C.text
+          }">
+  <ha-icon icon="${p.a.icon}" style="--mdc-icon-size:18px;color:${
+    C.muted
+  }"></ha-icon>
+  <div style="min-width:0"><div>${p.a.name} <span style="color:${
+    C.muted
+  };font-size:11px">${p.a.kwh.toFixed(1)} kWh · ${p.a.h.toFixed(
+    1,
+  )} h</span></div>
+    ${
+      p.nowShare !== null
+        ? `<div style="font-size:11px;color:${C.muted}">now: ${pct(
+            p.nowShare,
+          )} from free sun</div>`
+        : ""
+    }</div>
+  <div style="text-align:right">${
+    p.bestShare > 0.05
+      ? `<div>start ${hm(p.best)}${
+          tomorrow ? " tmrw" : ""
+        }</div><div style="font-size:11px;color:${C.ok}">${pct(
+          p.bestShare,
+        )} free</div>`
+      : `<div style="color:${C.muted}">any time</div>`
+  }</div></div>`,
+        )
+        .join("");
+      return (
+        head(
+          "mdi:clock-check-outline",
+          "Best time to run",
+          tomorrow ? "tomorrow" : beforeSun ? "from sunrise" : "until sunset",
+        ) +
+        ((this._config || {}).chart === false
+          ? ""
+          : svg +
+            sub(
+              `<span style="color:${C.ok}">Green</span>: sun to spare with the battery full, which would be exported · <span style="color:${C.heavy}">amber</span>: it would charge the battery · shaded: the best window.`,
+            )) +
+        rows +
+        (!APPS.length
+          ? ""
+          : anyFree
+            ? APPS.length > 1
+              ? sub(
+                  "Each on its own; running them together shares the same spare sun.",
+                )
+              : ""
+            : sub(
+                "No free sun expected: whenever they run, they use energy the battery would otherwise keep for tonight.",
+              ))
+      );
+    },
+    FORMS.bestTime,
+  );
+
+  defineCard(
+    "solar-energy-insights-forecast-trust",
+    "Can I trust the forecast?",
+    "How far the forecast held at 18:00, 21:00, 06:00 and 12:00.",
+    function (states, hass) {
+      const el = this;
+      const { C, attr, head, sub } = window.SolarDash.ui(this, hass, states);
+      const ID = "sensor.solar_energy_insights_forecast_checkpoints";
+      const v = states[ID]?.attributes;
+      if (!v)
+        return (
+          head("mdi:target-account", "Can I trust the forecast?") +
+          sub("Waiting for Solar Energy Insights.")
+        );
+      if (v.needs_solar_counter)
+        return (
+          head("mdi:target-account", "Can I trust the forecast?") +
+          sub(
+            "Needs the solar energy counter: Settings › Devices & services › Solar Energy Insights › Configure › Solar energy.",
+          )
+        );
+      const k = (x) =>
+        x === null || x === undefined
+          ? "–"
+          : x >= 10
+            ? x.toFixed(0)
+            : x.toFixed(1);
+      const pct = (x) => Math.round(x * 100) + "%";
+      const S = v.scores || {};
+      const ROWS = [
+        ["18:00", "for tomorrow"],
+        ["21:00", "for tomorrow"],
+        ["06:00", "for today"],
+        ["12:00", "for the afternoon"],
+      ];
+      const only = (this._config || {}).checkpoints;
+      const SHOWN =
+        Array.isArray(only) && only.length
+          ? ROWS.filter(([n]) => only.includes(n))
+          : ROWS;
+      const lean = (b) =>
+        Math.abs(b) < 0.3
+          ? "no clear lean"
+          : b > 0
+            ? `${k(b)} kWh optimistic`
+            : `${k(-b)} kWh pessimistic`;
+      const row = ([name, what]) => {
+        const s = S[name] || { days: 0 };
+        if (s.typical_kwh === null || s.typical_kwh === undefined)
+          return `<div style="display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid ${
+            C.track
+          }">
+      <span style="color:${C.text}">${name} <span style="color:${
+        C.muted
+      };font-size:12px">${what}</span></span>
+      <span style="color:${C.muted};font-size:12px">collecting: ${
+        s.days || 0
+      } of 10 days</span></div>`;
+        const groups = ["sunny", "mixed", "dull"]
+          .map((g) =>
+            s.groups?.[g]?.typical_kwh != null
+              ? `${g} ±${k(s.groups[g].typical_kwh)}`
+              : "",
+          )
+          .filter(Boolean)
+          .join(" · ");
+        const ly =
+          s.last_year?.typical_kwh != null
+            ? `this time last year ±${k(s.last_year.typical_kwh)}`
+            : "";
+        return `<div style="padding:7px 0;border-top:1px solid ${C.track}">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <span style="color:${C.text}">${name} <span style="color:${
+        C.muted
+      };font-size:12px">${what}</span></span>
+      <span style="color:${C.text};font-size:15px">±${k(s.typical_kwh)} kWh${
+        s.typical_share != null
+          ? ` <span style="color:${C.muted};font-size:11px">(${pct(
+              s.typical_share,
+            )} of a day)</span>`
+          : ""
+      }</span></div>
+    <div style="font-size:11px;color:${
+      C.muted
+    };line-height:1.45;margin-top:2px;white-space:normal">
+      ${[lean(s.bias_kwh), `${pct(s.in_range)} inside its range`, groups, ly]
+        .filter(Boolean)
+        .join(" · ")}</div></div>`;
+      };
+      const wait = (label, w, early, late) =>
+        !w || w.pays === null
+          ? ""
+          : w.pays
+            ? `Waiting from ${early} to ${late} cuts the typical miss from ±${k(
+                w.early_kwh,
+              )} to ±${k(w.late_kwh)} kWh.`
+            : `Waiting from ${early} to ${late} barely helps (±${k(
+                w.early_kwh,
+              )} → ±${k(w.late_kwh)} kWh).`;
+      const waits = [
+        wait("", S.waiting?.["21:00 vs 18:00"], "18:00", "21:00"),
+        wait("", S.waiting?.["12:00 vs 06:00"], "06:00", "12:00"),
+      ].filter(Boolean);
+      const frozen = (when, label) =>
+        Object.entries(v[when] || {})
+          .sort()
+          .map(
+            ([n, f]) =>
+              `${n} ${k(f.forecast_kwh)} kWh${
+                n === "12:00" ? " from noon" : ""
+              }`,
+          )
+          .join(" · ");
+      const today = frozen("today"),
+        tomorrow = frozen("tomorrow");
+      const days = (S["06:00"] || {}).days || 0;
+      return (
+        head(
+          "mdi:target-account",
+          "Can I trust the forecast?",
+          days ? `${days} days scored` : "",
+        ) +
+        SHOWN.map(row).join("") +
+        ((this._config || {}).footnotes === false
+          ? ""
+          : (waits.length ? sub(waits.join("<br>")) : "") +
+            sub(
+              [
+                today ? `Frozen for today: ${today}` : "",
+                tomorrow ? `for tomorrow: ${tomorrow}` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ") +
+                "<br>± is the typical miss over the last 30 days; the range is Solcast’s low-to-high.",
+            ))
+      );
+    },
+    FORMS.forecastTrust,
   );
 })();

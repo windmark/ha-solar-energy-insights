@@ -15,6 +15,12 @@
 
 ### Added
 
+- Card settings, in the dashboard's visual editor: which rows the now card shows and in what order, its header and taps; until sunrise's columns and notes; best time's chart; which forecast checkpoints show; the level card's quest and recap; which badge sections show. `docs/cards.md` lists them and shows how to build your own card from the Summary sensor.
+
+- The cards follow the theme: text, divider and card colours from Home Assistant, status colours chosen for light or dark themes, and `--sei-good`, `--sei-warn`, `--sei-bad`, `--sei-info` and `--sei-track` to override them.
+
+- The solar cards ship with the integration: `custom:solar-energy-insights-now`, `-until-sunrise`, `-best-time` and `-forecast-trust`. Appliances (name, icon, typical kWh and hours, optionally a sensor that learns energy per run) and an appliance already running are card settings; without them the cards show the house alone. Everything else comes from the integration's settings.
+
 - Quests carry the plan's advice for meeting them, as it stood when they were set: tonight's "get to sunrise without the grid" what is left of the evening's budget, tomorrow's "keep the sun at home" and "be self-sufficient" the best window for heavy loads, "fill the battery before" that heavy loads after then won't slow it.
 - The achievements answer gives last week in one line (nights without the grid, the best day, the sun kept at home and what it was worth, badges earned) and what yesterday was the best at in a while ("best day since 12 Oct", or "on record" with a month behind it; gaps under a week are not news). The level card shows both, and the quest's advice.
 
