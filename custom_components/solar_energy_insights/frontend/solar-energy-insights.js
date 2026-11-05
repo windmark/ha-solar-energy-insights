@@ -841,7 +841,7 @@
         .reverse()
         .find((q) => q.result === true || q.result === false);
       const quest = open
-        ? `<div style="background:color-mix(in srgb, var(--sei-good, var(--sei-good, var(--sei-good-auto, #8be36a))) 12%, transparent);border-radius:12px;padding:10px 12px;margin:12px 0 4px">
+        ? `<div style="background:color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 12%, transparent);border-radius:12px;padding:10px 12px;margin:12px 0 4px">
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--sei-good, var(--sei-good-auto, #8be36a))">
       <span><ha-icon icon="mdi:flag-variant-outline" style="--mdc-icon-size:14px"></ha-icon> ${
         open.kind === "grid_free_nights"
@@ -1046,7 +1046,7 @@
           return `<div style="display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;margin-top:12px">
     <div style="width:36px;height:36px;border-radius:50%;background:${
       hot
-        ? "color-mix(in srgb, var(--sei-warn, var(--sei-warn, var(--sei-warn-auto, #ffb74d))) 18%, transparent)"
+        ? "color-mix(in srgb, var(--sei-warn, var(--sei-warn-auto, #ffb74d)) 18%, transparent)"
         : "var(--sei-track, var(--divider-color, #2c2c2e))"
     };display:flex;align-items:center;justify-content:center">
       <ha-icon icon="${s.icon}" style="--mdc-icon-size:19px;color:${
@@ -1365,8 +1365,8 @@
         return `<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0">${icon(
           b,
           b.season
-            ? "color-mix(in srgb, var(--sei-warn, var(--sei-warn, var(--sei-warn-auto, #ffb74d))) 18%, transparent)"
-            : "color-mix(in srgb, var(--sei-info, var(--sei-info, var(--sei-info-auto, #9ad7e6))) 18%, transparent)",
+            ? "color-mix(in srgb, var(--sei-warn, var(--sei-warn-auto, #ffb74d)) 18%, transparent)"
+            : "color-mix(in srgb, var(--sei-info, var(--sei-info-auto, #9ad7e6)) 18%, transparent)",
           b.season
             ? "var(--sei-warn, var(--sei-warn-auto, #ffb74d))"
             : "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
@@ -1443,7 +1443,7 @@
       out += strip(
         "Any time",
         anyTime,
-        "color-mix(in srgb, var(--sei-info, var(--sei-info, var(--sei-info-auto, #9ad7e6))) 18%, transparent)",
+        "color-mix(in srgb, var(--sei-info, var(--sei-info-auto, #9ad7e6)) 18%, transparent)",
         "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
       );
       out += strip(
@@ -1456,7 +1456,7 @@
       out += strip(
         "Complete",
         done,
-        "color-mix(in srgb, var(--sei-good, var(--sei-good, var(--sei-good-auto, #8be36a))) 18%, transparent)",
+        "color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 18%, transparent)",
         "var(--sei-good, var(--sei-good-auto, #8be36a))",
         null,
         true,
@@ -1606,15 +1606,15 @@
       const C = {
         good: [
           "var(--sei-good, var(--sei-good-auto, #8be36a))",
-          "color-mix(in srgb, var(--sei-good, var(--sei-good, var(--sei-good-auto, #8be36a))) 18%, transparent)",
+          "color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 18%, transparent)",
         ],
         warn: [
           "var(--sei-warn, var(--sei-warn-auto, #ffb74d))",
-          "color-mix(in srgb, var(--sei-warn, var(--sei-warn, var(--sei-warn-auto, #ffb74d))) 18%, transparent)",
+          "color-mix(in srgb, var(--sei-warn, var(--sei-warn-auto, #ffb74d)) 18%, transparent)",
         ],
         bad: [
           "var(--sei-bad, var(--sei-bad-auto, #ff8a80))",
-          "color-mix(in srgb, var(--sei-bad, var(--sei-bad, var(--sei-bad-auto, #ff8a80))) 18%, transparent)",
+          "color-mix(in srgb, var(--sei-bad, var(--sei-bad-auto, #ff8a80)) 18%, transparent)",
         ],
         neutral: [
           "var(--secondary-text-color, #c7c7cc)",
@@ -1724,7 +1724,7 @@
       }
       ${
         l.change
-          ? `<div style="display:inline-flex;align-items:center;gap:4px;margin-top:5px;font-size:11px;color:var(--sei-warn, var(--sei-warn-auto, #ffb74d));background:color-mix(in srgb, var(--sei-warn, var(--sei-warn, var(--sei-warn-auto, #ffb74d))) 18%, transparent);border-radius:6px;padding:2px 7px;white-space:normal"><ha-icon icon="mdi:history" style="--mdc-icon-size:13px"></ha-icon>${l.change}</div>`
+          ? `<div style="display:inline-flex;align-items:center;gap:4px;margin-top:5px;font-size:11px;color:var(--sei-warn, var(--sei-warn-auto, #ffb74d));background:color-mix(in srgb, var(--sei-warn, var(--sei-warn-auto, #ffb74d)) 18%, transparent);border-radius:6px;padding:2px 7px;white-space:normal"><ha-icon icon="mdi:history" style="--mdc-icon-size:13px"></ha-icon>${l.change}</div>`
           : ""
       }
     </div>
@@ -1879,10 +1879,10 @@
         if (!o)
           return `<div style="${base}background:${C.track};color:${C.faint}">…</div>`;
         return o.lasts
-          ? `<div style="${base}background:color-mix(in srgb, var(--sei-good, var(--sei-good, var(--sei-good-auto, #8be36a))) 18%, transparent);color:${
+          ? `<div style="${base}background:color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 18%, transparent);color:${
               C.ok
             }">✓ ${o.spare_kwh.toFixed(1)}</div>`
-          : `<div style="${base}background:color-mix(in srgb, var(--sei-bad, var(--sei-bad, var(--sei-bad-auto, #ff8a80))) 18%, transparent);color:${
+          : `<div style="${base}background:color-mix(in srgb, var(--sei-bad, var(--sei-bad-auto, #ff8a80)) 18%, transparent);color:${
               C.bad
             }">grid ${hm(o.reserve_at)}</div>`;
       };
