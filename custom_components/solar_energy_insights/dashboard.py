@@ -19,6 +19,7 @@ from .const import (
     CONF_BATTERY_SOC,
     CONF_GRID_EXPORT_ENERGY,
     CONF_GRID_IMPORT_ENERGY,
+    CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
     CONF_SOLAR_ENERGY,
     CONF_SOLAR_POWER,
@@ -176,6 +177,7 @@ async def dashboard_config(c: InsightsCoordinator) -> dict[str, Any]:
         "export": setting.get(CONF_GRID_EXPORT_ENERGY),
         "soc": setting.get(CONF_BATTERY_SOC),
         "solar_power": setting.get(CONF_SOLAR_POWER),
+        "grid_power": setting.get(CONF_GRID_POWER),
     }
     start = (
         await history_start(c.hass, str(entities["house"]))
