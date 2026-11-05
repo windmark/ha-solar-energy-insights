@@ -76,6 +76,8 @@ Complications that, measured on real data, did not earn their place:
 
 ### Fixed
 
+- The shipped appliance cards shared a cache name with dashboard tiles built from the same code, and overwrote their results in a new shape ("undefined is not an object (evaluating 'both.full_at')"). They keep their own now.
+
 - The badges card's progress bar had no width and didn't show.
 - The streaks card's explanation and the streaks' and records' descriptions ran off the card on a phone: they now wrap.
 

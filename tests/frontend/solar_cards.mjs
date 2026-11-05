@@ -270,4 +270,16 @@ check(
     "Frozen for today",
   ),
 );
+// The shipped cards keep their own cache: a dashboard tile's `sims`, in its own
+// shape, must survive them drawing.
+window.__sei.sims = {
+  key: "tile",
+  data: { dw: {}, dr: {}, both: { full_at: "x" } },
+};
+await html("until-sunrise", TWO);
+await html("best-time", TWO);
+check(
+  "a dashboard tile's own cache is left alone",
+  window.__sei.sims.data.both.full_at === "x",
+);
 console.log("ok");
