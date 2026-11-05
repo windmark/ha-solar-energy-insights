@@ -519,14 +519,14 @@
   const ui = (el, hass, states) => {
     const W = (window.__sei = window.__sei || {});
     const C = {
-      text: "#fff",
-      muted: "#8e8e93",
-      faint: "#636366",
-      track: "#2c2c2e",
-      typical: "#5ac8fa",
-      heavy: "#ffb74d",
-      ok: "#8be36a",
-      bad: "#ff8a80",
+      text: "var(--primary-text-color, #fff)",
+      muted: "var(--secondary-text-color, #8e8e93)",
+      faint: "var(--disabled-text-color, #636366)",
+      track: "var(--sei-track, var(--divider-color, #2c2c2e))",
+      typical: "var(--sei-info, var(--sei-info-auto, #5ac8fa))",
+      heavy: "var(--sei-warn, var(--sei-warn-auto, #ffb74d))",
+      ok: "var(--sei-good, var(--sei-good-auto, #8be36a))",
+      bad: "var(--sei-bad, var(--sei-bad-auto, #ff8a80))",
     };
     const st = (id) => states[id];
     const val = (id) => {
@@ -648,9 +648,44 @@
 
   /* Real cards rather than button-card templates: taps and redraws work the ordinary way. */
   const CARD_STYLE =
-    "display:block;background:#1c1c1e;border-radius:18px;border:none;box-shadow:none;" +
-    "padding:18px 20px 20px;color:#e5e5e7;text-align:left;white-space:nowrap;" +
+    "display:block;background:var(--ha-card-background, var(--card-background-color, #1c1c1e));border-radius:18px;border:none;box-shadow:none;" +
+    "padding:18px 20px 20px;color:var(--primary-text-color, #e5e5e7);text-align:left;white-space:nowrap;" +
     "font-family:var(--ha-font-family-body, Roboto, sans-serif);font-size:14px;line-height:1.4";
+  // Status colours chosen for the theme: pastels read well on dark, deeper tones on
+  // light. A --sei-good (and so on) set in a theme overrides both.
+  const TONES = {
+    dark: { good: "#8be36a", warn: "#ffb74d", bad: "#ff8a80", info: "#9ad7e6" },
+    light: {
+      good: "#2e7d32",
+      warn: "#e65100",
+      bad: "#c62828",
+      info: "#0277bd",
+    },
+  };
+  const toneDefaults = (hass) => {
+    const set = hass?.themes?.darkMode === false ? TONES.light : TONES.dark;
+    return Object.entries(set)
+      .map(([tone, colour]) => `--sei-${tone}-auto:${colour}`)
+      .join(";");
+  };
+  // SVG presentation attributes don't take var(): theme colours go into a style.
+  const svgColours = (html) =>
+    html.replace(
+      /<(rect|line|path|circle|text|polyline|polygon)\b([^>]*)>/g,
+      (tag, name, attrs) => {
+        const moved = [];
+        const rest = attrs.replace(
+          /\s(fill|stroke)="((?:var|color-mix)\([^"]*)"/g,
+          (_, prop, value) => {
+            moved.push(`${prop}:${value}`);
+            return "";
+          },
+        );
+        return moved.length
+          ? `<${name}${rest} style="${moved.join(";")}">`
+          : tag;
+      },
+    );
   const defineCard = (tag, name, description, render) => {
     if (!window.customElements || customElements.get(tag)) return;
     class Card extends HTMLElement {
@@ -686,13 +721,16 @@
         try {
           body = render.call(this, this._hass.states, this._hass);
         } catch (e) {
-          body = `<div style="font-size:12px;color:#ff8a80;white-space:normal">${String(
+          body = `<div style="font-size:12px;color:var(--sei-bad, var(--sei-bad-auto, #ff8a80));white-space:normal">${String(
             (e && e.message) || e,
           )}</div>`;
         }
+        body = svgColours(body);
         if (body === this._drawn) return;
         this._drawn = body;
-        this.shadowRoot.innerHTML = `<ha-card style="${CARD_STYLE}">${body}</ha-card>`;
+        this.shadowRoot.innerHTML = `<ha-card style="${CARD_STYLE};${toneDefaults(
+          this._hass,
+        )}">${body}</ha-card>`;
       }
     }
     customElements.define(tag, Card);
@@ -737,11 +775,14 @@
         Bronze: ["#cd7f32", "mdi:shield-outline"],
         Silver: ["#c0c0c8", "mdi:shield-half-full"],
         Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: ["#9ad7e6", "mdi:shield-crown"],
+        Platinum: [
+          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
+          "mdi:shield-crown",
+        ],
         Diamond: ["#b9f2ff", "mdi:diamond-stone"],
       };
       const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:#000;border-radius:${
+        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
           h / 2
         }px;overflow:hidden"><div style="width:${Math.max(
           0,
@@ -770,7 +811,12 @@
         R = a.rank,
         [rc, ricon] = RANK[R.name] || RANK.Bronze;
       const PARTS = [
-        ["self_sufficiency", "Self-sufficiency", 40, "#8be36a"],
+        [
+          "self_sufficiency",
+          "Self-sufficiency",
+          40,
+          "var(--sei-good, var(--sei-good-auto, #8be36a))",
+        ],
         ["kept_at_home", "Solar kept at home", 30, "#f5b83d"],
         ["battery_used", "Battery put to work", 15, "#4c7cf3"],
         ["performance", "Against the forecast", 15, "#b07cf0"],
@@ -782,7 +828,7 @@
         .map(([k, label, w, c]) => {
           const pts = Math.round((parts[k] * w * 100) / total);
           return `<div style="margin-top:9px"><div style="display:flex;justify-content:space-between;font-size:12px">
-    <span style="color:#c7c7cc">${label}</span><span style="color:#fff">${pts}<span style="color:#636366"> / ${Math.round(
+    <span style="color:var(--secondary-text-color, #c7c7cc)">${label}</span><span style="color:var(--primary-text-color, #fff)">${pts}<span style="color:var(--disabled-text-color, #636366)"> / ${Math.round(
       (w * 100) / total,
     )}</span></span></div>
     <div style="margin-top:4px">${bar(parts[k] * 100, c)}</div></div>`;
@@ -795,8 +841,8 @@
         .reverse()
         .find((q) => q.result === true || q.result === false);
       const quest = open
-        ? `<div style="background:#1f2a1f;border-radius:12px;padding:10px 12px;margin:12px 0 4px">
-    <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#8be36a">
+        ? `<div style="background:color-mix(in srgb, var(--sei-good, var(--sei-good, var(--sei-good-auto, #8be36a))) 12%, transparent);border-radius:12px;padding:10px 12px;margin:12px 0 4px">
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--sei-good, var(--sei-good-auto, #8be36a))">
       <span><ha-icon icon="mdi:flag-variant-outline" style="--mdc-icon-size:14px"></ha-icon> ${
         open.kind === "grid_free_nights"
           ? "This week"
@@ -808,11 +854,11 @@
               })
       }</span>
       <span style="font-weight:500">+${open.reward} XP</span></div>
-    <div style="font-size:15px;color:#fff;font-weight:500;margin-top:4px;white-space:normal">${
+    <div style="font-size:15px;color:var(--primary-text-color, #fff);font-weight:500;margin-top:4px;white-space:normal">${
       open.title
     }</div>${
       open.hint
-        ? `<div style="font-size:12px;color:#a8d5a0;margin-top:3px;white-space:normal">${open.hint}</div>`
+        ? `<div style="font-size:12px;color:var(--sei-good, var(--sei-good-auto, #8be36a));margin-top:3px;white-space:normal">${open.hint}</div>`
         : ""
     }</div>`
         : "";
@@ -845,7 +891,7 @@
             : NEWS[x.key][1],
         );
       const yesterdayLine = news.length
-        ? `<div style="font-size:11px;color:#8be36a;margin-top:12px;white-space:normal">Yesterday: ${news.join(
+        ? `<div style="font-size:11px;color:var(--sei-good, var(--sei-good-auto, #8be36a));margin-top:12px;white-space:normal">Yesterday: ${news.join(
             " · ",
           )}</div>`
         : "";
@@ -856,7 +902,7 @@
           currency: hass?.config?.currency || "EUR",
         }).format(v);
       const weekLine = lw
-        ? `<div style="font-size:11px;color:#8e8e93;margin-top:${
+        ? `<div style="font-size:11px;color:var(--secondary-text-color, #8e8e93);margin-top:${
             news.length ? 4 : 12
           }px;white-space:normal">Last week: ${[
             lw.nights
@@ -879,30 +925,30 @@
             .join(" · ")}</div>`
         : "";
       return `<div style="display:flex;align-items:center;gap:14px">
-    <div style="width:56px;height:56px;border-radius:50%;background:#2c2c2e;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px ${rc}55;flex-shrink:0">
+    <div style="width:56px;height:56px;border-radius:50%;background:var(--sei-track, var(--divider-color, #2c2c2e));display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px ${rc}55;flex-shrink:0">
       <ha-icon icon="${ricon}" style="--mdc-icon-size:30px;color:${rc}"></ha-icon></div>
     <div style="flex:1;min-width:0">
-      <div style="font-size:18px;color:#fff;font-weight:500;white-space:normal;line-height:1.25">Level ${
+      <div style="font-size:18px;color:var(--primary-text-color, #fff);font-weight:500;white-space:normal;line-height:1.25">Level ${
         L.level
       } · ${L.name}</div>
-      <div style="font-size:12px;color:#8e8e93;white-space:normal;line-height:1.35">${
+      <div style="font-size:12px;color:var(--secondary-text-color, #8e8e93);white-space:normal;line-height:1.35">${
         R.name
       } rank · 30-day average ${R.average}${
         R.next_name ? ` · ${R.next_name} at ${R.next_at}` : ""
       }</div>
       <div style="margin-top:6px">${bar(L.progress * 100, rc, 5)}</div>
-      <div style="font-size:11px;color:#636366;margin-top:3px">${(
+      <div style="font-size:11px;color:var(--disabled-text-color, #636366);margin-top:3px">${(
         L.next_xp - L.xp
       ).toLocaleString("en-GB")} XP to level ${L.level + 1}</div>
     </div>
-    <div style="text-align:center;flex-shrink:0"><div style="font-size:30px;color:#fff;font-weight:500;line-height:1">${
+    <div style="text-align:center;flex-shrink:0"><div style="font-size:30px;color:var(--primary-text-color, #fff);font-weight:500;line-height:1">${
       a.today.score ?? "–"
     }</div>
-      <div style="font-size:10px;color:#8e8e93">today</div></div>
+      <div style="font-size:10px;color:var(--secondary-text-color, #8e8e93)">today</div></div>
   </div>${quest}${lastLine}${rows}${yesterdayLine}${weekLine}
   ${
     month
-      ? `<div style="font-size:11px;color:#636366;margin-top:12px;white-space:normal">${new Date(
+      ? `<div style="font-size:11px;color:var(--disabled-text-color, #636366);margin-top:12px;white-space:normal">${new Date(
           month.month + "-01",
         ).toLocaleDateString("en-GB", { month: "long" })}: average ${
           month.score
@@ -958,11 +1004,14 @@
         Bronze: ["#cd7f32", "mdi:shield-outline"],
         Silver: ["#c0c0c8", "mdi:shield-half-full"],
         Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: ["#9ad7e6", "mdi:shield-crown"],
+        Platinum: [
+          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
+          "mdi:shield-crown",
+        ],
         Diamond: ["#b9f2ff", "mdi:diamond-stone"],
       };
       const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:#000;border-radius:${
+        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
           h / 2
         }px;overflow:hidden"><div style="width:${Math.max(
           0,
@@ -990,37 +1039,43 @@
         .map((s) => {
           const hot = s.current > 0;
           const shields = s.shields
-            ? ` <span style="color:#9ad7e6;font-size:11px">${'<ha-icon icon="mdi:shield-half-full" style="--mdc-icon-size:13px"></ha-icon>'.repeat(
+            ? ` <span style="color:var(--sei-info, var(--sei-info-auto, #9ad7e6));font-size:11px">${'<ha-icon icon="mdi:shield-half-full" style="--mdc-icon-size:13px"></ha-icon>'.repeat(
                 s.shields,
               )}</span>`
             : "";
           return `<div style="display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;margin-top:12px">
     <div style="width:36px;height:36px;border-radius:50%;background:${
-      hot ? "#3a2412" : "#2c2c2e"
+      hot
+        ? "color-mix(in srgb, var(--sei-warn, var(--sei-warn, var(--sei-warn-auto, #ffb74d))) 18%, transparent)"
+        : "var(--sei-track, var(--divider-color, #2c2c2e))"
     };display:flex;align-items:center;justify-content:center">
       <ha-icon icon="${s.icon}" style="--mdc-icon-size:19px;color:${
-        hot ? "#ff9f43" : "#636366"
+        hot
+          ? "var(--sei-warn, var(--sei-warn-auto, #ffb74d))"
+          : "var(--disabled-text-color, #636366)"
       }"></ha-icon></div>
-    <div style="min-width:0"><div style="font-size:14px;color:#fff;white-space:normal">${
+    <div style="min-width:0"><div style="font-size:14px;color:var(--primary-text-color, #fff);white-space:normal">${
       s.name
-    }${shields}</div><div style="font-size:11px;color:#8e8e93;white-space:normal;line-height:1.35">${
+    }${shields}</div><div style="font-size:11px;color:var(--secondary-text-color, #8e8e93);white-space:normal;line-height:1.35">${
       s.description
     }</div></div>
     <div style="text-align:right"><div style="font-size:22px;color:${
-      hot ? "#fff" : "#636366"
+      hot
+        ? "var(--primary-text-color, #fff)"
+        : "var(--disabled-text-color, #636366)"
     }">${s.current}${
       hot
-        ? ' <ha-icon icon="mdi:fire" style="--mdc-icon-size:16px;color:#ff9f43"></ha-icon>'
+        ? ' <ha-icon icon="mdi:fire" style="--mdc-icon-size:16px;color:var(--sei-warn, var(--sei-warn-auto, #ffb74d))"></ha-icon>'
         : ""
     }</div>
       <div style="font-size:11px;color:${
-        s.personal_best ? "#f5b83d" : "#8e8e93"
+        s.personal_best ? "#f5b83d" : "var(--secondary-text-color, #8e8e93)"
       }">${
         s.personal_best ? "personal best!" : `best ${s.best}`
       }</div></div></div>`;
         })
         .join("");
-      return `<div style="font-size:12px;color:#8e8e93;white-space:normal;line-height:1.4">Shields come with each week-long run and absorb one break the weather caused.</div>${rows}`;
+      return `<div style="font-size:12px;color:var(--secondary-text-color, #8e8e93);white-space:normal;line-height:1.4">Shields come with each week-long run and absorb one break the weather caused.</div>${rows}`;
     },
   );
 
@@ -1057,11 +1112,14 @@
         Bronze: ["#cd7f32", "mdi:shield-outline"],
         Silver: ["#c0c0c8", "mdi:shield-half-full"],
         Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: ["#9ad7e6", "mdi:shield-crown"],
+        Platinum: [
+          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
+          "mdi:shield-crown",
+        ],
         Diamond: ["#b9f2ff", "mdi:diamond-stone"],
       };
       const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:#000;border-radius:${
+        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
           h / 2
         }px;overflow:hidden"><div style="width:${Math.max(
           0,
@@ -1106,9 +1164,11 @@
             const p = Math.min((yieldToday / r.value) * 100, 100);
             chase = `<div style="margin-top:5px">${bar(
               p,
-              p >= 100 ? "#8be36a" : "#f5b83d",
+              p >= 100
+                ? "var(--sei-good, var(--sei-good-auto, #8be36a))"
+                : "#f5b83d",
               4,
-            )}</div><div style="font-size:10px;color:#636366;margin-top:2px">today ${Math.round(
+            )}</div><div style="font-size:10px;color:var(--disabled-text-color, #636366);margin-top:2px">today ${Math.round(
               p,
             )}% of the record</div>`;
           }
@@ -1128,15 +1188,17 @@
     <ha-icon icon="${
       r.icon
     }" style="--mdc-icon-size:18px;color:#f5b83d;margin-top:1px"></ha-icon>
-    <div style="min-width:0"><div style="font-size:14px;color:#fff;white-space:normal">${
+    <div style="min-width:0"><div style="font-size:14px;color:var(--primary-text-color, #fff);white-space:normal">${
       r.name
     }</div>
-      <div style="font-size:11px;color:#8e8e93;white-space:normal;line-height:1.35">${dmy(
+      <div style="font-size:11px;color:var(--secondary-text-color, #8e8e93);white-space:normal;line-height:1.35">${dmy(
         r.day,
       )}${season ? " · " + season : ""}${
-        top ? ` · <span style="color:#8be36a">${top}</span>` : ""
+        top
+          ? ` · <span style="color:var(--sei-good, var(--sei-good-auto, #8be36a))">${top}</span>`
+          : ""
       }</div>${chase}</div>
-    <div style="font-size:16px;color:#fff;text-align:right">${f(
+    <div style="font-size:16px;color:var(--primary-text-color, #fff);text-align:right">${f(
       r.value,
     )}</div></div>`;
         })
@@ -1178,11 +1240,14 @@
         Bronze: ["#cd7f32", "mdi:shield-outline"],
         Silver: ["#c0c0c8", "mdi:shield-half-full"],
         Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: ["#9ad7e6", "mdi:shield-crown"],
+        Platinum: [
+          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
+          "mdi:shield-crown",
+        ],
         Diamond: ["#b9f2ff", "mdi:diamond-stone"],
       };
       const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:#000;border-radius:${
+        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
           h / 2
         }px;overflow:hidden"><div style="width:${Math.max(
           0,
@@ -1289,7 +1354,7 @@
           b.next_tier_at && b.count > 0
             ? `<div style="display:flex;gap:8px;align-items:center;margin-top:4px"><div style="flex:1;min-width:0">${bar(
                 pct,
-                "#9ad7e6",
+                "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
                 4,
               )}</div><span style="font-size:11px;color:${
                 C.muted
@@ -1299,8 +1364,12 @@
             : "";
         return `<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0">${icon(
           b,
-          b.season ? "#3a2c12" : "#16303a",
-          b.season ? "#ffb74d" : "#9ad7e6",
+          b.season
+            ? "color-mix(in srgb, var(--sei-warn, var(--sei-warn, var(--sei-warn-auto, #ffb74d))) 18%, transparent)"
+            : "color-mix(in srgb, var(--sei-info, var(--sei-info, var(--sei-info-auto, #9ad7e6))) 18%, transparent)",
+          b.season
+            ? "var(--sei-warn, var(--sei-warn-auto, #ffb74d))"
+            : "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
         )}
     <div style="flex:1;min-width:0"><div style="font-size:14px;color:${
       C.text
@@ -1371,18 +1440,34 @@
         `${done.length} of ${a.badges.length} complete`,
       );
       out += rows.map(reach).join("");
-      out += strip("Any time", anyTime, "#16303a", "#9ad7e6");
-      out += strip("Later", later, "#2c2c2e", "#8e8e93", (b) =>
-        dm(b.season_from),
+      out += strip(
+        "Any time",
+        anyTime,
+        "color-mix(in srgb, var(--sei-info, var(--sei-info, var(--sei-info-auto, #9ad7e6))) 18%, transparent)",
+        "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
       );
-      out += strip("Complete", done, "#1f3317", "#8be36a", null, true);
+      out += strip(
+        "Later",
+        later,
+        "var(--sei-track, var(--divider-color, #2c2c2e))",
+        "var(--secondary-text-color, #8e8e93)",
+        (b) => dm(b.season_from),
+      );
+      out += strip(
+        "Complete",
+        done,
+        "color-mix(in srgb, var(--sei-good, var(--sei-good, var(--sei-good-auto, #8be36a))) 18%, transparent)",
+        "var(--sei-good, var(--sei-good-auto, #8be36a))",
+        null,
+        true,
+      );
       out += `<div style="font-size:12px;color:${
         C.muted
       };line-height:1.45;margin-top:12px;padding-top:10px;border-top:1px solid ${
         C.track
       };white-space:normal">${
         lit === done[0] && !UI.spot
-          ? '<span style="font-size:11px;color:#636366">Latest · </span>'
+          ? '<span style="font-size:11px;color:var(--disabled-text-color, #636366)">Latest · </span>'
           : ""
       }${spot(lit)}</div>`;
       return out;
@@ -1517,12 +1602,24 @@
         : null;
 
       if (!g)
-        return `<div style="font-size:13px;color:#8e8e93;white-space:normal">Waiting for Solar Energy Insights’ summary.</div>`;
+        return `<div style="font-size:13px;color:var(--secondary-text-color, #8e8e93);white-space:normal">Waiting for Solar Energy Insights’ summary.</div>`;
       const C = {
-        good: ["#8be36a", "#1f3320"],
-        warn: ["#ffb74d", "#3a2c12"],
-        bad: ["#ff8a80", "#3a1d1d"],
-        neutral: ["#c7c7cc", "#2c2c2e"],
+        good: [
+          "var(--sei-good, var(--sei-good-auto, #8be36a))",
+          "color-mix(in srgb, var(--sei-good, var(--sei-good, var(--sei-good-auto, #8be36a))) 18%, transparent)",
+        ],
+        warn: [
+          "var(--sei-warn, var(--sei-warn-auto, #ffb74d))",
+          "color-mix(in srgb, var(--sei-warn, var(--sei-warn, var(--sei-warn-auto, #ffb74d))) 18%, transparent)",
+        ],
+        bad: [
+          "var(--sei-bad, var(--sei-bad-auto, #ff8a80))",
+          "color-mix(in srgb, var(--sei-bad, var(--sei-bad, var(--sei-bad-auto, #ff8a80))) 18%, transparent)",
+        ],
+        neutral: [
+          "var(--secondary-text-color, #c7c7cc)",
+          "var(--sei-track, var(--divider-color, #2c2c2e))",
+        ],
       };
       // Explicit stretch + left alignment: button-card otherwise centres flex rows inside custom fields
       const ROW =
@@ -1601,7 +1698,9 @@
           return `<div data-tap="jump" data-arg="${
             g.targets[i]
           }" style="${ROW};cursor:pointer;padding:10px 0;${
-            i ? "border-top:1px solid #2c2c2e" : ""
+            i
+              ? "border-top:1px solid var(--sei-track, var(--divider-color, #2c2c2e))"
+              : ""
           }">
     <div style="width:36px;height:36px;border-radius:50%;background:${
       c[1]
@@ -1610,28 +1709,30 @@
         c[0]
       }"></ha-icon></div>
     <div style="flex:1;min-width:0;text-align:left">
-      <div style="font-size:11px;color:#8e8e93;line-height:1.3">${l.label}</div>
-      <div style="font-size:15px;color:#fff;font-weight:500;line-height:1.3;white-space:normal">${
+      <div style="font-size:11px;color:var(--secondary-text-color, #8e8e93);line-height:1.3">${
+        l.label
+      }</div>
+      <div style="font-size:15px;color:var(--primary-text-color, #fff);font-weight:500;line-height:1.3;white-space:normal">${
         l.was
-          ? `<span style="text-decoration:line-through;color:#636366;font-weight:400;font-size:13px;margin-right:6px">${l.was}</span>`
+          ? `<span style="text-decoration:line-through;color:var(--disabled-text-color, #636366);font-weight:400;font-size:13px;margin-right:6px">${l.was}</span>`
           : ""
       }${l.main}</div>
       ${
         l.detail
-          ? `<div style="font-size:12px;color:#8e8e93;line-height:1.35;white-space:normal">${l.detail}</div>`
+          ? `<div style="font-size:12px;color:var(--secondary-text-color, #8e8e93);line-height:1.35;white-space:normal">${l.detail}</div>`
           : ""
       }
       ${
         l.change
-          ? `<div style="display:inline-flex;align-items:center;gap:4px;margin-top:5px;font-size:11px;color:#ffb74d;background:#3a2c12;border-radius:6px;padding:2px 7px;white-space:normal"><ha-icon icon="mdi:history" style="--mdc-icon-size:13px"></ha-icon>${l.change}</div>`
+          ? `<div style="display:inline-flex;align-items:center;gap:4px;margin-top:5px;font-size:11px;color:var(--sei-warn, var(--sei-warn-auto, #ffb74d));background:color-mix(in srgb, var(--sei-warn, var(--sei-warn, var(--sei-warn-auto, #ffb74d))) 18%, transparent);border-radius:6px;padding:2px 7px;white-space:normal"><ha-icon icon="mdi:history" style="--mdc-icon-size:13px"></ha-icon>${l.change}</div>`
           : ""
       }
     </div>
-    <ha-icon icon="mdi:chevron-right" style="--mdc-icon-size:18px;color:#48484a;flex-shrink:0"></ha-icon></div>`;
+    <ha-icon icon="mdi:chevron-right" style="--mdc-icon-size:18px;color:var(--disabled-text-color, #48484a);flex-shrink:0"></ha-icon></div>`;
         })
         .join("");
       return `<div style="${ROW};justify-content:space-between;margin-bottom:2px">
-    <span style="font-size:13px;color:#8e8e93">${g.label} · ${g.time}</span>${right}</div>
+    <span style="font-size:13px;color:var(--secondary-text-color, #8e8e93)">${g.label} · ${g.time}</span>${right}</div>
   <div style="display:grid;justify-items:stretch;width:100%">${rows}</div>`;
     },
   );
@@ -1778,12 +1879,12 @@
         if (!o)
           return `<div style="${base}background:${C.track};color:${C.faint}">…</div>`;
         return o.lasts
-          ? `<div style="${base}background:#1f3320;color:${
+          ? `<div style="${base}background:color-mix(in srgb, var(--sei-good, var(--sei-good, var(--sei-good-auto, #8be36a))) 18%, transparent);color:${
               C.ok
             }">✓ ${o.spare_kwh.toFixed(1)}</div>`
-          : `<div style="${base}background:#3a1d1d;color:${C.bad}">grid ${hm(
-              o.reserve_at,
-            )}</div>`;
+          : `<div style="${base}background:color-mix(in srgb, var(--sei-bad, var(--sei-bad, var(--sei-bad-auto, #ff8a80))) 18%, transparent);color:${
+              C.bad
+            }">grid ${hm(o.reserve_at)}</div>`;
       };
       const n = plan.night,
         outlook = n.outlook;
@@ -1808,11 +1909,11 @@
       const colHead = (
         label,
         note,
-      ) => `<div style="text-align:center;font-size:12px;color:#c7c7cc">${label}
+      ) => `<div style="text-align:center;font-size:12px;color:var(--secondary-text-color, #c7c7cc)">${label}
   <div style="font-size:10px;color:${C.faint}">${note}</div></div>`;
       const rowHtml = (
         r,
-      ) => `<div style="display:flex;align-items:center;justify-content:flex-start;justify-self:stretch;gap:8px;font-size:13px;color:#fff;min-width:0;text-align:left">
+      ) => `<div style="display:flex;align-items:center;justify-content:flex-start;justify-self:stretch;gap:8px;font-size:13px;color:var(--primary-text-color, #fff);min-width:0;text-align:left">
     <ha-icon icon="${r.icon}" style="--mdc-icon-size:18px;width:18px;color:${
       C.muted
     };flex-shrink:0"></ha-icon>
@@ -1877,7 +1978,7 @@
         .join("");
       return `${mark}
   <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
-    <div style="font-size:17px;color:#fff;font-weight:500">Until sunrise</div>
+    <div style="font-size:17px;color:var(--primary-text-color, #fff);font-weight:500">Until sunrise</div>
     <div style="font-size:13px">${headline}</div></div>
   <div style="font-size:12px;color:${C.muted};margin-top:2px">
     ${hm(rise)} · ${Math.floor(hours)} h ${String(
@@ -2103,7 +2204,7 @@
         !tomorrow && nowMs > slots[0].t
           ? `<line x1="${X(nowMs)}" y1="0" x2="${X(nowMs)}" y2="${
               H - 12
-            }" stroke="#fff" stroke-opacity=".5" stroke-dasharray="2 2"/>`
+            }" stroke="var(--primary-text-color, #fff)" stroke-opacity=".5" stroke-dasharray="2 2"/>`
           : "";
       const svg = `<svg viewBox="0 0 ${Wd} ${H}" style="width:100%;display:block;margin-top:4px">${shade}
   <line x1="0" y1="${mid}" x2="${Wd}" y2="${mid}" stroke="${

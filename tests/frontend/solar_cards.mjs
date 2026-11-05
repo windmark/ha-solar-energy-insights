@@ -179,4 +179,30 @@ check(
   "the forecast card shows its scores",
   trust.includes("Can I trust the forecast?") && trust.includes("±3.1 kWh"),
 );
+// Theme colours: deep tones on a light theme, pastels on dark, and a theme's
+// own --sei-* values win over both because the cards only set the *-auto ones.
+const themed = async (darkMode) => {
+  const card = new (registry.get("solar-energy-insights-best-time"))();
+  card.setConfig({ appliances: [TWO.appliances[0]] });
+  for (let k = 0; k < 6; k++) {
+    card.hass = { ...hass, themes: { darkMode } };
+    await settle();
+  }
+  return card.shadowRoot.innerHTML;
+};
+const light = await themed(false),
+  dark = await themed(true);
+check(
+  "a light theme gets deep status colours",
+  light.includes("--sei-good-auto:#2e7d32"),
+);
+check("a dark theme gets pastels", dark.includes("--sei-good-auto:#8be36a"));
+check(
+  "a theme's own colour wins",
+  light.includes("var(--sei-good, var(--sei-good-auto"),
+);
+check(
+  "svg colours arrive as styles, never as attributes",
+  !/\s(fill|stroke)="var\(/.test(light) && /style="fill:var\(/.test(light),
+);
 console.log("ok");

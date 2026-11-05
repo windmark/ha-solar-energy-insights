@@ -15,6 +15,8 @@
 
 ### Added
 
+- The cards follow the theme: text, divider and card colours from Home Assistant, status colours chosen for light or dark themes, and `--sei-good`, `--sei-warn`, `--sei-bad`, `--sei-info` and `--sei-track` to override them.
+
 - The solar cards ship with the integration: `custom:solar-energy-insights-now`, `-until-sunrise`, `-best-time` and `-forecast-trust`. Appliances (name, icon, typical kWh and hours, optionally a sensor that learns energy per run) and an appliance already running are card settings; without them the cards show the house alone. Everything else comes from the integration's settings.
 
 - Quests carry the plan's advice for meeting them, as it stood when they were set: tonight's "get to sunrise without the grid" what is left of the evening's budget, tomorrow's "keep the sun at home" and "be self-sufficient" the best window for heavy loads, "fill the battery before" that heavy loads after then won't slow it.
