@@ -282,4 +282,57 @@ check(
   "a dashboard tile's own cache is left alone",
   window.__sei.sims.data.both.full_at === "x",
 );
+// The cards from the dashboard's battery, tonight, plan and history tiles.
+const full = text(await html("battery-full", TWO));
+check("battery full: the charge answer", /Battery full|Won’t fill/.test(full));
+check(
+  "and the appliances started now, by name",
+  full.includes("with dishwasher + dryer started now") ||
+    full.includes("Battery full now"),
+);
+check(
+  "without appliances, no such line",
+  !text(await html("battery-full", {})).includes("started now"),
+);
+check(
+  "tonight, replayed",
+  text(await html("tonight-replayed", {})).includes("Tonight"),
+);
+check(
+  "enough for tonight",
+  text(await html("enough-for-tonight", {})).includes("Enough for tonight?"),
+);
+const trust3 = text(await html("plan-trust", {}));
+check(
+  "the plan card's three sections",
+  [
+    "How the plan has done",
+    "What it has learned",
+    "Solcast vs your roof",
+  ].every((h) => trust3.includes(h)),
+);
+const onlySolcast = text(await html("plan-trust", { sections: ["solcast"] }));
+check(
+  "and only the chosen one",
+  onlySolcast.includes("Solcast vs your roof") &&
+    !onlySolcast.includes("How the plan has done"),
+);
+const insights = text(await html("day-insights", {}));
+check(
+  "day insights: yesterday by default",
+  insights.includes("Day insights") && insights.includes("Yesterday"),
+);
+check(
+  "or the day a helper holds",
+  text(
+    await html("day-insights", { day_entity: "input_datetime.history_day" }),
+  ).includes("30 Oct"),
+);
+for (const key of ["battery-full", "plan-trust", "day-insights"]) {
+  const Card = registry.get("solar-energy-insights-" + key);
+  check(
+    key + ": the editor's defaults look like no settings",
+    (await html(key, {})) === (await html(key, Card.getStubConfig())),
+  );
+}
 console.log("ok");

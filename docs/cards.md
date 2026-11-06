@@ -46,6 +46,36 @@ checkpoints: ["18:00", "21:00", "06:00", "12:00"]
 footnotes: true
 ```
 
+## Battery full
+
+```yaml
+type: custom:solar-energy-insights-battery-full
+appliances: [] # as above: adds "with … started now"
+```
+
+## Tonight, replayed and Enough for tonight?
+
+```yaml
+type: custom:solar-energy-insights-tonight-replayed
+type: custom:solar-energy-insights-enough-for-tonight
+```
+
+No settings.
+
+## How sure is the plan
+
+```yaml
+type: custom:solar-energy-insights-plan-trust
+sections: [performance, learned, solcast]
+```
+
+## Day insights
+
+```yaml
+type: custom:solar-energy-insights-day-insights
+day_entity: input_datetime.history_day # optional: follow a date; otherwise yesterday
+```
+
 ## Achievements
 
 ```yaml

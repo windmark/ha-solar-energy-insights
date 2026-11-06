@@ -15,6 +15,8 @@
 
 ### Added
 
+- Five more cards: `battery-full` (when the battery fills, the export after, the cloudy case, and appliances started now), `tonight-replayed`, `enough-for-tonight`, `plan-trust` (how the plan has done, what it has learned, Solcast against your roof) and `day-insights` (yesterday, or a date a helper holds). The plan now includes the battery's floor (`floor_pct`).
+
 - Card settings, in the dashboard's visual editor: which rows the now card shows and in what order, its header and taps; until sunrise's columns and notes; best time's chart; which forecast checkpoints show; the level card's quest and recap; which badge sections show. `docs/cards.md` lists them and shows how to build your own card from the Summary sensor.
 
 - The cards follow the theme: text, divider and card colours from Home Assistant, status colours chosen for light or dark themes, and `--sei-good`, `--sei-warn`, `--sei-bad`, `--sei-info` and `--sei-track` to override them.

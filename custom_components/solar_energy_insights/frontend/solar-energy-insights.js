@@ -849,6 +849,38 @@
     },
   };
 
+  FORMS.batteryFull = {
+    schema: [APPLIANCES],
+    labels: { appliances: "Appliances you might start" },
+    stub: { appliances: [] },
+  };
+  FORMS.planTrust = {
+    schema: [
+      {
+        name: "sections",
+        selector: choose([
+          ["performance", "How the plan has done"],
+          ["learned", "What it has learned"],
+          ["solcast", "Solcast vs your roof"],
+        ]),
+      },
+    ],
+    labels: { sections: "Sections" },
+    stub: { sections: ["performance", "learned", "solcast"] },
+  };
+  FORMS.dayInsights = {
+    schema: [
+      {
+        name: "day_entity",
+        selector: { entity: { domain: "input_datetime" } },
+      },
+    ],
+    labels: {
+      day_entity: "Follow the date in this helper (otherwise yesterday)",
+    },
+    stub: {},
+  };
+
   const defineCard = (tag, name, description, render, form) => {
     if (!window.customElements || customElements.get(tag)) return;
     class Card extends HTMLElement {
@@ -2653,5 +2685,1124 @@
       );
     },
     FORMS.forecastTrust,
+  );
+
+  defineCard(
+    "solar-energy-insights-battery-full",
+    "Battery full",
+    "When the battery fills, the export after, the cloudy case and your appliances started now.",
+    function (states, hass) {
+      const el = this;
+      const {
+        W,
+        C,
+        st,
+        val,
+        attr,
+        num,
+        hm,
+        kwh,
+        sub,
+        head,
+        pill,
+        ws,
+        waiting,
+      } = window.SolarDash.ui(this, hass, states);
+
+      // Appliances from the card's settings; a sensor that learns energy per run beats the typical figures.
+      const APPS = ((el._config || {}).appliances || []).map((a, i) => {
+        const e = a.energy_per_run ? st(a.energy_per_run) : null;
+        const typical = +a.kwh || 1;
+        let k = parseFloat(e?.state);
+        const est = !(k > 0.05 && k <= 4 * typical);
+        if (est) k = typical;
+        const hrs = (e?.attributes?.hours || [])
+          .filter((h) => h > 0.2 && h < 8)
+          .slice(-5);
+        return {
+          id: "a" + i,
+          name: a.name || "Appliance",
+          icon: a.icon || "mdi:power-plug-outline",
+          kwh: k,
+          est: est && !!a.energy_per_run,
+          h: hrs.length
+            ? hrs.reduce((s, h) => s + h, 0) / hrs.length
+            : +a.hours || 2,
+        };
+      });
+      const sims = () => {
+        if (!APPS.length) return null;
+        const socNow = num(attr("sensor.solar_energy_insights_summary", "soc"));
+        const key = [
+          Math.round(socNow ?? -1),
+          ...APPS.map((a) => a.kwh.toFixed(2)),
+          val("sensor.solar_energy_insights_night_outlook"),
+        ].join("|");
+        const c = W.applianceRuns;
+        if (
+          (!c || c.key !== key || (!c.pending && Date.now() - c.t > 300e3)) &&
+          !(c && c.pending && c.key === key) &&
+          hass?.callWS
+        ) {
+          W.applianceRuns = {
+            key,
+            t: Date.now(),
+            pending: true,
+            data: c?.data,
+          };
+          const call = (list) =>
+            hass
+              .callWS({
+                type: "call_service",
+                domain: "solar_energy_insights",
+                service: "simulate",
+                service_data: {
+                  extra_kwh: +list.reduce((s, a) => s + a.kwh, 0).toFixed(2),
+                  extra_hours: +Math.max(...list.map((a) => a.h)).toFixed(2),
+                },
+                return_response: true,
+              })
+              .then((r) => r.response);
+          Promise.all([
+            ...APPS.map((a) => call([a])),
+            APPS.length > 1 ? call(APPS) : null,
+          ])
+            .then((res) => {
+              W.applianceRuns = {
+                key,
+                t: Date.now(),
+                data: {
+                  each: res.slice(0, APPS.length),
+                  all: APPS.length > 1 ? res[APPS.length] : null,
+                },
+              };
+            })
+            .catch((e) => {
+              W.applianceRuns = {
+                key,
+                t: Date.now(),
+                error: String(e?.message || e),
+              };
+            })
+            .finally(() => (W.listeners || []).forEach((f) => f()));
+        }
+        return W.applianceRuns?.data;
+      };
+
+      // Battery full forecast, from Solar Energy Insights: Solcast minus the house as your recent
+      // days used power, until the next sunset. In the evening it runs through the night into tomorrow.
+      const mark = window.SolarDash?.jumpMark
+        ? window.SolarDash.jumpMark("battery")
+        : "";
+      const plan = ws("plan", "solar_energy_insights/plan", 60);
+      if (!plan) return mark + waiting("plan", "the plan");
+      const ch = plan.charge,
+        day = plan.day || {},
+        limit = plan.charge_limit_pct ?? 100;
+      const curve = (plan.curve || []).map(([t, v]) => [
+        new Date(t).getTime(),
+        v,
+      ]);
+      const cloudy = (day.curve_cloudy || []).map(([t, v]) => [
+        new Date(t).getTime(),
+        v,
+      ]);
+      if (curve.length < 2) return mark + sub("No Solcast forecast available.");
+      const soc = curve[0][1],
+        end = new Date(plan.sunset),
+        nowD = new Date(plan.at);
+      const tomorrow = end.toDateString() !== nowD.toDateString();
+      const full = soc >= limit - 0.5;
+      let headTxt, headCol, icon;
+      if (full) {
+        headTxt = "Battery full now";
+        headCol = C.ok;
+        icon = "mdi:battery-check";
+      } else if (ch.full_at) {
+        headTxt = `Battery full ~${hm(ch.full_at)}${
+          tomorrow ? " tomorrow" : ""
+        }`;
+        headCol = C.ok;
+        icon = "mdi:battery-charging-high";
+      } else {
+        headTxt = `Won’t fill ${tomorrow ? "tomorrow" : "today"} · peaks at ${
+          ch.peak_pct
+        }%`;
+        headCol = C.heavy;
+        icon = "mdi:battery-charging-50";
+      }
+      const s = plan.surplus || {};
+      const expTxt =
+        ch.full_at || full
+          ? s.after_full_kwh > 0.05
+            ? `then ~${
+                s.after_full_kwh >= 10
+                  ? s.after_full_kwh.toFixed(0)
+                  : s.after_full_kwh.toFixed(1)
+              } kWh export until sunset`
+            : "no export after full"
+          : s.while_charging_kwh > 0.3
+            ? `~${s.while_charging_kwh.toFixed(1)} kWh exported while charging`
+            : "no export expected";
+      const floor = num(plan.floor_pct) ?? 5;
+      const Wc = 300,
+        Hc = 56,
+        t0 = curve[0][0],
+        t1 = curve[curve.length - 1][0];
+      const X = (ms) => ((ms - t0) / Math.max(t1 - t0, 1)) * Wc,
+        Y = (v) => Hc - (Math.max(Math.min(v, 100), 0) / 100) * Hc;
+      const line = (pts) =>
+        pts
+          .map(([ms, v]) => `${X(ms).toFixed(1)},${Y(v).toFixed(1)}`)
+          .join(" ");
+      const fx = ch.full_at ? X(new Date(ch.full_at).getTime()) : null;
+      const chart = `<svg viewBox="0 -4 ${Wc} ${
+        Hc + 20
+      }" style="width:100%;height:auto;margin-top:10px;overflow:visible">
+  <line x1="0" y1="${Y(floor)}" x2="${Wc}" y2="${Y(
+    floor,
+  )}" stroke="#ff6b6b" stroke-opacity=".5" stroke-dasharray="3 3"/>
+  <line x1="0" y1="${Y(limit)}" x2="${Wc}" y2="${Y(limit)}" stroke="#3a3a3c"/>
+  ${
+    cloudy.length > 1
+      ? `<polyline points="${line(
+          cloudy,
+        )}" fill="none" stroke="#8be36a" stroke-opacity=".35" stroke-width="1.5" stroke-dasharray="4 3"/>`
+      : ""
+  }
+  <polyline points="${line(
+    curve,
+  )}" fill="none" stroke="#8be36a" stroke-width="2.5" stroke-linejoin="round"/>
+  ${
+    fx !== null && fx >= 0 && fx <= Wc
+      ? `<circle cx="${fx.toFixed(1)}" cy="${Y(limit)}" r="4" fill="#8be36a"/>`
+      : ""
+  }
+  <text x="0" y="${Hc + 15}" fill="#8e8e93" font-size="10">now ${Math.round(
+    soc,
+  )}%</text>
+  <text x="${Wc}" y="${
+    Hc + 15
+  }" fill="#8e8e93" font-size="10" text-anchor="end">sunset ${hm(end)}${
+    tomorrow ? " tmrw" : ""
+  } · ${ch.sunset_pct ?? "–"}%</text>
+</svg>`;
+      const S = sims();
+      const both = (APPS.length > 1 ? S?.all : S?.each?.[0])?.charge;
+      const started = `with ${APPS.map((a) => a.name.toLowerCase()).join(
+        " + ",
+      )} started now`;
+      const withApp =
+        full || !APPS.length
+          ? ""
+          : !both
+            ? W.applianceRuns?.error
+              ? ""
+              : `${started}: working it out…`
+            : both.full_at
+              ? `${started}: full ~${hm(both.full_at)}`
+              : `${started}: peaks at ${both.peak_pct}%`;
+      // Overnight the low case's peak is just the level now: it means the battery does not fill.
+      const cloudyFills = ch.peak_pct_cloudy > soc + 0.5;
+      const cloudyTxt = full
+        ? ""
+        : ch.full_at
+          ? ch.full_at_cloudy
+            ? `if cloudier (Solcast low case): full ~${hm(ch.full_at_cloudy)}`
+            : cloudyFills
+              ? `if cloudier (Solcast low case): only ${ch.peak_pct_cloudy}%`
+              : "if cloudier (Solcast low case): it would not fill"
+          : cloudyFills && ch.peak_pct_cloudy < ch.peak_pct - 1
+            ? `low case: peaks at ${ch.peak_pct_cloudy}%`
+            : "";
+      const rows = [
+        day.pv_kwh !== undefined
+          ? `Solar still to come <span style="color:#fff">${day.pv_kwh.toFixed(
+              1,
+            )} kWh</span> · house needs ~<span style="color:#fff">${day.load_kwh.toFixed(
+              1,
+            )} kWh</span> until sunset`
+          : "",
+        (ch.full_at || full) && s.while_charging_kwh > 0.3
+          ? `+ ~${s.while_charging_kwh.toFixed(
+              1,
+            )} kWh exported before full (charging power-limited)`
+          : "",
+        day.reserve_at
+          ? `<span style="color:${C.bad}">Reserve reached ~${hm(
+              day.reserve_at,
+            )} · from the grid until the sun takes over</span>`
+          : "",
+        cloudyTxt,
+        withApp,
+      ]
+        .filter(Boolean)
+        .map((t) => `<div>${t}</div>`)
+        .join("");
+      const hidden = attr(
+        "sensor.solar_energy_insights_night_prediction_error",
+        "hidden_load_w",
+      );
+      const nights = plan.night?.nights;
+      return `${mark}<div style="display:flex;align-items:center;gap:10px">
+    <ha-icon icon="${icon}" style="--mdc-icon-size:22px;color:${headCol};flex-shrink:0"></ha-icon>
+    <div style="min-width:0"><div style="font-size:17px;color:#fff;font-weight:500">${headTxt}</div>
+      <div style="font-size:13px;color:${
+        ch.full_at ? "#c7c7cc" : C.muted
+      }">${expTxt}</div></div></div>
+  ${chart}
+  <div style="display:grid;gap:4px;font-size:12px;color:${
+    C.muted
+  };margin-top:8px;white-space:normal;line-height:1.4">${rows}</div>
+  <div style="font-size:10px;color:${
+    C.faint
+  };margin-top:8px;white-space:normal">Solar Energy Insights · Solcast minus the house as your last ${
+    nights ?? "–"
+  } days used power${
+    hidden ? ` · ${hidden} W the house meter does not see` : ""
+  }${
+    limit < 100 ? ` · charge limit ${Math.round(limit)}%` : ""
+  } · dashed = Solcast low case</div>`;
+    },
+    FORMS.batteryFull,
+  );
+
+  defineCard(
+    "solar-energy-insights-tonight-replayed",
+    "Tonight, replayed",
+    "Your recent nights drawn from the battery as it is now.",
+    function (states, hass) {
+      const el = this;
+      const {
+        W,
+        C,
+        st,
+        val,
+        attr,
+        num,
+        hm,
+        kwh,
+        sub,
+        head,
+        pill,
+        ws,
+        waiting,
+      } = window.SolarDash.ui(this, hass, states);
+
+      const plan = ws("plan", "solar_energy_insights/plan", 60);
+      const outlook = val("sensor.solar_energy_insights_night_outlook");
+      const outlookPill =
+        outlook === "lasts"
+          ? pill("Lasts", C.ok)
+          : outlook === "borderline"
+            ? pill("Borderline", C.heavy)
+            : outlook === "grid"
+              ? pill("Needs the grid", C.bad)
+              : "";
+      if (!plan)
+        return (
+          head("mdi:weather-night", "Tonight, replayed", outlookPill) +
+          waiting("plan", "the plan")
+        );
+      const night = plan.night;
+      if (!night || !night.curves)
+        return (
+          head("mdi:weather-night", "Tonight, replayed", outlookPill) +
+          sub("Waiting for a day of history.")
+        );
+      const times = night.curves.times.map((t) => new Date(t).getTime());
+      const rows = night.curves.levels,
+        each = night.each;
+      const t0 = times[0],
+        t1 = times[times.length - 1];
+      const Wd = 340,
+        H = 150,
+        L = 4,
+        R = 4,
+        T = 8,
+        B = 22;
+      const x = (t) => L + ((t - t0) / (t1 - t0)) * (Wd - L - R);
+      const y = (p) => T + ((100 - p) / 100) * (H - T - B);
+      const path = (row) =>
+        row
+          .map(
+            (p, k) =>
+              `${k ? "L" : "M"}${x(times[k]).toFixed(1)} ${y(p).toFixed(1)}`,
+          )
+          .join(" ");
+      const failed = rows.filter((_, k) => !each[k].lasts);
+      const floor = failed.length
+        ? Math.min(...failed.map((r) => Math.min(...r)))
+        : null;
+      const typicalK = each.findIndex(
+        (o) => o.days_ago === night.typical.days_ago,
+      );
+      const heavyK = each.findIndex((o) => o.days_ago === night.heavy.days_ago);
+      const sunset = new Date(plan.sunset).getTime();
+      const marks = [];
+      if (sunset > t0 && sunset < t1)
+        marks.push(`<line x1="${x(sunset)}" y1="${T}" x2="${x(sunset)}" y2="${
+          H - B
+        }" stroke="${C.faint}" stroke-dasharray="2 3"/>
+  <text x="${x(sunset) + 3}" y="${T + 10}" fill="${
+    C.muted
+  }" font-size="10">sunset</text>`);
+      if (floor !== null)
+        marks.push(`<line x1="${L}" y1="${y(floor)}" x2="${Wd - R}" y2="${y(
+          floor,
+        )}" stroke="${C.bad}" stroke-dasharray="4 3"/>
+  <text x="${L + 2}" y="${y(floor) - 4}" fill="${
+    C.bad
+  }" font-size="10">reserve ${Math.round(floor)} %</text>`);
+      const thin = rows
+        .map((r, k) =>
+          k === typicalK || k === heavyK
+            ? ""
+            : `<path d="${path(r)}" fill="none" stroke="${
+                each[k].lasts ? C.muted : C.bad
+              }" stroke-width="1" opacity="0.45"/>`,
+        )
+        .join("");
+      const svg = `<svg viewBox="0 0 ${Wd} ${H}" style="width:100%;display:block">
+  ${[0, 50, 100]
+    .map(
+      (p) =>
+        `<line x1="${L}" y1="${y(p)}" x2="${Wd - R}" y2="${y(p)}" stroke="${
+          C.track
+        }"/>`,
+    )
+    .join("")}
+  ${marks.join("")}${thin}
+  ${
+    heavyK >= 0
+      ? `<path d="${path(rows[heavyK])}" fill="none" stroke="${
+          C.heavy
+        }" stroke-width="2.5"/>`
+      : ""
+  }
+  ${
+    typicalK >= 0
+      ? `<path d="${path(rows[typicalK])}" fill="none" stroke="${
+          C.typical
+        }" stroke-width="2.5"/>`
+      : ""
+  }
+  <text x="${L}" y="${H - 6}" fill="${C.muted}" font-size="10">now ${hm(
+    t0,
+  )}</text>
+  <text x="${Wd - R}" y="${H - 6}" fill="${
+    C.muted
+  }" font-size="10" text-anchor="end">sunrise ${hm(t1)}</text>
+</svg>`;
+      const covered = val("sensor.solar_energy_insights_nights_covered");
+      const heavyNote = night.heavy.lasts
+        ? `keeps ${kwh(night.heavy.spare_kwh)}`
+        : `hits the reserve ${hm(night.heavy.reserve_at)}`;
+      return (
+        head("mdi:weather-night", "Tonight, replayed", outlookPill) +
+        svg +
+        sub(
+          `<span style="color:${C.typical}">Typical</span> keeps ${kwh(
+            night.typical.spare_kwh,
+          )} · <span style="color:${C.heavy}">heavy</span> ${heavyNote} · ${
+            covered ?? "–"
+          } % of nights last. Each line is a past night replayed from now.`,
+        )
+      );
+    },
+  );
+
+  defineCard(
+    "solar-energy-insights-enough-for-tonight",
+    "Enough for tonight?",
+    "The charge at sunset against what a typical and a heavy night need.",
+    function (states, hass) {
+      const el = this;
+      const {
+        W,
+        C,
+        st,
+        val,
+        attr,
+        num,
+        hm,
+        kwh,
+        sub,
+        head,
+        pill,
+        ws,
+        waiting,
+      } = window.SolarDash.ui(this, hass, states);
+
+      const needed = num(
+        val("sensor.solar_energy_insights_charge_needed_for_the_night"),
+      );
+      const forWhen = attr(
+        "sensor.solar_energy_insights_charge_needed_for_the_night",
+        "for",
+      );
+      const typical = num(
+        attr(
+          "sensor.solar_energy_insights_charge_needed_for_the_night",
+          "typical_night",
+        ),
+      );
+      const fullLasts = attr(
+        "sensor.solar_energy_insights_charge_needed_for_the_night",
+        "full_battery_lasts",
+      );
+      const short = num(
+        attr(
+          "sensor.solar_energy_insights_charge_needed_for_the_night",
+          "grid_even_when_full_kwh",
+        ),
+      );
+      const atSunset = forWhen === "sunset";
+      const level = atSunset
+        ? num(val("sensor.solar_energy_insights_battery_at_sunset"))
+        : num(attr("sensor.solar_energy_insights_summary", "soc"));
+      if (needed === null || level === null)
+        return (
+          head("mdi:battery-heart-variant", "Enough for tonight?") +
+          sub("Waiting for the plan.")
+        );
+      const mark = (
+        p,
+        color,
+        w,
+        label,
+        up,
+      ) => `<div style="position:absolute;left:calc(${Math.min(p, 100)}% - ${
+        w / 2
+      }px);top:-6px;width:${w}px;height:26px;background:${color}"></div>
+  <div style="position:absolute;left:min(calc(${Math.min(
+    p,
+    100,
+  )}% - 30px), calc(100% - 60px));${
+    up ? "top:-22px" : "top:24px"
+  };width:60px;text-align:center;font-size:10px;color:${color}">${label}</div>`;
+      const heavyOk = fullLasts && level >= needed,
+        typOk = typical !== null && level >= typical;
+      const fill = heavyOk ? C.ok : typOk ? C.heavy : C.bad;
+      const bar = `<div style="position:relative;height:14px;border-radius:7px;background:${
+        C.track
+      };margin:26px 0 26px">
+  <div style="position:absolute;left:0;top:0;height:14px;width:${Math.min(
+    level,
+    100,
+  )}%;border-radius:7px;background:${fill}"></div>
+  ${
+    typical !== null
+      ? mark(
+          typical,
+          C.typical,
+          2,
+          "typical " + Math.round(typical) + "%",
+          true,
+        )
+      : ""
+  }
+  ${mark(
+    needed,
+    C.heavy,
+    3,
+    fullLasts ? "heavy " + Math.round(needed) + "%" : "heavy: full+",
+    false,
+  )}
+</div>`;
+      const what = atSunset
+        ? `Forecast at sunset ${Math.round(level)} %`
+        : `Battery now ${Math.round(level)} %`;
+      const verdict = heavyOk
+        ? "enough even for a heavy night."
+        : typOk
+          ? "enough for a typical night, not a heavy one."
+          : "not enough for a typical night.";
+      const extra =
+        !fullLasts && short
+          ? ` Even a full battery would need ${kwh(
+              short,
+            )} from the grid on a heavy night.`
+          : "";
+      return (
+        head(
+          "mdi:battery-heart-variant",
+          "Enough for tonight?",
+          atSunset ? "at sunset" : "from now",
+        ) +
+        bar +
+        sub(`${what}: ${verdict}${extra}`)
+      );
+    },
+  );
+
+  defineCard(
+    "solar-energy-insights-plan-trust",
+    "How sure is the plan",
+    "How the plan has done, what it has learned, and Solcast against your roof.",
+    function (states, hass) {
+      const PARTS = {
+        performance: () => {
+          const el = this;
+          const {
+            W,
+            C,
+            st,
+            val,
+            attr,
+            num,
+            hm,
+            kwh,
+            sub,
+            head,
+            pill,
+            ws,
+            waiting,
+          } = window.SolarDash.ui(this, hass, states);
+
+          const bt = ws("backtest", "solar_energy_insights/backtest", 600);
+          if (!bt)
+            return (
+              head("mdi:target-arrow", "How the plan has done") +
+              waiting("backtest", "the scored evenings")
+            );
+          const nights = bt.nights || [];
+          if (!nights.length)
+            return (
+              head("mdi:target-arrow", "How the plan has done") +
+              sub("No scored evenings yet: they need the battery's history.")
+            );
+          const cells = nights
+            .map((n) => {
+              const color = !n.contested
+                ? C.track
+                : n.predicted_lasts === n.actual_lasts
+                  ? C.ok
+                  : C.bad;
+              return `<div title="${n.day}" style="aspect-ratio:1;border-radius:3px;background:${color}"></div>`;
+            })
+            .join("");
+          const contested = nights.filter((n) => n.contested);
+          const maxErr = Math.max(
+            ...contested.map((n) =>
+              Math.abs(n.predicted_spare_kwh - n.actual_spare_kwh),
+            ),
+            0.5,
+          );
+          const strip = contested
+            .map((n) => {
+              const e = n.predicted_spare_kwh - n.actual_spare_kwh,
+                h = (Math.abs(e) / maxErr) * 26;
+              return `<div style="flex:1;display:flex;flex-direction:column;justify-content:center;height:56px">
+    <div style="height:26px;display:flex;align-items:flex-end"><div style="width:100%;height:${
+      e > 0 ? h : 0
+    }px;background:${C.heavy};border-radius:2px 2px 0 0"></div></div>
+    <div style="height:26px"><div style="width:100%;height:${
+      e < 0 ? h : 0
+    }px;background:${C.typical};border-radius:0 0 2px 2px"></div></div></div>`;
+            })
+            .join("");
+          const err = bt.honest_error_kwh;
+          const live = bt.live?.full_at;
+          const right = bt.lasts_right;
+          return (
+            head(
+              "mdi:target-arrow",
+              "How the plan has done",
+              nights.length + " evenings",
+            ) +
+            `<div style="display:grid;grid-template-columns:repeat(15,minmax(0,1fr));gap:3px">${cells}</div>` +
+            sub(
+              `<span style="color:${C.ok}">Right</span> · <span style="color:${C.bad}">wrong</span> · grey: ran out either way, so it says nothing.`,
+            ) +
+            (contested.length
+              ? `<div style="display:flex;gap:2px;margin-top:12px;border-top:1px solid ${C.track};border-bottom:1px solid ${C.track}">${strip}</div>` +
+                sub(
+                  `Each bar is an evening that could have gone either way: <span style="color:${C.heavy}">up</span> = predicted more left than there was, <span style="color:${C.typical}">down</span> = less.`,
+                )
+              : "") +
+            `<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px">
+    ${[
+      [
+        "Error",
+        err === null || err === undefined ? "–" : err.toFixed(2) + " kWh",
+      ],
+      [
+        "Lasts the night right",
+        right === null || right === undefined
+          ? "–"
+          : Math.round(right * 100) + " %",
+      ],
+      [
+        "Bias",
+        bt.bias_kwh === null || bt.bias_kwh === undefined
+          ? "–"
+          : (Math.abs(bt.bias_kwh) < 0.005
+              ? "0.00"
+              : (bt.bias_kwh > 0 ? "+" : "") + bt.bias_kwh.toFixed(2)) + " kWh",
+      ],
+      [
+        "Full at, live",
+        live && live.error_minutes !== null
+          ? Math.round(live.error_minutes) + " min · " + live.days + " d"
+          : "learning",
+      ],
+    ]
+      .map(
+        ([k, v]) =>
+          `<div style="background:${C.track};border-radius:10px;padding:8px 10px"><div style="font-size:11px;color:${C.muted}">${k}</div><div style="font-size:16px;color:${C.text}">${v}</div></div>`,
+      )
+      .join("")}
+  </div>`
+          );
+        },
+        learned: () => {
+          const el = this;
+          const {
+            W,
+            C,
+            st,
+            val,
+            attr,
+            num,
+            hm,
+            kwh,
+            sub,
+            head,
+            pill,
+            ws,
+            waiting,
+          } = window.SolarDash.ui(this, hass, states);
+
+          const E = "sensor.solar_energy_insights_night_prediction_error",
+            K = "sensor.solar_energy_insights_solcast_correction_gain";
+          const a = (k) => attr(E, k);
+          const tile = (k, v) =>
+            `<div style="background:${C.track};border-radius:10px;padding:8px 10px"><div style="font-size:11px;color:${C.muted}">${k}</div><div style="font-size:16px;color:${C.text}">${v}</div></div>`;
+          const days = attr(K, "days") ?? 0,
+            active = attr(K, "active");
+          return (
+            head("mdi:lightbulb-on-outline", "What it has learned") +
+            `<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+    ${tile(
+      "Hidden load",
+      a("hidden_load_w") === null || a("hidden_load_w") === undefined
+        ? "–"
+        : a("hidden_load_w") + " W",
+    )}
+    ${tile(
+      "Heavy night",
+      a("heavy_share_pct") === null || a("heavy_share_pct") === undefined
+        ? "–"
+        : a("heavy_share_pct") + "th percentile",
+    )}
+    ${tile("Battery readings fixed", a("corrected_readings") ?? "–")}
+    ${tile("Solcast correction", active ? "in use" : days + " / 14 mornings")}
+    ${tile(
+      "Night error",
+      a("honest_error_kwh") === null || a("honest_error_kwh") === undefined
+        ? "–"
+        : a("honest_error_kwh").toFixed(2) + " kWh",
+    )}
+  </div>` +
+            sub(
+              "Each is learned from your own evenings and kept only if it predicts evenings it was not fitted on better.",
+            )
+          );
+        },
+        solcast: () => {
+          const el = this;
+          const {
+            W,
+            C,
+            st,
+            val,
+            attr,
+            num,
+            hm,
+            kwh,
+            sub,
+            head,
+            pill,
+            ws,
+            waiting,
+          } = window.SolarDash.ui(this, hass, states);
+
+          const K = "sensor.solar_energy_insights_solcast_correction_gain";
+          const factors = attr(K, "factors_by_hour") || [];
+          const days = attr(K, "days") ?? 0,
+            active = attr(K, "active");
+          const gain = num(val(K));
+          if (!st(K))
+            return (
+              head("mdi:white-balance-sunny", "Solcast vs your roof") +
+              sub(
+                "Add a solar energy counter in the integration's options to start learning.",
+              )
+            );
+          if (!active && days < 14) {
+            return (
+              head(
+                "mdi:white-balance-sunny",
+                "Solcast vs your roof",
+                days + " / 14 mornings",
+              ) +
+              `<div style="height:10px;border-radius:5px;background:${
+                C.track
+              };margin:8px 0 4px"><div style="height:10px;border-radius:5px;width:${Math.round(
+                (days / 14) * 100,
+              )}%;background:${C.typical}"></div></div>` +
+              sub(
+                "Learning: each morning's forecast is kept and compared with what the panels made. The correction is shown, and used if it helps, after 14 mornings.",
+              )
+            );
+          }
+          const hours = [...Array(24).keys()].filter((h) => h >= 5 && h <= 21);
+          const Wd = 340,
+            H = 90,
+            mid = 45,
+            scale = 80;
+          const bw = (Wd - 8) / hours.length;
+          const bars = hours
+            .map((h, k) => {
+              const f = factors[h] ?? 1,
+                d = (f - 1) * scale,
+                top = d > 0 ? mid - d : mid;
+              return `<rect x="${(4 + k * bw + 2).toFixed(1)}" y="${top.toFixed(
+                1,
+              )}" width="${(bw - 4).toFixed(1)}" height="${Math.max(
+                Math.abs(d),
+                1,
+              ).toFixed(1)}" rx="2" fill="${
+                d >= 0 ? C.ok : C.heavy
+              }" opacity="${active ? 1 : 0.35}"/>`;
+            })
+            .join("");
+          const svg = `<svg viewBox="0 0 ${Wd} ${H}" style="width:100%;display:block">
+  <line x1="4" y1="${mid}" x2="${Wd - 4}" y2="${mid}" stroke="${
+    C.faint
+  }" stroke-dasharray="3 3"/>${bars}
+  <text x="4" y="${H - 2}" fill="${
+    C.muted
+  }" font-size="10">5 h</text><text x="${Wd - 4}" y="${H - 2}" fill="${
+    C.muted
+  }" font-size="10" text-anchor="end">21 h</text></svg>`;
+          const note = active
+            ? `In use: it cuts Solcast's error by ${
+                gain !== null ? Math.round(gain) : "–"
+              } % on days it was not learned from.`
+            : days < 14
+              ? `Learning: ${days} of 14 mornings with a forecast and what the panels made.`
+              : `Not in use: on your days it does not beat Solcast as it is${
+                  gain !== null ? ` (${Math.round(gain)} %)` : ""
+                }.`;
+          return (
+            head("mdi:white-balance-sunny", "Solcast vs your roof", "by hour") +
+            svg +
+            sub(
+              `<span style="color:${C.ok}">Up</span>: your roof makes more than Solcast says · <span style="color:${C.heavy}">down</span>: less. ${note}`,
+            )
+          );
+        },
+      };
+      const SECTIONS = (this._config || {}).sections || [
+        "performance",
+        "learned",
+        "solcast",
+      ];
+      return SECTIONS.filter((k) => PARTS[k])
+        .map(
+          (k, i) =>
+            `<div style="${
+              i
+                ? "margin-top:16px;padding-top:14px;border-top:1px solid var(--sei-track, var(--divider-color, #2c2c2e))"
+                : ""
+            }">${PARTS[k]()}</div>`,
+        )
+        .join("");
+    },
+    FORMS.planTrust,
+  );
+
+  defineCard(
+    "solar-energy-insights-day-insights",
+    "Day insights",
+    "A day in hours off the grid, its best window, shortfall against the forecast and more.",
+    function (states, hass) {
+      // The day: yesterday, or the date a helper holds (to follow a history page).
+      const SD = window.SolarDash,
+        el = this;
+      const pad = (n) => String(n).padStart(2, "0");
+      const iso = (d) =>
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      const yest = new Date();
+      yest.setDate(yest.getDate() - 1);
+      const latest = iso(yest);
+      const sel = (el._config || {}).day_entity
+        ? states[el._config.day_entity]?.state
+        : null;
+      const date =
+        sel && /^\d{4}-\d\d-\d\d$/.test(sel) && sel <= latest ? sel : latest;
+      const t1 = new Date(date + "T12:00");
+      const daysBack = Math.round(
+        (new Date(iso(new Date()) + "T12:00") - t1) / 864e5,
+      );
+      const label =
+        daysBack === 1
+          ? "Yesterday"
+          : t1.toLocaleDateString("en-GB", {
+              weekday: "short",
+              day: "numeric",
+              month: "short",
+            });
+      const W = (window.__sei = window.__sei || {});
+      const C2 = (W.dayInsights = W.dayInsights || {});
+      if (!el.__seiListen) {
+        el.__seiListen = true;
+        (W.listeners = W.listeners || []).push(
+          () => el.requestUpdate && el.requestUpdate(),
+        );
+      }
+      const wake = () => (W.listeners || []).forEach((f) => f());
+      const once = (key, start) => {
+        if (!C2[key] && hass?.callWS && SD) {
+          C2[key] = { pending: true };
+          start()
+            .then((v) => {
+              C2[key] = { v };
+            })
+            .catch(() => {
+              delete C2[key];
+            })
+            .finally(wake);
+        }
+        return C2[key]?.v;
+      };
+      const hours = once("h" + date, () => SD.loadHourly(hass, date));
+      const fcAll = once("fc", () => SD.loadFc(hass).then(() => true));
+      const fcH =
+        fcAll && SD.fcHourly && (window.__solarDash || {}).fc?.hours
+          ? SD.fcHourly(window.__solarDash.fc.hours, date)
+          : null;
+      const week = once("w" + date, () => {
+        const ws = new Date(date + "T00:00");
+        ws.setDate(ws.getDate() - 7);
+        const HID = SD.HID;
+        return hass
+          .callWS({
+            type: "recorder/statistics_during_period",
+            start_time: ws.toISOString(),
+            end_time: new Date(date + "T00:00").toISOString(),
+            statistic_ids: [...HID.solar, ...HID.house],
+            period: "day",
+            types: ["change"],
+          })
+          .then((r) => {
+            const pick = (ids) => {
+              for (const id of ids)
+                if (r?.[id]?.length)
+                  return r[id]
+                    .map((x) => x.change)
+                    .filter((v) => v !== null && v !== undefined);
+              return [];
+            };
+            return { y: pick(HID.solar), h: pick(HID.house) };
+          });
+      });
+      const sum = (a) => (a || []).reduce((s, v) => s + (v || 0), 0);
+      const D = {
+        label,
+        hours: hours === undefined ? null : hours,
+        fc: fcH ? { hourly: fcH, total: sum(fcH) } : null,
+        week: week || null,
+        rec: hours ? { y: sum(hours.solar), h: sum(hours.house) } : null,
+      };
+      const head = `<div style="display:flex;justify-content:space-between;align-items:baseline">
+  <div style="font-size:17px;color:#fff;font-weight:500">Day insights</div>
+  <div style="font-size:12px;color:#8e8e93">${D.label}</div></div>`;
+      const H = D.hours;
+      if (!H || !H.house)
+        return (
+          head +
+          `<div style="font-size:12px;color:#8e8e93;margin-top:8px">${
+            H === null ? "Loading…" : "No hourly data for this day."
+          }</div>`
+        );
+      const v = (a, i) =>
+        a && a[i] !== null && a[i] !== undefined ? a[i] : null;
+      const z = (a, i) => v(a, i) ?? 0;
+      const hh = (i) => String((i + 24) % 24).padStart(2, "0");
+
+      // 1 · Grid-free hours strip
+      let free = 0,
+        known = 0;
+      const cells = Array.from({ length: 24 }, (_, i) => {
+        const house = v(H.house, i),
+          imp = z(H.imp, i);
+        if (house === null)
+          return `<div style="height:14px;border-radius:3px;background:#2c2c2e"></div>`;
+        known++;
+        const share = house > 0.01 ? imp / house : 0;
+        const col =
+          imp < 0.02 ? "#8be36a" : share < 0.5 ? "#ffb74d" : "#ff8a80";
+        if (imp < 0.02) free++;
+        return `<div title="${hh(i)}h · ${house.toFixed(
+          2,
+        )} kWh used · ${imp.toFixed(
+          2,
+        )} from grid" style="height:14px;border-radius:3px;background:${col}"></div>`;
+      }).join("");
+      const ticks = Array.from(
+        { length: 24 },
+        (_, i) =>
+          `<div style="font-size:9px;color:#636366;text-align:center">${
+            i % 6 === 0 ? hh(i) : ""
+          }</div>`,
+      ).join("");
+
+      // 2 · Insight rows
+      const rows = [];
+      const row = (icon, color, text, val) =>
+        rows.push(`
+  <div style="display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;padding:9px 0;border-top:1px solid #2c2c2e">
+    <ha-icon icon="${icon}" style="--mdc-icon-size:19px;color:${color}"></ha-icon>
+    <div style="font-size:13px;color:#e5e5e7;line-height:1.35;white-space:normal">${text}</div>
+    <div style="font-size:13px;color:#fff;text-align:right;white-space:nowrap">${val}</div></div>`);
+
+      // Best 2-hour surplus window
+      if (H.solar) {
+        let best = -1e9,
+          bi = -1;
+        for (let i = 0; i < 23; i++) {
+          const s =
+            z(H.solar, i) -
+            z(H.house, i) +
+            z(H.solar, i + 1) -
+            z(H.house, i + 1);
+          if (s > best) {
+            best = s;
+            bi = i;
+          }
+        }
+        if (best > 0.5)
+          row(
+            "mdi:washing-machine",
+            "#f5b83d",
+            `Best window for heavy loads<br><span style="color:#8e8e93;font-size:11px">${hh(
+              bi,
+            )}–${hh(bi + 2)} h had the most spare solar</span>`,
+            `+${best.toFixed(1)} kWh`,
+          );
+      }
+      // Forecast hits & misses
+      const F = D.fc?.hourly;
+      if (F && H.solar) {
+        let lo = 1e9,
+          li = -1,
+          hi = -1e9,
+          hiI = -1;
+        for (let i = 0; i < 24; i++) {
+          if (F[i] === null && v(H.solar, i) === null) continue;
+          const d = z(H.solar, i) - (F[i] || 0);
+          if (d < lo) {
+            lo = d;
+            li = i;
+          }
+          if (d > hi) {
+            hi = d;
+            hiI = i;
+          }
+        }
+        if (lo < -0.3)
+          row(
+            "mdi:weather-cloudy",
+            "#ff8a80",
+            `Biggest shortfall vs forecast<br><span style="color:#8e8e93;font-size:11px">${hh(
+              li,
+            )}–${hh(li + 1)} h · clouds or shade</span>`,
+            `${lo.toFixed(1)} kWh`,
+          );
+        if (hi > 0.3)
+          row(
+            "mdi:weather-sunny",
+            "#8be36a",
+            `Biggest beat vs forecast<br><span style="color:#8e8e93;font-size:11px">${hh(
+              hiI,
+            )}–${hh(hiI + 1)} h</span>`,
+            `+${hi.toFixed(1)} kWh`,
+          );
+      }
+      // Busiest consumption hour
+      {
+        let m = -1,
+          mi = -1;
+        for (let i = 0; i < 24; i++)
+          if (z(H.house, i) > m) {
+            m = z(H.house, i);
+            mi = i;
+          }
+        if (mi >= 0)
+          row(
+            "mdi:home-lightning-bolt-outline",
+            "#4c7cf3",
+            `Busiest hour at home<br><span style="color:#8e8e93;font-size:11px">${hh(
+              mi,
+            )}–${hh(mi + 1)} h</span>`,
+            `${m.toFixed(2)} kWh`,
+          );
+      }
+      // Night use 22–06 and how much came from the grid
+      {
+        let n = 0,
+          g = 0;
+        [22, 23, 0, 1, 2, 3, 4, 5].forEach((i) => {
+          n += z(H.house, i);
+          g += z(H.imp, i);
+        });
+        if (n > 0.05)
+          row(
+            "mdi:weather-night",
+            "#9ad7e6",
+            `Night use 22–06 h<br><span style="color:#8e8e93;font-size:11px">${
+              g < 0.05
+                ? "all from the battery"
+                : `${g.toFixed(1)} kWh from the grid`
+            }</span>`,
+            `${n.toFixed(1)} kWh`,
+          );
+      }
+      // Versus the 7 days before
+      if (D.week && D.rec) {
+        const avg = (a) =>
+          a.length ? a.reduce((s, x) => s + x, 0) / a.length : NaN;
+        const ya = avg(D.week.y),
+          ha = avg(D.week.h);
+        const tag = (x, a, goodUp) => {
+          if (!(a > 0)) return "–";
+          const p = ((x - a) / a) * 100;
+          const good = goodUp ? p >= 0 : p <= 0;
+          return `<span style="color:${good ? "#8be36a" : "#ff8a80"}">${
+            p >= 0 ? "+" : ""
+          }${Math.round(p)}%</span>`;
+        };
+        if (ya > 0 || ha > 0)
+          row(
+            "mdi:calendar-week",
+            "#c7c7cc",
+            `Compared with the 7 days before<br><span style="color:#8e8e93;font-size:11px">solar ${ya.toFixed(
+              1,
+            )} · home ${ha.toFixed(1)} kWh/day on average</span>`,
+            `☀ ${tag(D.rec.y, ya, true)} · ⌂ ${tag(D.rec.h, ha, false)}`,
+          );
+      }
+
+      return (
+        head +
+        `
+  <div style="margin-top:4px"></div>
+  ${rows.join("")}`
+      );
+    },
+    FORMS.dayInsights,
   );
 })();
