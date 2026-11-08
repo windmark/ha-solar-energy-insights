@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Plans are worked out about a fifth faster, with the same results.
+
 ## [0.3.0] - 2026-11-08
 
 ## [0.2.0] - 2026-11-08

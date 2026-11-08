@@ -123,7 +123,7 @@ def run(
         use = np.maximum(loads[:, k], 0.0)
         net = max(sun[k], 0.0) - use
         charge_kw = np.minimum(np.maximum(net, 0.0), p_max)
-        into = np.clip(np.minimum(charge_kw * hours, (top - level) / eta), 0.0, None)
+        into = np.maximum(np.minimum(charge_kw * hours, (top - level) / eta), 0.0)
         level = np.maximum(np.minimum(level + into * eta, top), level)
         if detail:
             pv_total += max(sun[k], 0.0) * hours
@@ -147,12 +147,8 @@ def run(
             export_before += np.where(surplus & ~filled & ~was_full, over * hours, 0.0)
             full_h = np.where(filled & ~was_full, elapsed + filled_h, full_h)
         need = np.maximum(-net, 0.0) * hours
-        out = np.clip(
-            np.minimum.reduce(
-                [need, np.full(count, p_max * hours), (level - floor) * eta]
-            ),
-            0.0,
-            None,
+        out = np.maximum(
+            np.minimum(np.minimum(need, p_max * hours), (level - floor) * eta), 0.0
         )
         level = level - out / eta
         short = np.where(need - out > 1e-6, need - out, 0.0)
@@ -185,11 +181,6 @@ def run(
             trace.append(level * 100 / cap)
     start = slices.starts[0] if len(slices) else None
 
-    def at(h: float) -> datetime | None:
-        return (
-            None if np.isnan(h) or start is None else start + timedelta(hours=float(h))
-        )
-
     books = None
     if detail and start is not None:
         ends = [
@@ -197,13 +188,13 @@ def run(
             for t, h in zip(slices.starts, slices.hours, strict=True)
         ]
         books = {
-            "full_at": [at(h) for h in full_h],
+            "full_at": _times(start, full_h),
             "export_kwh": export,
             "export_before_full_kwh": export_before,
             "grid_kwh": grid_all,
             "pv_kwh": pv_total,
             "load_kwh": load_all,
-            "reserve_at": [at(h) for h in first_short_h],
+            "reserve_at": _times(start, first_short_h),
             "peak_kwh": peak,
             "peak_at": [start if k < 0 else ends[k] for k in peak_k],
             "low_kwh": low_all,
@@ -212,10 +203,7 @@ def run(
             "night_low_kwh": np.where(np.isinf(low), level, low),
             "ends": ends,
         }
-    reserve_at = tuple(
-        None if np.isnan(h) or start is None else start + timedelta(hours=float(h))
-        for h in reserve_hours
-    )
+    reserve_at = tuple(_times(start, reserve_hours))
     return Runs(
         lasts=np.isnan(reserve_hours),
         grid_kwh=grid,
@@ -225,6 +213,16 @@ def run(
         levels_pct=np.stack(trace, axis=1) if record else None,
         detail=books,
     )
+
+
+def _times(start: datetime | None, hours: Floats) -> list[datetime | None]:
+    """*start* plus each of *hours*, None where it is NaN. Usually most are NaN,
+    so only the others are converted."""
+    times: list[datetime | None] = [None] * len(hours)
+    if start is not None:
+        for i in np.flatnonzero(~np.isnan(hours)).tolist():
+            times[i] = start + timedelta(hours=float(hours[i]))
+    return times
 
 
 def weighted_quantile(values: Floats, weights: Floats, share: float) -> float:
