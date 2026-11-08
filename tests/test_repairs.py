@@ -25,7 +25,6 @@ async def test_options_an_earlier_version_had_are_dropped(home: HomeAssistant) -
         {
             const.CONF_PRICE: 30.8,
             "battery_health": ["sensor.pack_soh"],
-            "outdoor_temperature": "sensor.balcony",
             "charge_power_limit": "sensor.limit",
         },
     )
