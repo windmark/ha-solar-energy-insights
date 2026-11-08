@@ -30,7 +30,9 @@ def night_of(*args, **kwargs) -> Night:
 
 
 @pytest.mark.parametrize(
-    ("season", "house"), itertools.product(SEASONS, HOUSES.values()), ids=str
+    ("season", "house"),
+    itertools.product(SEASONS, HOUSES.values()),
+    ids=lambda x: getattr(x, "name", None) or x.__name__,
 )
 def test_more_charge_never_makes_the_night_worse(season, house) -> None:
     use = history(season.day, house)

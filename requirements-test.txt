@@ -1,1 +1,2 @@
 pytest-homeassistant-custom-component==0.13.374
+pytest-xdist==3.8.0
