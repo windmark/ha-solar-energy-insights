@@ -2905,11 +2905,16 @@
       }
     });
   }
-  const timeout = (p, ms) =>
-    Promise.race([
+  // The timer is cleared once the request settles, so none is left running.
+  const timeout = (p, ms) => {
+    let timer;
+    return Promise.race([
       p,
-      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms)),
-    ]);
+      new Promise((_, rej) => {
+        timer = setTimeout(() => rej(new Error("timeout")), ms);
+      }),
+    ]).finally(() => clearTimeout(timer));
+  };
   const startMs = (x) =>
     typeof x.start === "number" ? x.start : Date.parse(x.start);
 
