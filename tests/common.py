@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import functools
 import math
+import time
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -17,6 +19,18 @@ from pytest_homeassistant_custom_component.components.recorder.common import (
 )
 
 from custom_components.solar_energy_insights import const
+
+def _timed(fn):
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        try:
+            return await fn(*args, **kwargs)
+        finally:
+            print(f"TIMING {fn.__name__} {time.perf_counter() - start:.3f}s")
+
+    return wrapper
+
 
 TZ = "Europe/Berlin"
 DAY = date(2026, 6, 10)
@@ -112,6 +126,7 @@ def set_states(
         )
 
 
+@_timed
 async def record_house(
     hass: HomeAssistant, days: list[date], kwh_at: Callable[[int], float]
 ) -> None:
@@ -145,6 +160,7 @@ def recent(count: int) -> list[date]:
     return [DAY - timedelta(days=n) for n in range(count, 0, -1)]
 
 
+@_timed
 async def setup_entry(
     hass: HomeAssistant, options: dict[str, Any] | None = None
 ) -> MockConfigEntry:
@@ -166,6 +182,7 @@ def state(hass: HomeAssistant, entity_id: str) -> str:
     return current.state
 
 
+@_timed
 async def record_battery(
     hass: HomeAssistant, days: list[date], soc_at: Callable[[int], float]
 ) -> None:
@@ -196,6 +213,7 @@ async def record_battery(
     await async_wait_recording_done(hass)
 
 
+@_timed
 async def record_energy(
     hass: HomeAssistant,
     entity_id: str,

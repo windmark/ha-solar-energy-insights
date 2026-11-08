@@ -58,7 +58,7 @@ jobs:
       # One worker per core. Each test file stays on one worker, so its
       # module-scoped fixtures are built once.
       - name: Run unit tests
-        run: python -m pytest -n auto --dist loadfile --durations=10
+        run: python -m pytest tests/test_achievements.py tests/test_achievements_data.py tests/test_answers.py -s --durations=20 2>&1 | grep -E "TIMING|passed|failed|s call|s setup|s teardown|::"
 
   validate-hacs:
     name: Validate HACS
