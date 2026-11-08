@@ -38,6 +38,7 @@ from .const import (
     CONF_BATTERY_SOC,
     CONF_CHARGE_LIMIT,
     CONF_FEED_IN_CAP,
+    CONF_FEED_IN_ENTITY,
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
     CONF_PRICE_ENTITY,
@@ -327,11 +328,11 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
             )
             if (entity_id := self.config_entry.data.get(key))
         ]
-        entity_ids.extend(
+        entity_ids += [
             entity_id
-            for key in (CONF_PRICE_ENTITY, CONF_FEED_IN_CAP)
+            for key in (CONF_PRICE_ENTITY, CONF_FEED_IN_ENTITY, CONF_FEED_IN_CAP)
             if (entity_id := self.config_entry.options.get(key))
-        )
+        ]
         return async_track_state_change_event(
             self.hass, entity_ids, self._async_changed
         )

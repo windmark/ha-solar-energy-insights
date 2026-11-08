@@ -470,6 +470,7 @@ class InsightsCostSensor(InsightsEntity, SensorEntity):
             "price": values["price"],
             "feed_in": values["feed_in"],
             "price_source": self.coordinator.price_source,
+            "feed_in_source": self.coordinator.feed_in_source,
         }
 
 

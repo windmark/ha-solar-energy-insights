@@ -37,6 +37,7 @@ from .const import (
     CONF_CHARGE_LIMIT,
     CONF_FEED_IN,
     CONF_FEED_IN_CAP,
+    CONF_FEED_IN_ENTITY,
     CONF_GRID_EXPORT_ENERGY,
     CONF_GRID_IMPORT_ENERGY,
     CONF_GRID_POWER,
@@ -133,6 +134,9 @@ OPTIONS_SCHEMA = vol.Schema(
             0, 500, 0.01, "ct/kWh"
         ),
         vol.Optional(CONF_PRICE_ENTITY): EntitySelector(
+            EntitySelectorConfig(domain=["sensor", "input_number"])
+        ),
+        vol.Optional(CONF_FEED_IN_ENTITY): EntitySelector(
             EntitySelectorConfig(domain=["sensor", "input_number"])
         ),
         vol.Optional(CONF_SOLAR_ENERGY): _sensor(SensorDeviceClass.ENERGY),

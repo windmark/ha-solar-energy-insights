@@ -24,6 +24,7 @@ CONF_IMPORT_POSITIVE: Final = "import_positive"
 CONF_PRICE: Final = "price"
 CONF_FEED_IN: Final = "feed_in"
 CONF_PRICE_ENTITY: Final = "price_entity"
+CONF_FEED_IN_ENTITY: Final = "feed_in_entity"
 # Learns a correction to Solcast for this roof.
 CONF_SOLAR_ENERGY: Final = "solar_energy"
 
