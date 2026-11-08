@@ -3310,7 +3310,16 @@
       if (el) C.waiters.add(el);
       return null;
     }
-    return assemble(kind, start, end, hass);
+    const out = assemble(kind, start, end, hass);
+    // Prices still loading: the € figures use the current price until they arrive
+    if (
+      el &&
+      kind === "rows" &&
+      PRICES &&
+      [PRICES.buy, PRICES.sell].some((id) => id && C.pr[id] && C.pr[id].p)
+    )
+      C.waiters.add(el);
+    return out;
   }
   async function daysAsync(hass, start, end, kind) {
     kind = kind || "rows";
