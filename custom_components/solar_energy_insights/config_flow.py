@@ -46,6 +46,7 @@ from .const import (
     CONF_MAX_POWER,
     CONF_MIN_RESERVE,
     CONF_NIGHTS,
+    CONF_OUTDOOR_TEMPERATURE,
     CONF_PRICE,
     CONF_PRICE_ENTITY,
     CONF_ROUND_TRIP,
@@ -135,6 +136,7 @@ OPTIONS_SCHEMA = vol.Schema(
             EntitySelectorConfig(domain=["sensor", "input_number"])
         ),
         vol.Optional(CONF_SOLAR_ENERGY): _sensor(SensorDeviceClass.ENERGY),
+        vol.Optional(CONF_OUTDOOR_TEMPERATURE): _sensor(SensorDeviceClass.TEMPERATURE),
         vol.Required(CONF_LOOKBACK, default=DEFAULT_LOOKBACK_MIN): _number(
             30, 120, 15, "min"
         ),

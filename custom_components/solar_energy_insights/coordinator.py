@@ -67,6 +67,7 @@ from .core.plan import HEAVY_SHARE, Plan, PlanInputs, plan
 from .core.snapshot import to_snapshot
 from .forecast_checkpoints import Checkpoints
 from .memory import MemoryStore
+from .scenario_lab import ScenarioLab
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -102,6 +103,7 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
         self.live_full: FullScore | None = None
         self.achievements = Achievements(self)
         self.checkpoints = Checkpoints(self)
+        self.scenario_lab = ScenarioLab(self)
         # For an exact replay in diagnostics.
         self.last_inputs: PlanInputs | None = None
         # Readings taken from memory because the battery reports none right now.

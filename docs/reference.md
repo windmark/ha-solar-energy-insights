@@ -12,8 +12,9 @@
 | Grid power                 | To tell when a full battery exports            |
 | Solcast today and tomorrow | The forecast sensors                           |
 
-Options: prices, a solar energy counter, string sizes and roofs, nights to
-replay, battery limits, and how long a changed answer is shown.
+Options: prices, a solar energy counter, an outdoor thermometer, string sizes
+and roofs, nights to replay, battery limits, and how long a changed answer is
+shown.
 
 ## Entities
 
@@ -49,6 +50,26 @@ response_variable: with_dryer
 ```
 
 The plan with an extra load started now.
+
+```yaml
+action: solar_energy_insights.scenario
+data:
+  extra_battery_kwh: 5
+  battery_price: 2500 # optional, for the payback
+  heat_loss_w_per_k: 180 # optional: a heat pump; needs the outdoor temperature
+  heating_limit_c: 15
+  indoor_c: 20
+  hot_water_kwh_per_day: 6
+response_variable: year
+```
+
+The recorded hours of the last year (from the solar energy counter and the
+house's use) replayed through the battery as it is and with the change: per
+year, what is bought, exported and used, self-sufficiency, nights without the
+grid, the saving, the payback, and how much of a heat pump's electricity the
+roof covers. The heat pump is a simple model: the heat loss below the heating
+limit, divided by a coefficient of performance that falls in the cold, plus hot
+water.
 
 ## WebSocket
 
