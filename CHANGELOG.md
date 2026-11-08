@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- A scenario lab: the `scenario` action replays the last year's recorded solar and house use through the battery, as it is and with more capacity or a heat pump, and says per year what would be bought and exported, the self-sufficiency, the nights without the grid, the saving and the payback. A heat pump needs the outdoor thermometer, now an option again; its load is the heat lost below the heating limit at each hour's temperature, divided by a coefficient of performance that falls in the cold. The `custom:solar-energy-insights-scenario-lab` card has sliders for both.
+
 ## [0.9.0] - 2026-11-08
 
 ### Added

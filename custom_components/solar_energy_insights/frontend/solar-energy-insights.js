@@ -892,6 +892,39 @@
       labels: { sections: "Sections" },
       stub: { sections: SECTIONS.map(([k]) => k) },
     },
+    scenarioLab: {
+      schema: [
+        {
+          name: "extra_battery_kwh",
+          selector: {
+            number: { min: 0, max: 30, step: 0.5, unit_of_measurement: "kWh" },
+          },
+        },
+        {
+          name: "heat_loss_w_per_k",
+          selector: {
+            number: { min: 0, max: 600, step: 5, unit_of_measurement: "W/K" },
+          },
+        },
+        {
+          name: "hot_water_kwh_per_day",
+          selector: {
+            number: { min: 0, max: 20, step: 0.5, unit_of_measurement: "kWh" },
+          },
+        },
+        {
+          name: "battery_price_per_kwh",
+          selector: { number: { min: 0, max: 2000, step: 10, mode: "box" } },
+        },
+      ],
+      labels: {
+        extra_battery_kwh: "Extra battery to start from",
+        heat_loss_w_per_k: "Heat loss to start from (0: no heat pump)",
+        hot_water_kwh_per_day: "Hot water heat per day, with a heat pump",
+        battery_price_per_kwh: "Battery price per kWh, for the payback",
+      },
+      stub: { extra_battery_kwh: 5, heat_loss_w_per_k: 0 },
+    },
   };
 
   const defineCard = (tag, name, description, render, form) => {
@@ -2698,6 +2731,183 @@
       );
     },
     FORMS.forecastTrust,
+  );
+
+  defineCard(
+    "solar-energy-insights-scenario-lab",
+    "Scenario lab",
+    "Your last year again, with a bigger battery or a heat pump.",
+    function (states, hass) {
+      const el = this;
+      const { W, C, sub, head } = window.SolarDash.ui(this, hass, states);
+      const cfg = el._config || {};
+      // The sliders are the card's own: a change asks again, nothing is saved.
+      const lab = (el._lab = el._lab || {
+        battery: +cfg.extra_battery_kwh || 0,
+        loss: +cfg.heat_loss_w_per_k || 0,
+      });
+      if (!el._labListen && el.shadowRoot) {
+        el._labListen = true;
+        el.shadowRoot.addEventListener("change", (ev) => {
+          const k = ev.target?.dataset?.lab;
+          if (!k) return;
+          lab[k] = +ev.target.value;
+          el.requestUpdate();
+        });
+      }
+      const water = lab.loss > 0 ? +cfg.hot_water_kwh_per_day || 0 : 0;
+      const key = [lab.battery, lab.loss, water].join("|");
+      const cache = (W.scenarios = W.scenarios || {});
+      const c = cache[key];
+      if ((!c || (!c.pending && Date.now() - c.t > 3600e3)) && hass?.callWS) {
+        cache[key] = { ...(c || {}), t: Date.now(), pending: true };
+        hass
+          .callWS({
+            type: "call_service",
+            domain: "solar_energy_insights",
+            service: "scenario",
+            service_data: {
+              extra_battery_kwh: lab.battery,
+              heat_loss_w_per_k: lab.loss,
+              hot_water_kwh_per_day: water,
+              ...(cfg.battery_price_per_kwh && lab.battery
+                ? { battery_price: cfg.battery_price_per_kwh * lab.battery }
+                : {}),
+            },
+            return_response: true,
+          })
+          .then((r) => (cache[key] = { t: Date.now(), data: r.response }))
+          .catch(
+            (e) =>
+              (cache[key] = {
+                t: Date.now(),
+                error: String(e?.message || e),
+              }),
+          )
+          .finally(() => (W.listeners || []).forEach((f) => f()));
+      }
+      const slider = (k, label, max, step, unit) =>
+        `<label style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;font-size:13px;color:${
+          C.text
+        };margin:6px 0">${label}<span style="color:${C.muted}">${
+          lab[k] ? lab[k] + " " + unit : "none"
+        }</span><input type="range" data-lab="${k}" min="0" max="${max}" step="${step}" value="${
+          lab[k]
+        }" style="grid-column:1 / -1;width:100%"></label>`;
+      const controls =
+        slider(
+          "battery",
+          "Extra battery",
+          cfg.max_battery_kwh || 20,
+          0.5,
+          "kWh",
+        ) +
+        slider(
+          "loss",
+          "Heat pump, heat loss",
+          cfg.max_heat_loss || 400,
+          5,
+          "W/K",
+        );
+      const r = cache[key]?.data;
+      const top = head("mdi:flask-outline", "Scenario lab", "your last year");
+      if (!r)
+        return (
+          top +
+          controls +
+          sub(
+            cache[key]?.error
+              ? "Could not replay the year: " + cache[key].error
+              : "Replaying your year…",
+          )
+        );
+      const n = (v, d = 0) =>
+        (+v).toLocaleString(undefined, {
+          maximumFractionDigits: d,
+          minimumFractionDigits: d,
+        });
+      const money = (v) =>
+        (+v).toLocaleString(undefined, {
+          style: "currency",
+          currency: hass?.config?.currency || "EUR",
+          maximumFractionDigits: 0,
+        });
+      const row = (label, now, changed, better) =>
+        `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;font-size:13px;padding:4px 0;border-top:1px solid ${
+          C.track
+        }"><span style="color:${C.muted}">${label}</span><span style="color:${
+          C.muted
+        };text-align:right">${now}</span><span style="text-align:right;color:${
+          better === null ? C.text : better ? C.ok : C.heavy
+        }">${changed}</span></div>`;
+      const a = r.now,
+        b = r.changed;
+      const saving = r.saving_per_year;
+      const rows =
+        `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;font-size:11px;color:${C.muted};margin-top:8px"><span></span><span style="text-align:right">as it is</span><span style="text-align:right">with it</span></div>` +
+        row(
+          "Bought from the grid",
+          n(a.import_kwh) + " kWh",
+          n(b.import_kwh) + " kWh",
+          b.import_kwh <= a.import_kwh,
+        ) +
+        row(
+          "Exported",
+          n(a.export_kwh) + " kWh",
+          n(b.export_kwh) + " kWh",
+          null,
+        ) +
+        row(
+          "Self-sufficiency",
+          n(a.self_sufficiency_pct) + "%",
+          n(b.self_sufficiency_pct) + "%",
+          b.self_sufficiency_pct >= a.self_sufficiency_pct,
+        ) +
+        row(
+          "Nights without the grid",
+          `${a.nights_off_grid} of ${a.nights}`,
+          `${b.nights_off_grid} of ${b.nights}`,
+          b.nights_off_grid >= a.nights_off_grid,
+        ) +
+        (b.heat_pump_kwh
+          ? row(
+              "Heat pump",
+              "",
+              `${n(b.heat_pump_kwh)} kWh, ${n(
+                r.heat_pump_solar_pct,
+              )}% from the roof`,
+              null,
+            )
+          : "");
+      const verdict =
+        !lab.battery && !lab.loss
+          ? "Move a slider to see what would change."
+          : saving >= 0
+            ? `Saves about ${money(saving)} a year${
+                r.payback_years
+                  ? `, paid back in ${n(r.payback_years, 1)} years`
+                  : ""
+              }.`
+            : `Costs about ${money(-saving)} a year more in electricity${
+                b.heat_pump_kwh ? ", in place of the heating you use now" : ""
+              }.`;
+      return (
+        top +
+        controls +
+        rows +
+        `<div style="font-size:14px;color:${C.text};margin-top:10px">${verdict}</div>` +
+        sub(
+          `Your last ${n(r.days)} recorded days, per year, at ${n(
+            r.price * 100,
+            1,
+          )} ct bought and ${n(
+            r.feed_in * 100,
+            1,
+          )} ct exported. The heat pump is a simple model: heat loss below a heating limit, divided by a COP that falls in the cold.`,
+        )
+      );
+    },
+    FORMS.scenarioLab,
   );
 })();
 

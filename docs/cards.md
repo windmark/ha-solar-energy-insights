@@ -49,6 +49,20 @@ checkpoints: ["18:00", "21:00", "06:00", "12:00"]
 footnotes: true
 ```
 
+## Scenario lab
+
+```yaml
+type: custom:solar-energy-insights-scenario-lab
+extra_battery_kwh: 5 # where the sliders start
+heat_loss_w_per_k: 0 # 0: no heat pump
+hot_water_kwh_per_day: 6 # with a heat pump
+battery_price_per_kwh: 400 # optional, for the payback
+```
+
+Your last year replayed with the sliders' battery and heat pump, against the
+house as it is. Needs the solar energy counter, and for a heat pump the outdoor
+thermometer, in the integration's options.
+
 ## Achievements
 
 ```yaml

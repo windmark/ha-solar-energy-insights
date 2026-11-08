@@ -103,7 +103,7 @@
           "feed_in": "What a kWh exported earns, in cents.",
           "price_entity": "For a dynamic tariff: overrides the electricity price while it has a value. Its current value applies to every hour ahead; nothing is timed to cheap hours. Read as cents if its unit starts with ct, else as your currency per kWh.",
           "feed_in_entity": "Overrides the feed-in tariff while it has a value. Read as cents if its unit starts with ct, else as your currency per kWh.",
-          "outdoor_temperature": "A thermometer with statistics. Nights that followed similar weather may then count more, but only if that predicts recent evenings better.",
+          "outdoor_temperature": "A thermometer with statistics. With it, the scenario action can add a heat pump to your last year: the heat each hour would have needed at the temperature outside.",
           "solar_energy": "A counter of what the panels made. With it, Solcast's morning forecasts are compared with what came, and a correction for this roof is used once it beats the raw forecast.",
           "max_charge": "The level the battery charges to when no entity gives it: lower it if the app stops charging below 100 %. Full means reaching it.",
           "achievements": "Score, levels, streaks, records, badges and quests, earned from your history. The first start replays the history the recorder holds.",
@@ -472,6 +472,36 @@
           "description": "How long it runs."
         }
       }
+    },
+    "scenario": {
+      "name": "Scenario",
+      "description": "Your last year again, with a bigger battery or a heat pump: what you would have bought, exported and saved, per year.",
+      "fields": {
+        "extra_battery_kwh": {
+          "name": "Extra battery",
+          "description": "Capacity added to the battery."
+        },
+        "heat_loss_w_per_k": {
+          "name": "Heat loss",
+          "description": "The house's heat loss per degree between inside and out, for example from an energy consultant's report. 0 for no heat pump."
+        },
+        "heating_limit_c": {
+          "name": "Heating limit",
+          "description": "The outdoor temperature above which the house needs no heating."
+        },
+        "indoor_c": {
+          "name": "Indoor temperature",
+          "description": "The temperature the house is heated to."
+        },
+        "hot_water_kwh_per_day": {
+          "name": "Hot water",
+          "description": "Heat for hot water per day, for example 2 kWh per person."
+        },
+        "battery_price": {
+          "name": "Battery price",
+          "description": "What the extra battery costs, for the years it takes to pay back."
+        }
+      }
     }
   },
   "exceptions": {
@@ -480,6 +510,15 @@
     },
     "not_ready": {
       "message": "No plan yet: {reason}."
+    },
+    "needs_solar_counter": {
+      "message": "The scenario needs the solar energy counter: set it in the options."
+    },
+    "needs_temperature": {
+      "message": "A heat pump needs the outdoor temperature: set a thermometer with statistics in the options."
+    },
+    "too_little_history": {
+      "message": "The recorder holds less than a week of solar and house use; try again later."
     }
   },
   "issues": {
