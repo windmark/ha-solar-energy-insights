@@ -49,7 +49,24 @@ const hass = {
       await new Promise((r) => setTimeout(r, 5));
       return CONFIG;
     }
+    if (q.type === "history/history_during_period") {
+      // The price helper: 30 ct until 20 days ago, then 40 ct
+      if (!q.entity_ids.includes("input_number.price")) return {};
+      return {
+        "input_number.price": [
+          { s: "30", lu: new Date(daysAgo(300) + "T08:00").getTime() / 1000 },
+          { s: "40", lu: new Date(daysAgo(20) + "T08:00").getTime() / 1000 },
+        ],
+      };
+    }
     if (q.type !== "recorder/statistics_during_period") return {};
+    if (q.statistic_ids.includes("input_number.price"))
+      // A daily mean from statistics wins over the history: 50 ct ten days ago
+      return {
+        "input_number.price": [
+          { start: new Date(daysAgo(10) + "T00:00").getTime(), mean: 50 },
+        ],
+      };
     asked.push(q);
     const out = {};
     if (q.period === "5minute") {
@@ -227,6 +244,27 @@ check(
   "an hour without the jump",
   Math.max(...H.solar.filter((v) => v !== null)) < 1,
 );
+
+// € figures use each day's price: 6 kWh kept and 3 kWh fed in a day, 8 ct feed-in
+SP.setPrices({ buy: "input_number.price", sellDefault: 8 });
+const span = [daysAgo(25), daysAgo(4)];
+SP.daysSync(hass, span[0], span[1], null);
+await settle();
+const P = SP.daysSync(hass, span[0], span[1], null);
+check("before the change, 30 ct", near(P[daysAgo(25)].v, 6 * 0.3 + 3 * 0.08));
+check("after the change, 40 ct", near(P[daysAgo(5)].v, 6 * 0.4 + 3 * 0.08));
+check(
+  "a statistics mean wins, 50 ct",
+  near(P[daysAgo(10)].v, 6 * 0.5 + 3 * 0.08),
+);
+check("bought at the day's price", near(P[daysAgo(5)].vb, 2 * 0.4));
+const sumV = Object.values(P).reduce((x, r) => x + r.v, 0);
+check("totals add up the days", near(SP.sum(P).v, sumV));
+check(
+  "price before the oldest record",
+  SP.priceOn(hass, "input_number.price", daysAgo(390), 1) === 30,
+);
+SP.setPrices(null);
 
 // A year without a typical year: only months whose every day had a forecast
 const fc = await SP.series(hass, "fc");
