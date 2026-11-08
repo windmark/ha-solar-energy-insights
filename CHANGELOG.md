@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.11.0] - 2026-11-08
+
 ### Added
 
 - "Typical day": the house's typical day, with its mean use for each hour of the week over the last five weeks as an attribute, for charts of the week.
