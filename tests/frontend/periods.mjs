@@ -21,6 +21,7 @@ const daysAgo = (k) => {
   return iso(d);
 };
 const TODAY = daysAgo(0);
+const JUMP_DAY = daysAgo(30);
 const START = daysAgo(400);
 
 const CONFIG = {
@@ -51,6 +52,20 @@ const hass = {
     if (q.type !== "recorder/statistics_during_period") return {};
     asked.push(q);
     const out = {};
+    if (q.period === "5minute") {
+      // Today so far: 4.5 kWh solar in two five-minute slots
+      const at = new Date(q.start_time).getTime();
+      for (const id of q.statistic_ids) {
+        if (id.includes("solar_yield"))
+          out[id] = [
+            { start: at, change: 2, max: null },
+            { start: at + 3e5, change: 2.5, max: null },
+          ];
+        if (id.endsWith("solar_power"))
+          out[id] = [{ start: at, change: null, max: 5000 }];
+      }
+      return out;
+    }
     for (const id of q.statistic_ids) {
       const rows = [];
       for (
@@ -73,7 +88,15 @@ const hass = {
         else if (v !== null)
           rows.push({
             start: t.getTime(),
-            change: q.period === "hour" ? v / 24 : v,
+            // A counter that came back counts its whole total in one hour
+            change:
+              q.period === "hour"
+                ? iso(t) === JUMP_DAY &&
+                  t.getHours() === 12 &&
+                  key === "solar_yield"
+                  ? 18000
+                  : v / 24
+                : v,
           });
       }
       if (rows.length) out[id] = rows;
@@ -134,25 +157,41 @@ SP.view(hass, hass.states, null);
 await settle();
 const V = SP.view(hass, hass.states, null);
 check("a finished week has seven days", V.tot && V.tot.n === 7);
+const near = (a, b) => Math.abs(a - b) < 1e-6;
 check(
   "its totals",
-  V.tot.y === 70 && V.tot.h === 56 && V.tot.i === 14 && V.tot.e === 21,
+  near(V.tot.y, 70) &&
+    near(V.tot.h, 56) &&
+    near(V.tot.i, 14) &&
+    near(V.tot.e, 21),
 );
 check("its peak in kW", V.tot.pk === 6);
-check("compared with the week before", V.prev && V.prev.y === 70);
+const jumpWeek = SP.range("Week", JUMP_DAY);
+show("Week", jumpWeek.start);
+SP.view(hass, hass.states, null);
+await settle();
+const J = SP.view(hass, hass.states, null);
+check(
+  "a counter jump is not counted",
+  Math.abs(J.rows[JUMP_DAY].y - 10 * (23 / 24)) < 1e-9,
+);
+show("Week", lastWeek.start);
+check("compared with the week before", V.prev && near(V.prev.y, 70));
 check("autarky", Math.round(V.aut) === 75);
 
-// Today takes the live day counters
+// Today comes from the five-minute statistics, not from the counters' states,
+// which are lifetime totals
 Object.assign(hass.states, {
-  "sensor.po_solar_yield_today": { state: "4.5" },
-  "sensor.po_house_consumption_today": { state: "3" },
+  "sensor.po_solar_yield_today": { state: "18494" },
+  "sensor.po_house_consumption_today": { state: "9000" },
   "sensor.po_solar_power": { state: "7000" },
 });
 show("Week", TODAY);
 SP.view(hass, hass.states, null);
 await settle();
 const T = SP.view(hass, hass.states, null);
-check("today from the live counters", T.rows[TODAY].y === 4.5);
+check("today from the five-minute statistics", T.rows[TODAY].y === 4.5);
+check("not the lifetime counter", T.tot.y < 100);
 check("today's peak from live power", T.rows[TODAY].pk === 7);
 
 // Months before the first statistics are never asked for
@@ -166,6 +205,27 @@ check(
     (q) =>
       q.period === "month" || iso(new Date(q.end_time)).slice(0, 7) >= first,
   ),
+);
+
+// The year view adds up the same days, so a jump stays out of it too
+const years =
+  SP.yearsSync(hass, null) || (await settle(), SP.yearsSync(hass, null));
+check("a year without the jump", years && years[JUMP_DAY.slice(0, 4)].y < 5000);
+
+// The day calendar's month totals drop the jump as well
+const jd = new Date(JUMP_DAY + "T12:00");
+const month = await window.SolarDash.monthDays(
+  hass,
+  jd.getFullYear(),
+  jd.getMonth(),
+);
+check("month days without the jump", month[JUMP_DAY].y < 11);
+
+// The day view's hours drop it too
+const H = await window.SolarDash.loadHourly(hass, JUMP_DAY);
+check(
+  "an hour without the jump",
+  Math.max(...H.solar.filter((v) => v !== null)) < 1,
 );
 
 // A year without a typical year: only months whose every day had a forecast

@@ -143,19 +143,22 @@
             if (rows && rows.length) {
               const arr = new Array(24).fill(null);
               const cnt = new Array(24).fill(0);
-              rows.forEach(function (row) {
-                const v = row[type];
-                if (v === null || v === undefined) return;
-                const hr = new Date(row.start).getHours();
-                /* DST: an hour can occur twice – add energy, average the battery level */
-                if (arr[hr] === null) arr[hr] = v;
-                else
-                  arr[hr] =
-                    type === "mean"
-                      ? (arr[hr] * cnt[hr] + v) / (cnt[hr] + 1)
-                      : arr[hr] + v;
-                cnt[hr]++;
-              });
+              // Energy hours without counter jumps (see plausible below)
+              (type === "mean" ? rows : plausible(rows, 1)).forEach(
+                function (row) {
+                  const v = row[type];
+                  if (v === null || v === undefined) return;
+                  const hr = new Date(row.start).getHours();
+                  /* DST: an hour can occur twice – add energy, average the battery level */
+                  if (arr[hr] === null) arr[hr] = v;
+                  else
+                    arr[hr] =
+                      type === "mean"
+                        ? (arr[hr] * cnt[hr] + v) / (cnt[hr] + 1)
+                        : arr[hr] + v;
+                  cnt[hr]++;
+                },
+              );
               out[k] = arr;
               break;
             }
@@ -303,9 +306,41 @@
     return v || out;
   };
 
+  /* A counter that comes back after reporting 0 (or appears for the first time)
+     makes the recorder count its whole total as one period. As in
+     core/nights.py plausible(): changes above both 25 kWh an hour and ten times
+     the counter's typical change are dropped. rows: [{ start, change }]; hours:
+     the length of one row in hours. */
+  const JUMP_FLOOR_KWH = 25,
+    JUMP_FACTOR = 10;
+  const plausible = function (rows, hours) {
+    const ok = (rows || []).filter(function (r) {
+      return r.change !== null && r.change !== undefined && r.change >= 0;
+    });
+    const pos = ok
+      .map(function (r) {
+        return r.change;
+      })
+      .filter(function (v) {
+        return v > 0;
+      })
+      .sort(function (a, b) {
+        return a - b;
+      });
+    const typical = pos.length ? pos[Math.floor(pos.length / 2)] : 0;
+    const limit = Math.max(
+      JUMP_FLOOR_KWH * (hours || 1),
+      JUMP_FACTOR * typical,
+    );
+    return ok.filter(function (r) {
+      return r.change <= limit;
+    });
+  };
+
   /* ── Day totals for a whole month: { 'YYYY-MM-DD': { y, h, i, e } } ─────────────
      y solar · h house · i bought · e exported (kWh), from the first day with statistics.
-     Past months are cached for the session, the current month for 30 min. */
+     Summed from hourly statistics so that counter jumps can be dropped; the daily
+     ones keep them. Past months are cached for the session, the current month for 30 min. */
   const isoDay = function (d) {
     const p = function (n) {
       return String(n).padStart(2, "0");
@@ -340,7 +375,7 @@
           start_time: st.toISOString(),
           end_time: e.toISOString(),
           statistic_ids: ids,
-          period: "day",
+          period: "hour",
           types: ["change"],
         });
         const K = { y: HID.solar, h: HID.house, i: HID.imp, e: HID.exp };
@@ -349,10 +384,14 @@
             return r && r[x] && r[x].length;
           });
           if (!id) return;
+          // Days with statistics, even when all their hours were dropped
           r[id].forEach(function (row) {
-            if (row.change === null || row.change === undefined) return;
             const d = isoDay(new Date(row.start));
-            (out[d] = out[d] || {})[k] = Math.max(row.change, 0);
+            const o = (out[d] = out[d] || {});
+            if (o[k] === undefined) o[k] = 0;
+          });
+          plausible(r[id], 1).forEach(function (row) {
+            out[isoDay(new Date(row.start))][k] += row.change;
           });
         });
       }
@@ -625,6 +664,7 @@
     isoDay,
     monthDays,
     monthDaysSync,
+    plausible,
     pickDay,
     setCalMode,
     calMode,
@@ -2661,8 +2701,8 @@
    its state in two helpers the user creates: input_select.solar_history_period
    (Day, Week, Month, Year) and input_datetime.solar_day (any date in the period).
    Day totals come from the recorder's daily statistics, a month at a time, so a week,
-   a month and a year share one cache; today's row uses the live day counters, since
-   the statistics lag by up to an hour. Nothing is fetched before the integration's
+   a month and a year share one cache; today's row comes from the five-minute
+   statistics, since the daily ones lag by up to an hour. Nothing is fetched before the integration's
    settings arrive: without them SolarDash.HID is empty and empty months would stick. */
 (function () {
   "use strict";
@@ -2849,7 +2889,6 @@
   // ── cache / wake-up ──────────────────────────────────────────────────────
   const C = (window.__solarPeriod = window.__solarPeriod || {
     m: {},
-    hm: {},
     yrs: null,
     waiters: new Set(),
     hass: null,
@@ -2931,7 +2970,8 @@
   const ready = () => !!ids();
   const historyStart = () => {
     const t = window.SolarDash && window.SolarDash.START;
-    return t ? iso(new Date(t)) : "2015-01-01";
+    // Unknown (no house counter set): two full years back keeps the year view bounded
+    return t ? iso(new Date(t)) : new Date().getFullYear() - 2 + "-01-01";
   };
 
   function monthsIn(start, end) {
@@ -2949,163 +2989,202 @@
     return [new Date(y, m - 1, 1), new Date(y, m, 1)];
   }
 
-  /** Parse a statistics_during_period answer into { 'YYYY-MM-DD': {k: v} } (first id with data wins). */
-  function parseDaily(r, I) {
-    const rows = {};
-    for (const k of Object.keys(I))
-      for (const id of I[k]) {
-        ((r && r[id]) || []).forEach((x) => {
-          const v = k === "pk" ? x.max : x.change;
-          if (v === null || v === undefined) return;
-          const d = iso(new Date(startMs(x))),
-            row = (rows[d] = rows[d] || {});
-          if (row[k] === undefined)
-            row[k] = k === "pk" ? v / 1000 : Math.max(v, 0);
+  /** Hourly statistics into day rows { 'YYYY-MM-DD': {k: kWh, pk: kW} } and hour
+      arrays { 'YYYY-MM-DD': {k: [24]} }, first id with data per key, counter jumps
+      dropped (SolarDash.plausible). */
+  const HOURLY = ["y", "h", "i", "p1", "p2", "p3"];
+  function parseHours(r, I) {
+    const rows = {},
+      hours = {};
+    const clean = window.SolarDash && window.SolarDash.plausible;
+    for (const k of Object.keys(I)) {
+      const id = I[k].find((x) => r && r[x] && r[x].length);
+      if (!id) continue;
+      if (k === "pk") {
+        r[id].forEach((x) => {
+          if (x.max === null || x.max === undefined) return;
+          const o = (rows[iso(new Date(startMs(x)))] =
+            rows[iso(new Date(startMs(x)))] || {});
+          o.pk = Math.max(o.pk || 0, x.max / 1000);
         });
+        continue;
       }
-    return rows;
-  }
-  function parseHourly(r, I) {
-    const rows = {};
-    for (const k of Object.keys(I))
-      for (const id of I[k]) {
-        const seen = {};
-        ((r && r[id]) || []).forEach((x) => {
-          if (x.change === null || x.change === undefined) return;
-          const t = new Date(startMs(x)),
-            d = iso(t),
-            h = t.getHours();
-          const row = (rows[d] = rows[d] || {}),
-            a = (row[k] = row[k] || new Array(24).fill(null));
-          if (a[h] !== null && !seen[d + h]) return; // filled by an earlier id
-          seen[d + h] = true;
-          a[h] = (a[h] || 0) + Math.max(x.change, 0); // += handles the 25-hour DST day
-        });
-      }
-    return rows;
+      r[id].forEach((x) => {
+        const d = iso(new Date(startMs(x))),
+          o = (rows[d] = rows[d] || {});
+        if (o[k] === undefined) o[k] = 0;
+      });
+      const kept = clean ? clean(r[id], 1) : r[id].filter((x) => x.change >= 0);
+      kept.forEach((x) => {
+        const t = new Date(startMs(x)),
+          d = iso(t);
+        rows[d][k] += x.change;
+        if (!HOURLY.includes(k)) return;
+        const hd = (hours[d] = hours[d] || {}),
+          a = (hd[k] = hd[k] || new Array(24).fill(null));
+        a[t.getHours()] = (a[t.getHours()] || 0) + x.change; // the 25-hour DST day adds up
+      });
+    }
+    return { rows, hours };
   }
 
-  /** Generic month-chunk loader. kind: 'm' (daily rows) or 'hm' (hourly rows). */
-  function ensure(hass, kind, mk) {
-    const box = C[kind],
+  /** Month-chunk loader: hourly statistics for one month, kept as day rows and
+      hour arrays. The current month is refreshed every TTL. */
+  function ensure(hass, mk) {
+    const box = C.m,
       c = box[mk],
       now = Date.now(),
       cur = mk === mKey(todayIso());
     if (c && c.p) return c.p;
-    if (c && c.rows && (!cur || now - c.t < TTL))
-      return Promise.resolve(c.rows);
-    if (c && c.err && now - c.t < 15e3) return Promise.resolve(c.rows || null);
-    const I0 = ids();
-    if (!I0 || !hass || !hass.callWS) return Promise.resolve(null);
+    if (c && c.rows && (!cur || now - c.t < TTL)) return Promise.resolve(c);
+    if (c && c.err && now - c.t < 15e3)
+      return Promise.resolve(c.rows ? c : null);
+    const I = ids();
+    if (!I || !hass || !hass.callWS) return Promise.resolve(null);
     const [s, e] = monthBounds(mk);
     if (s > new Date() || mk < historyStart().slice(0, 7)) {
-      box[mk] = { rows: {}, t: now };
-      return Promise.resolve({});
+      box[mk] = { rows: {}, hours: {}, t: now };
+      return Promise.resolve(box[mk]);
     }
-    const I =
-      kind === "m"
-        ? I0
-        : { y: I0.y, h: I0.h, i: I0.i, p1: I0.p1, p2: I0.p2, p3: I0.p3 };
     const p = timeout(
       hass.callWS({
         type: "recorder/statistics_during_period",
         start_time: s.toISOString(),
         end_time: e.toISOString(),
         statistic_ids: [...new Set(Object.values(I).flat())],
-        period: kind === "m" ? "day" : "hour",
-        types: kind === "m" ? ["change", "max"] : ["change"],
+        period: "hour",
+        types: ["change", "max"],
       }),
       30000,
     )
       .then((r) => {
-        const rows = kind === "m" ? parseDaily(r, I) : parseHourly(r, I);
-        box[mk] = { rows, t: Date.now() };
+        box[mk] = { ...parseHours(r, I), t: Date.now() };
         wake();
-        return rows;
+        return box[mk];
       })
       .catch(() => {
-        box[mk] = { rows: c && c.rows, t: Date.now(), err: true };
+        box[mk] = {
+          rows: c && c.rows,
+          hours: c && c.hours,
+          t: Date.now(),
+          err: true,
+        };
         wake();
-        return (c && c.rows) || null;
+        return c && c.rows ? box[mk] : null;
       });
-    box[mk] = { rows: c && c.rows, t: c ? c.t : 0, p };
+    box[mk] = { rows: c && c.rows, hours: c && c.hours, t: c ? c.t : 0, p };
     return p;
   }
 
-  function live(states) {
-    // The configured counters; the battery's have no setting, so they are found
-    // next to them by name, and only when the counters share a prefix.
-    const PFX = (window.SolarDash && window.SolarDash.PFX) || "";
-    const n = (id) => {
-      if (!id) return null;
-      const v = parseFloat(states && states[id] && states[id].state);
-      return isNaN(v) ? null : v;
-    };
+  // Today, from the recorder's five-minute statistics: the daily ones lag by up to
+  // an hour, and a counter's state can't be read as today's energy, since the
+  // configured counters are usually lifetime totals.
+  const TODAY_TTL = 2 * 60e3;
+  function ensureToday(hass) {
+    const t = todayIso(),
+      c = C.today;
+    if (c && c.d === t && (c.p || Date.now() - c.t < TODAY_TTL))
+      return c.p || Promise.resolve(c.row);
+    const I = ids();
+    if (!I || !hass || !hass.callWS) return Promise.resolve(null);
+    const p = timeout(
+      hass.callWS({
+        type: "recorder/statistics_during_period",
+        start_time: new Date(t + "T00:00").toISOString(),
+        end_time: new Date().toISOString(),
+        statistic_ids: [...new Set(Object.values(I).flat())],
+        period: "5minute",
+        types: ["change", "max"],
+      }),
+      30000,
+    )
+      .then((r) => {
+        const row = {},
+          clean = window.SolarDash && window.SolarDash.plausible;
+        Object.keys(I).forEach((k) => {
+          const id = I[k].find((x) => r && r[x] && r[x].length);
+          if (!id) return;
+          if (k === "pk") {
+            r[id].forEach((x) => {
+              if (x.max !== null && x.max !== undefined)
+                row.pk = Math.max(row.pk || 0, x.max / 1000);
+            });
+            return;
+          }
+          row[k] = 0;
+          (clean
+            ? clean(r[id], 1 / 12)
+            : r[id].filter((x) => x.change >= 0)
+          ).forEach((x) => {
+            row[k] += x.change;
+          });
+        });
+        C.today = { d: t, row, t: Date.now() };
+        wake();
+        return row;
+      })
+      .catch(() => {
+        C.today = { d: t, row: c && c.d === t ? c.row : null, t: Date.now() };
+        return C.today.row;
+      });
+    C.today = { d: t, row: c && c.d === t ? c.row : null, t: 0, p };
+    return p;
+  }
+  function powerNow(states) {
     const c =
       (window.SolarDash &&
         window.SolarDash.config &&
         window.SolarDash.config()) ||
       {};
-    const strE = (k) => {
-      const s = (c.strings || []).find((x) => x.n === k);
-      return (
-        (s && s.energy) ||
-        "sensor.solar_energy_insights_pv" + k + "_energy_today"
-      );
-    };
-    const E = c.entities || {};
-    const near = (name) => (PFX ? PFX + name : null);
-    return {
-      y: n(E.solar),
-      h: n(E.house),
-      i: n(E.import),
-      e: n(E.export),
-      bc: n(near("battery_charged_today")),
-      bd: n(near("battery_discharged_today")),
-      p1: n(strE(1)),
-      p2: n(strE(2)),
-      p3: n(strE(3)),
-      pkW: n(E.solar_power || near("solar_power")),
-    };
+    const id = (c.entities || {}).solar_power;
+    const v = parseFloat(id && states && states[id] && states[id].state);
+    return isNaN(v) ? null : v;
   }
   function patchToday(r, states) {
-    const L = live(states),
-      o = { ...(r || {}) };
-    KEYS.forEach((k) => {
-      if (L[k] !== null) o[k] = L[k];
-    });
-    if (L.pkW !== null) o.pk = Math.max(o.pk || 0, L.pkW / 1000);
-    o.live = true;
+    // Until the five-minute statistics are in, the daily row (an hour behind) stands
+    const T = C.today && C.today.d === todayIso() ? C.today.row : null,
+      o = { ...(r || {}), ...(T || {}) };
+    const w = powerNow(states);
+    if (w !== null) o.pk = Math.max(o.pk || 0, w / 1000);
+    o.live = !!T;
     return o;
   }
 
+  // kind "rows": day rows (today from the five-minute statistics); "hours": hour arrays
   function assemble(kind, start, end, states) {
     const out = {},
       t = todayIso();
     monthsIn(start, end).forEach((mk) => {
-      const rows = C[kind][mk] && C[kind][mk].rows;
-      Object.entries(rows || {}).forEach(([d, r]) => {
+      const got = C.m[mk] && C.m[mk][kind];
+      Object.entries(got || {}).forEach(([d, r]) => {
         if (d >= start && d < end) out[d] = r;
       });
     });
-    if (kind === "m" && t >= start && t < end)
+    if (kind === "rows" && t >= start && t < end)
       out[t] = patchToday(out[t], states);
     return out;
   }
 
-  /** Daily rows for [start, end) – sync (null while loading; el is re-rendered when ready). */
+  /** Day rows for [start, end) – sync (null while loading; el is re-rendered when ready). */
   function daysSync(hass, start, end, el, kind) {
-    kind = kind || "m";
+    kind = kind || "rows";
     C.hass = hass || C.hass;
     const t = mKey(todayIso());
     let missing = false;
     monthsIn(start, end).forEach((mk) => {
       if (mk > t) return;
-      const c = C[kind][mk];
+      const c = C.m[mk];
       if (!c || !c.rows || c.p || (mk === t && Date.now() - c.t > TTL))
-        ensure(hass, kind, mk);
-      if (!C[kind][mk] || !C[kind][mk].rows) missing = true;
+        ensure(hass, mk);
+      if (!C.m[mk] || !C.m[mk].rows) missing = true;
     });
+    const t0 = todayIso();
+    if (kind === "rows" && t0 >= start && t0 < end) {
+      const c = C.today;
+      if (!c || c.d !== t0 || (!c.p && Date.now() - c.t > TODAY_TTL))
+        ensureToday(hass);
+      if (el && !(C.today && C.today.row)) C.waiters.add(el);
+    }
     if (missing) {
       if (el) C.waiters.add(el);
       return null;
@@ -3113,68 +3192,42 @@
     return assemble(kind, start, end, hass && hass.states);
   }
   async function daysAsync(hass, start, end, kind) {
-    kind = kind || "m";
+    kind = kind || "rows";
     const t = mKey(todayIso());
     await Promise.all(
       monthsIn(start, end)
         .filter((mk) => mk <= t)
-        .map((mk) => ensure(hass, kind, mk)),
+        .map((mk) => ensure(hass, mk)),
     );
+    const t0 = todayIso();
+    if (kind === "rows" && t0 >= start && t0 < end) await ensureToday(hass);
     return assemble(kind, start, end, hass && hass.states);
   }
   const hoursSync = (hass, start, end, el) =>
-    daysSync(hass, start, end, el, "hm");
-  const hoursAsync = (hass, start, end) => daysAsync(hass, start, end, "hm");
+    daysSync(hass, start, end, el, "hours");
+  const hoursAsync = (hass, start, end) => daysAsync(hass, start, end, "hours");
 
-  /** Totals per year (period 'month' since 2015) for the year calendar. */
+  /** Totals per year since the first statistics, from the same day rows, so a
+      year adds up to its months and days: { 'YYYY': { y, h, i, e, m: [12] } }. */
   function yearsSync(hass, el) {
-    const c = C.yrs,
-      now = Date.now();
-    if (c && c.rows && !c.p && now - c.t < 30 * 60e3) return c.rows;
-    const I0 = ids();
-    if (!c || (!c.p && !(c.err && now - c.t < 15e3))) {
-      if (I0 && hass && hass.callWS) {
-        const I = { y: I0.y, h: I0.h, i: I0.i, e: I0.e };
-        const p = timeout(
-          hass.callWS({
-            type: "recorder/statistics_during_period",
-            start_time: new Date(historyStart() + "T00:00").toISOString(),
-            end_time: new Date().toISOString(),
-            statistic_ids: [...new Set(Object.values(I).flat())],
-            period: "month",
-            types: ["change"],
-          }),
-          30000,
-        )
-          .then((r) => {
-            const months = parseDaily(r, I),
-              rows = {};
-            Object.entries(months).forEach(([d, m]) => {
-              const y = d.slice(0, 4),
-                o = (rows[y] = rows[y] || {
-                  y: 0,
-                  h: 0,
-                  i: 0,
-                  e: 0,
-                  m: new Array(12).fill(null),
-                });
-              ["y", "h", "i", "e"].forEach((k) => {
-                o[k] += m[k] || 0;
-              });
-              o.m[+d.slice(5, 7) - 1] = m.y || 0;
-            });
-            C.yrs = { rows, t: Date.now() };
-            wake();
-          })
-          .catch(() => {
-            C.yrs = { rows: c && c.rows, t: Date.now(), err: true };
-            wake();
-          });
-        C.yrs = { rows: c && c.rows, t: c ? c.t : 0, p };
-      }
-    }
-    if (!(C.yrs && C.yrs.rows) && el) C.waiters.add(el);
-    return (C.yrs && C.yrs.rows) || null;
+    const rows = daysSync(hass, historyStart(), addD(todayIso(), 1), el);
+    if (!rows) return null;
+    const out = {};
+    Object.entries(rows).forEach(([d, r]) => {
+      const o = (out[d.slice(0, 4)] = out[d.slice(0, 4)] || {
+        y: 0,
+        h: 0,
+        i: 0,
+        e: 0,
+        m: new Array(12).fill(null),
+      });
+      ["y", "h", "i", "e"].forEach((k) => {
+        o[k] += r[k] || 0;
+      });
+      const mi = +d.slice(5, 7) - 1;
+      o.m[mi] = (o.m[mi] || 0) + (r.y || 0);
+    });
+    return out;
   }
 
   // ── aggregation ──────────────────────────────────────────────────────────
@@ -3605,7 +3658,6 @@
     labels,
     view,
     fcDay,
-    live,
     daysSync,
     daysAsync,
     hoursSync,
