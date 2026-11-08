@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- A feed-in cap in the options, prefilled with PowerOcean's _Maximum feed-in Power_. With it, "Clipping until sunset" says how much solar the cap would curtail with the battery running by itself, and from when until when, and "Curtailed today" estimates what it held back so far: while the export sits at the cap, the forecast less what the roof made. They show whether holding battery room for midday is worth it.
+
 ## [0.6.0] - 2026-11-08
 
 ### Added

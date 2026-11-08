@@ -84,11 +84,13 @@ def run(
     *,
     record: bool = False,
     detail: bool = False,
+    cap_kw: float | None = None,
 ) -> Runs:
     """Step every run through the slices; *loads* is (runs, slices) kW.
 
     *record* keeps every level; *detail* keeps the bookkeeping `simulate` reports,
-    which the nightly batch doesn't need.
+    which the nightly batch doesn't need. With *cap_kw*, the detail also counts
+    the export above that cap: what the inverter would curtail.
     """
     socs = np.asarray(socs, dtype=float)
     count = len(socs)
@@ -118,6 +120,9 @@ def run(
         mark_level = (
             level.copy() if len(slices) and slices.night[0] else np.full(count, np.nan)
         )
+        clipped = np.zeros(count)
+        clip_first = np.full(count, -1)
+        clip_last = np.full(count, -1)
     for k in range(len(slices)):
         hours = slices.hours[k]
         use = np.maximum(loads[:, k], 0.0)
@@ -145,6 +150,21 @@ def run(
             export_before += np.where(filled & ~was_full, over * filled_h, 0.0)
             export += np.where(surplus & ~filled & was_full, over * hours, 0.0)
             export_before += np.where(surplus & ~filled & ~was_full, over * hours, 0.0)
+            if cap_kw is not None:
+                # While charging only the excess over the power limit goes out;
+                # once full, all of the surplus.
+                before_h = np.where(filled, filled_h, hours)
+                after_h = np.where(filled, hours - filled_h, 0.0)
+                cut = np.where(
+                    surplus,
+                    np.maximum(over - cap_kw, 0.0) * before_h
+                    + np.maximum(net - cap_kw, 0.0) * after_h,
+                    0.0,
+                )
+                clipped += cut
+                cutting = cut > 1e-9
+                clip_first = np.where(cutting & (clip_first < 0), k, clip_first)
+                clip_last = np.where(cutting, k, clip_last)
             full_h = np.where(filled & ~was_full, elapsed + filled_h, full_h)
         need = np.maximum(-net, 0.0) * hours
         out = np.maximum(
@@ -202,6 +222,9 @@ def run(
             "mark_kwh": mark_level,
             "night_low_kwh": np.where(np.isinf(low), level, low),
             "ends": ends,
+            "clipped_kwh": clipped,
+            "clip_from": [None if k < 0 else slices.starts[k] for k in clip_first],
+            "clip_until": [None if k < 0 else ends[k] for k in clip_last],
         }
     reserve_at = tuple(_times(start, reserve_hours))
     return Runs(
