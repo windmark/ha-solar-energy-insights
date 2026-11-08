@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.5.0] - 2026-11-08
+
 ### Added
 
 - `SolarPeriod.setPrices()` gives day rows their value in € at the price that applied that day: what wasn't bought, what was fed in and what was spent, summed into weeks, months and years. Prices come from the entities' long-term statistics or their recorded history.
