@@ -24,8 +24,13 @@ jobs:
           activate-environment: true
           enable-cache: true
           cache-dependency-glob: requirements-*.txt
-      - name: Install test dependencies
-        run: uv pip install -r requirements-development.txt
+      # The hooks bring their own tools, so pre-commit is all this job needs.
+      - name: Install pre-commit
+        run: uv pip install "$(grep '^pre-commit==' requirements-development.txt)"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
       - name: Run pre-commit
         run: pre-commit run --all-files --show-diff-on-failure
 
