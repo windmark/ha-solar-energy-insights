@@ -24,13 +24,14 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 
+from .appliance import appliances
 from .const import CONF_FEED_IN_CAP, DOMAIN
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
 from .core.achievements.facts import MAX_SPIKE_SHARE, MIN_SPIKE_HOURS
 from .core.nights import days_covered
 from .core.plan import Outlook, Plan
 from .dashboard import discover_strings, history_start, string_kwp
-from .entity import InsightsEntity
+from .entity import ApplianceEntity, InsightsEntity
 from .serialize import costs
 from .strings import backfill_energy, energy_today, power_kw
 from .summary import changed, summary_for
@@ -387,6 +388,32 @@ async def async_setup_entry(
         )
     if coordinator.achievements.enabled:
         async_add_entities(GameSensor(coordinator, d) for d in GAME)
+    for subentry in appliances(entry):
+        async_add_entities(
+            [ApplianceStartSensor(coordinator, subentry, APPLIANCE_START)],
+            config_subentry_id=subentry.subentry_id,
+        )
+
+
+APPLIANCE_START = SensorEntityDescription(
+    key="best_start",
+    translation_key="appliance_best_start",
+    device_class=SensorDeviceClass.TIMESTAMP,
+)
+
+
+class ApplianceStartSensor(ApplianceEntity, SensorEntity):
+    """When to start the appliance so it takes the most from free sun, until
+    sunset; after sunset, tomorrow's."""
+
+    @property
+    def native_value(self) -> datetime | None:
+        start = self.start
+        return None if start is None else start.at
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self.run_attributes()
 
 
 class InsightsSensor(InsightsEntity, SensorEntity):

@@ -126,6 +126,53 @@
       }
     }
   },
+  "config_subentries": {
+    "appliance": {
+      "initiate_flow": {
+        "user": "Add appliance"
+      },
+      "entry_type": "Appliance",
+      "step": {
+        "user": {
+          "title": "Add an appliance",
+          "description": "An appliance to start in the sun. It gets a sensor that says when to start it so it takes the most from sun that would otherwise be exported, and one that is on while now is a good time.",
+          "data": {
+            "name": "Name",
+            "icon": "Icon (optional)",
+            "kwh": "Typical energy per run",
+            "hours": "Typical duration",
+            "energy_per_run": "Energy per run (optional)"
+          },
+          "data_description": {
+            "name": "As it should appear, for example Dishwasher.",
+            "kwh": "What a usual run takes, for example 1 kWh for a dishwasher in eco mode.",
+            "hours": "How long a usual run lasts.",
+            "energy_per_run": "A sensor that learns the energy of the last run, in kWh, with the durations of the last runs as its hours attribute. A believable value beats the typical figures."
+          }
+        },
+        "reconfigure": {
+          "title": "Change the appliance",
+          "description": "What a run takes.",
+          "data": {
+            "name": "Name",
+            "icon": "Icon (optional)",
+            "kwh": "Typical energy per run",
+            "hours": "Typical duration",
+            "energy_per_run": "Energy per run (optional)"
+          },
+          "data_description": {
+            "name": "As it should appear, for example Dishwasher.",
+            "kwh": "What a usual run takes, for example 1 kWh for a dishwasher in eco mode.",
+            "hours": "How long a usual run lasts.",
+            "energy_per_run": "A sensor that learns the energy of the last run, in kWh, with the durations of the last runs as its hours attribute. A believable value beats the typical figures."
+          }
+        }
+      },
+      "abort": {
+        "reconfigure_successful": "The appliance was changed."
+      }
+    }
+  },
   "entity": {
     "sensor": {
       "battery_full_at": {
@@ -394,6 +441,9 @@
       },
       "spike_grid_share": {
         "name": "Grid share during load spikes"
+      },
+      "appliance_best_start": {
+        "name": "Best start"
       }
     },
     "binary_sensor": {
@@ -402,6 +452,9 @@
       },
       "free_power": {
         "name": "Free power"
+      },
+      "appliance_good_time": {
+        "name": "Good time to start"
       }
     }
   },

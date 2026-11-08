@@ -40,6 +40,22 @@ replay, battery limits, the feed-in cap, and how long a changed answer is shown.
 | PV*n* energy today, power per kWp, yield today                                                                 | Per string                                                                                    |
 | Night prediction error, Full-at error, Solcast correction gain, Days of history, Grid share during load spikes | Diagnostics                                                                                   |
 
+## Appliances
+
+Added under the integration with **Add appliance**: a name, an icon, the
+typical energy and duration of a run, and optionally a sensor that learns the
+energy per run (with the last durations as its `hours` attribute). Each is its
+own device with:
+
+| Entity             | Meaning                                                                                                    |
+| ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Best start         | The start until sunset that takes the most from free sun; attributes: kWh, hours, free and now shares in % |
+| Good time to start | On while starting now takes at least half the run from free sun, about as much as the best start           |
+
+Free sun is sun to spare once the battery is full, which would otherwise be
+exported. The blueprint `start_appliance.yaml` starts an appliance once it is
+a good time, and optionally once it is ready to be started remotely.
+
 ## Actions
 
 ```yaml

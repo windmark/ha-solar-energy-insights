@@ -1,0 +1,49 @@
+blueprint:
+  name: Start an appliance in the sun
+  description: >-
+    Starts an appliance once Solar Energy Insights says now is a good time:
+    starting now takes at least half of its run from sun that would otherwise
+    be exported, and about as much as the best start today. Add the appliance
+    under Solar Energy Insights first; it gets a "Good time to start" sensor.
+  domain: automation
+  source_url: https://github.com/windmark/ha-solar-energy-insights/blob/main/blueprints/automation/solar_energy_insights/start_appliance.yaml
+  input:
+    good_time:
+      name: Good time to start
+      description: The appliance's "Good time to start" sensor.
+      selector:
+        entity:
+          filter:
+            - integration: solar_energy_insights
+              domain: binary_sensor
+    ready:
+      name: Ready to start (optional)
+      description: >-
+        On while the appliance can be started from Home Assistant, such as a
+        remote start that is allowed once the door is closed and it is loaded.
+        Leave empty to start whenever it is a good time.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: binary_sensor
+    start:
+      name: Start
+      description: What starts the appliance, such as pressing its start button.
+      selector:
+        action: {}
+
+mode: single
+max_exceeded: silent
+
+trigger_variables:
+  good_time: !input good_time
+  ready: !input ready
+
+triggers:
+  # Fires once both are true, in whichever order they become so.
+  - trigger: template
+    value_template: >-
+      {{ is_state(good_time, 'on') and (not ready or is_state(ready, 'on')) }}
+
+actions: !input start

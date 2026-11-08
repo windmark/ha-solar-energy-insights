@@ -30,6 +30,9 @@ running: # optional
   name: Washing machine
 ```
 
+Without `appliances`, the cards show the appliances added under the
+integration.
+
 ## Best time to run
 
 ```yaml

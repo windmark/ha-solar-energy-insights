@@ -14,9 +14,10 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .appliance import appliances
 from .coordinator import InsightsConfigEntry
 from .core.plan import Plan
-from .entity import InsightsEntity
+from .entity import ApplianceEntity, InsightsEntity
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -60,6 +61,34 @@ async def async_setup_entry(
     async_add_entities(
         InsightsBinarySensor(entry.runtime_data, d) for d in BINARY_SENSORS
     )
+    for subentry in appliances(entry):
+        async_add_entities(
+            [ApplianceGoodTimeSensor(entry.runtime_data, subentry, GOOD_TIME)],
+            config_subentry_id=subentry.subentry_id,
+        )
+
+
+GOOD_TIME = BinarySensorEntityDescription(
+    key="good_time", translation_key="appliance_good_time"
+)
+
+
+class ApplianceGoodTimeSensor(ApplianceEntity, BinarySensorEntity):
+    """On while starting now takes at least half the run from free sun, and
+    about as much as the best start today."""
+
+    @property
+    def is_on(self) -> bool:
+        start = self.start
+        return start is not None and start.good_now
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        start = self.start
+        return {
+            **self.run_attributes(),
+            "best_start": None if start is None else start.at.isoformat(),
+        }
 
 
 class InsightsBinarySensor(InsightsEntity, BinarySensorEntity):

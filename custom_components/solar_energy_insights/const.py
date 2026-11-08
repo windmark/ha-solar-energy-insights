@@ -71,3 +71,13 @@ LIVE_INTERVAL_MIN: Final = 5
 LIVE_COOLDOWN_S: Final = 30
 
 EVENT_FREE_POWER: Final = f"{DOMAIN}_free_power"
+
+# An appliance to start in the sun: one subentry each.
+SUBENTRY_APPLIANCE: Final = "appliance"
+CONF_RUN_KWH: Final = "kwh"
+CONF_RUN_HOURS: Final = "hours"
+# A sensor that learns the energy of the last run, and the durations of the
+# last runs as its "hours" attribute.
+CONF_ENERGY_PER_RUN: Final = "energy_per_run"
+DEFAULT_RUN_KWH: Final = 1.0
+DEFAULT_RUN_HOURS: Final = 2.0

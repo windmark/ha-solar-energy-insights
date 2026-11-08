@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Appliances can be added under the integration with **Add appliance**: a name, an icon, what a run takes, and optionally a sensor that learns it. Each is its own device with a "Best start" sensor, the start until sunset that takes the most from free sun, and a "Good time to start" binary sensor, on while starting now takes at least half the run from free sun and about as much as the best start. Cards without appliances of their own show them.
+- A blueprint, `start_appliance.yaml`, that starts an appliance once it is a good time, and optionally once it is ready to be started remotely.
+
 ## [0.8.0] - 2026-11-08
 
 ### Changed

@@ -726,6 +726,11 @@
           : tag;
       },
     );
+  // The card's own appliances, else those added under the integration.
+  const cardAppliances = (el) => {
+    const own = (el._config || {}).appliances;
+    return own && own.length ? own : (config() || {}).appliances || [];
+  };
   const APPLIANCES = {
     name: "appliances",
     selector: {
@@ -2007,7 +2012,7 @@
       } = window.SolarDash.ui(this, hass, states);
 
       // Appliances from the card's settings; a sensor that learns energy per run beats the typical figures.
-      const APPS = ((el._config || {}).appliances || []).map((a, i) => {
+      const APPS = cardAppliances(el).map((a, i) => {
         const e = a.energy_per_run ? st(a.energy_per_run) : null;
         const typical = +a.kwh || 1;
         let k = parseFloat(e?.state);
@@ -2295,7 +2300,7 @@
       } = window.SolarDash.ui(this, hass, states);
 
       // Appliances from the card's settings; a sensor that learns energy per run beats the typical figures.
-      const APPS = ((el._config || {}).appliances || []).map((a, i) => {
+      const APPS = cardAppliances(el).map((a, i) => {
         const e = a.energy_per_run ? st(a.energy_per_run) : null;
         const typical = +a.kwh || 1;
         let k = parseFloat(e?.state);
