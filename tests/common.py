@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import os
 import math
 import time
 from collections.abc import Callable
@@ -20,14 +21,17 @@ from pytest_homeassistant_custom_component.components.recorder.common import (
 
 from custom_components.solar_energy_insights import const
 
+_clock = time.perf_counter  # freezegun patches the attribute later
+
+
 def _timed(fn):
     @functools.wraps(fn)
     async def wrapper(*args, **kwargs):
-        start = time.perf_counter()
+        start = _clock()
         try:
             return await fn(*args, **kwargs)
         finally:
-            print(f"TIMING {fn.__name__} {time.perf_counter() - start:.3f}s")
+            print(f"TIMING {os.environ.get('PYTEST_CURRENT_TEST', '').split('::')[-1][:50]} {fn.__name__} {_clock() - start:.3f}s")
 
     return wrapper
 
