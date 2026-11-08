@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.1.0] - 2026-11-08
+
 ### Changed
 
 - A shorter README with pictures of the tiles; the reference moved to `docs/reference.md`.
