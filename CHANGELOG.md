@@ -15,6 +15,8 @@
 
 ### Added
 
+- `window.SolarPeriod` in the shipped script, for a history page that switches between day, week, month and year: the period's totals, the one before and the same one last year, day and month series for charts, a typical day by the hour, and taps that move between periods. Day totals come from the daily statistics a month at a time, shared by every period; today's row uses the live day counters. Nothing is fetched before the integration's settings arrive. A typical year (PVGIS, say) can be passed with `setTypical()`.
+
 - Card settings, in the dashboard's visual editor: which rows the now card shows and in what order, its header and taps; until sunrise's columns and notes; best time's chart; which forecast checkpoints show; the level card's quest and recap; which badge sections show. `docs/cards.md` lists them and shows how to build your own card from the Summary sensor.
 
 - The cards follow the theme: text, divider and card colours from Home Assistant, status colours chosen for light or dark themes, and `--sei-good`, `--sei-warn`, `--sei-bad`, `--sei-info` and `--sei-track` to override them.

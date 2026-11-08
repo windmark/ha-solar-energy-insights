@@ -82,3 +82,14 @@ content: >
 The other sensors are in the [reference](reference.md). For everything the
 cards draw, the `solar_energy_insights/plan` WebSocket command returns the full
 plan.
+
+### History by week, month and year
+
+The shipped script also provides `window.SolarPeriod`, for button-card and
+apexcharts cards on a history page. Create two helpers: a dropdown
+`input_select.solar_history_period` with `Day`, `Week`, `Month` and `Year`, and a
+date `input_datetime.solar_day`. `SolarPeriod.view(hass, states, this)` returns the
+selected period's totals with the previous period and the same period last year;
+`SolarPeriod.series(hass, key)` and `SolarPeriod.profile(hass, key)` feed
+apexcharts' `data_generator`. Pass a typical year, kWh per month, with
+`SolarPeriod.setTypical([...])` to compare a year with it.

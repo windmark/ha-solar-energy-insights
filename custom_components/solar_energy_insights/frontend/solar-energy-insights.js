@@ -2655,3 +2655,971 @@
     FORMS.forecastTrust,
   );
 })();
+
+/* ── Solar history by week, month and year (window.SolarPeriod) ─────────────────────
+   For a history page that switches between Day, Week, Month and Year. The page keeps
+   its state in two helpers the user creates: input_select.solar_history_period
+   (Day, Week, Month, Year) and input_datetime.solar_day (any date in the period).
+   Day totals come from the recorder's daily statistics, a month at a time, so a week,
+   a month and a year share one cache; today's row uses the live day counters, since
+   the statistics lag by up to an hour. Nothing is fetched before the integration's
+   settings arrive: without them SolarDash.HID is empty and empty months would stick. */
+(function () {
+  "use strict";
+  // A copy kept in /config/www from before this shipped is older: the shipped one wins.
+  const VER = 2;
+  if (window.SolarPeriod && window.SolarPeriod.v >= VER) return;
+
+  const PERIOD_ENTITY = "input_select.solar_history_period";
+  const DAY_ENTITY = "input_datetime.solar_day";
+  const PERIODS = ["Day", "Week", "Month", "Year"];
+  const TTL = 5 * 60e3; // refresh data of the running month every 5 min
+  const KEYS = ["y", "h", "i", "e", "p1", "p2", "p3", "bc", "bd"];
+  // A typical year, kWh per month (PVGIS, say), is the home's own: a dashboard
+  // passes it with setTypical(). Without it a year compares with the forecasts.
+  let TYPICAL = null;
+  const setTypical = (a) => {
+    TYPICAL = Array.isArray(a) && a.length === 12 ? a.map(Number) : null;
+  };
+
+  // ── dates ────────────────────────────────────────────────────────────────
+  const pad = (n) => String(n).padStart(2, "0");
+  const iso = (d) =>
+    d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  const at12 = (s) => new Date(s + "T12:00");
+  const addD = (s, k) => {
+    const d = at12(s);
+    d.setDate(d.getDate() + k);
+    return iso(d);
+  };
+  const diffD = (a, b) => Math.round((at12(b) - at12(a)) / 864e5);
+  const todayIso = () => iso(new Date());
+  const mKey = (s) => s.slice(0, 7);
+  const minS = (a, b) => (a < b ? a : b);
+
+  function isoWeek(s) {
+    const d = at12(s);
+    d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+    const w1 = new Date(d.getFullYear(), 0, 4, 12);
+    return 1 + Math.round(((d - w1) / 864e5 - 3 + ((w1.getDay() + 6) % 7)) / 7);
+  }
+
+  function periodOf(states) {
+    const s = states && states[PERIOD_ENTITY] && states[PERIOD_ENTITY].state;
+    return PERIODS.includes(s) ? s : "Day";
+  }
+  function dateOf(states) {
+    const t = todayIso(),
+      s = (states && states[DAY_ENTITY] && states[DAY_ENTITY].state) || "";
+    return /^\d{4}-\d\d-\d\d$/.test(s) && s <= t ? s : t;
+  }
+
+  function range(P, date) {
+    const d = at12(date);
+    let s, e;
+    if (P === "Week") {
+      s = new Date(d);
+      s.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      e = new Date(s);
+      e.setDate(s.getDate() + 7);
+    } else if (P === "Month") {
+      s = new Date(d.getFullYear(), d.getMonth(), 1, 12);
+      e = new Date(d.getFullYear(), d.getMonth() + 1, 1, 12);
+    } else if (P === "Year") {
+      s = new Date(d.getFullYear(), 0, 1, 12);
+      e = new Date(d.getFullYear() + 1, 0, 1, 12);
+    } else {
+      s = new Date(d);
+      e = new Date(d);
+      e.setDate(e.getDate() + 1);
+    }
+    const start = iso(s),
+      end = iso(e);
+    return { P, start, end, days: diffD(start, end) };
+  }
+
+  /** Move the anchor date k periods; never past today. */
+  function step(P, date, k) {
+    const d = at12(date);
+    if (P === "Week") d.setDate(d.getDate() + 7 * k);
+    else if (P === "Month" || P === "Year") {
+      const day = d.getDate();
+      d.setDate(1);
+      if (P === "Month") d.setMonth(d.getMonth() + k);
+      else d.setFullYear(d.getFullYear() + k);
+      d.setDate(
+        Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()),
+      );
+    } else d.setDate(d.getDate() + k);
+    return minS(iso(d), todayIso());
+  }
+
+  /** Current selection: period, anchor date, range, elapsed part. */
+  function sel(states) {
+    const P = periodOf(states),
+      date = dateOf(states),
+      today = todayIso();
+    const R = range(P, date);
+    const inProg = R.end > today;
+    const upto = inProg ? addD(today, 1) : R.end; // exclusive end of the elapsed part
+    return {
+      ...R,
+      date,
+      today,
+      inProg,
+      upto,
+      elapsed: diffD(R.start, upto),
+      canNext: R.end <= today,
+    };
+  }
+
+  function labels(S) {
+    const t = S.today,
+      f = (s, o) => at12(s).toLocaleDateString("en-GB", o);
+    const nowR = range(S.P, t),
+      isNow = nowR.start === S.start;
+    const lastR = range(S.P, addD(nowR.start, -1)),
+      isLast = lastR.start === S.start;
+    const last = addD(S.end, -1);
+    if (S.P === "Week") {
+      const sameM = mKey(S.start) === mKey(last);
+      const span = sameM
+        ? f(S.start, { day: "numeric" }) +
+          "–" +
+          f(last, { day: "numeric", month: "short", year: "numeric" })
+        : f(S.start, { day: "numeric", month: "short" }) +
+          " – " +
+          f(last, { day: "numeric", month: "short", year: "numeric" });
+      return {
+        label: isNow
+          ? "This week"
+          : isLast
+            ? "Last week"
+            : "Week " + isoWeek(S.start),
+        full: "Week " + isoWeek(S.start) + " · " + span,
+        isNow,
+        word: "week",
+        back: "tap for this week",
+      };
+    }
+    if (S.P === "Month") {
+      const full = f(S.start, { month: "long", year: "numeric" });
+      return {
+        label: isNow
+          ? "This month"
+          : isLast
+            ? "Last month"
+            : f(S.start, { month: "long" }),
+        full,
+        isNow,
+        word: "month",
+        back: "tap for this month",
+      };
+    }
+    if (S.P === "Year") {
+      const y = S.start.slice(0, 4);
+      return {
+        label: isNow ? "This year" : isLast ? "Last year" : y,
+        full: y,
+        isNow,
+        word: "year",
+        back: "tap for this year",
+      };
+    }
+    const back = diffD(S.start, t);
+    return {
+      label:
+        back === 0
+          ? "Today"
+          : back === 1
+            ? "Yesterday"
+            : f(S.start, { weekday: "short", day: "numeric", month: "short" }),
+      full: f(S.start, {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }),
+      isNow: back === 0,
+      word: "day",
+      back: "tap for today",
+    };
+  }
+
+  // ── cache / wake-up ──────────────────────────────────────────────────────
+  const C = (window.__solarPeriod = window.__solarPeriod || {
+    m: {},
+    hm: {},
+    yrs: null,
+    waiters: new Set(),
+    hass: null,
+    fcT: 0,
+  });
+  function wake() {
+    const w = [...C.waiters];
+    C.waiters.clear();
+    w.forEach((e) => {
+      try {
+        e.requestUpdate("_config");
+      } catch (x) {
+        /* gone */
+      }
+    });
+  }
+  const timeout = (p, ms) =>
+    Promise.race([
+      p,
+      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms)),
+    ]);
+  const startMs = (x) =>
+    typeof x.start === "number" ? x.start : Date.parse(x.start);
+
+  // The integration's settings (entities, prefix, strings, history start) arrive over a
+  // WebSocket call; until then SolarDash.HID is empty, so nothing may be fetched or cached.
+  function cfg() {
+    const SD = window.SolarDash;
+    const c = SD && SD.config ? SD.config() : null;
+    if (c) return c;
+    const hass =
+      C.hass || (document.querySelector("home-assistant") || {}).hass;
+    if (SD && SD.loadConfig && hass && !C.cfgAsk) {
+      C.cfgAsk = true;
+      Promise.resolve(SD.loadConfig(hass)).then(
+        () => {
+          C.cfgAsk = false;
+          wake();
+        },
+        () => {
+          C.cfgAsk = false;
+        },
+      );
+    }
+    return null;
+  }
+  function ids() {
+    const SD = window.SolarDash,
+      c = cfg();
+    if (!SD || !c) return null;
+    const PFX = SD.PFX,
+      HID = SD.HID,
+      E = c.entities || {};
+    if (!HID.solar.length || !HID.house.length) return null;
+    const str = (n) => {
+      const s = (c.strings || []).find((x) => x.n === n);
+      return [
+        (s && s.energy) ||
+          "sensor.solar_energy_insights_pv" + n + "_energy_today",
+      ];
+    };
+    return {
+      y: HID.solar,
+      h: HID.house,
+      i: HID.imp,
+      e: HID.exp,
+      p1: str(1),
+      p2: str(2),
+      p3: str(3),
+      bc: PFX
+        ? [PFX + "battery_charged_today", PFX + "battery_charged_total"]
+        : [],
+      bd: PFX
+        ? [PFX + "battery_discharged_today", PFX + "battery_discharged_total"]
+        : [],
+      pk: E.solar_power ? [E.solar_power] : PFX ? [PFX + "solar_power"] : [],
+    };
+  }
+  const ready = () => !!ids();
+  const historyStart = () => {
+    const t = window.SolarDash && window.SolarDash.START;
+    return t ? iso(new Date(t)) : "2015-01-01";
+  };
+
+  function monthsIn(start, end) {
+    // month keys touching [start, end)
+    const out = [],
+      d = at12(start.slice(0, 7) + "-01");
+    while (iso(d) < end) {
+      out.push(iso(d).slice(0, 7));
+      d.setMonth(d.getMonth() + 1);
+    }
+    return out;
+  }
+  function monthBounds(mk) {
+    const [y, m] = mk.split("-").map(Number);
+    return [new Date(y, m - 1, 1), new Date(y, m, 1)];
+  }
+
+  /** Parse a statistics_during_period answer into { 'YYYY-MM-DD': {k: v} } (first id with data wins). */
+  function parseDaily(r, I) {
+    const rows = {};
+    for (const k of Object.keys(I))
+      for (const id of I[k]) {
+        ((r && r[id]) || []).forEach((x) => {
+          const v = k === "pk" ? x.max : x.change;
+          if (v === null || v === undefined) return;
+          const d = iso(new Date(startMs(x))),
+            row = (rows[d] = rows[d] || {});
+          if (row[k] === undefined)
+            row[k] = k === "pk" ? v / 1000 : Math.max(v, 0);
+        });
+      }
+    return rows;
+  }
+  function parseHourly(r, I) {
+    const rows = {};
+    for (const k of Object.keys(I))
+      for (const id of I[k]) {
+        const seen = {};
+        ((r && r[id]) || []).forEach((x) => {
+          if (x.change === null || x.change === undefined) return;
+          const t = new Date(startMs(x)),
+            d = iso(t),
+            h = t.getHours();
+          const row = (rows[d] = rows[d] || {}),
+            a = (row[k] = row[k] || new Array(24).fill(null));
+          if (a[h] !== null && !seen[d + h]) return; // filled by an earlier id
+          seen[d + h] = true;
+          a[h] = (a[h] || 0) + Math.max(x.change, 0); // += handles the 25-hour DST day
+        });
+      }
+    return rows;
+  }
+
+  /** Generic month-chunk loader. kind: 'm' (daily rows) or 'hm' (hourly rows). */
+  function ensure(hass, kind, mk) {
+    const box = C[kind],
+      c = box[mk],
+      now = Date.now(),
+      cur = mk === mKey(todayIso());
+    if (c && c.p) return c.p;
+    if (c && c.rows && (!cur || now - c.t < TTL))
+      return Promise.resolve(c.rows);
+    if (c && c.err && now - c.t < 15e3) return Promise.resolve(c.rows || null);
+    const I0 = ids();
+    if (!I0 || !hass || !hass.callWS) return Promise.resolve(null);
+    const [s, e] = monthBounds(mk);
+    if (s > new Date() || mk < historyStart().slice(0, 7)) {
+      box[mk] = { rows: {}, t: now };
+      return Promise.resolve({});
+    }
+    const I =
+      kind === "m"
+        ? I0
+        : { y: I0.y, h: I0.h, i: I0.i, p1: I0.p1, p2: I0.p2, p3: I0.p3 };
+    const p = timeout(
+      hass.callWS({
+        type: "recorder/statistics_during_period",
+        start_time: s.toISOString(),
+        end_time: e.toISOString(),
+        statistic_ids: [...new Set(Object.values(I).flat())],
+        period: kind === "m" ? "day" : "hour",
+        types: kind === "m" ? ["change", "max"] : ["change"],
+      }),
+      30000,
+    )
+      .then((r) => {
+        const rows = kind === "m" ? parseDaily(r, I) : parseHourly(r, I);
+        box[mk] = { rows, t: Date.now() };
+        wake();
+        return rows;
+      })
+      .catch(() => {
+        box[mk] = { rows: c && c.rows, t: Date.now(), err: true };
+        wake();
+        return (c && c.rows) || null;
+      });
+    box[mk] = { rows: c && c.rows, t: c ? c.t : 0, p };
+    return p;
+  }
+
+  function live(states) {
+    // The configured counters; the battery's have no setting, so they are found
+    // next to them by name, and only when the counters share a prefix.
+    const PFX = (window.SolarDash && window.SolarDash.PFX) || "";
+    const n = (id) => {
+      if (!id) return null;
+      const v = parseFloat(states && states[id] && states[id].state);
+      return isNaN(v) ? null : v;
+    };
+    const c =
+      (window.SolarDash &&
+        window.SolarDash.config &&
+        window.SolarDash.config()) ||
+      {};
+    const strE = (k) => {
+      const s = (c.strings || []).find((x) => x.n === k);
+      return (
+        (s && s.energy) ||
+        "sensor.solar_energy_insights_pv" + k + "_energy_today"
+      );
+    };
+    const E = c.entities || {};
+    const near = (name) => (PFX ? PFX + name : null);
+    return {
+      y: n(E.solar),
+      h: n(E.house),
+      i: n(E.import),
+      e: n(E.export),
+      bc: n(near("battery_charged_today")),
+      bd: n(near("battery_discharged_today")),
+      p1: n(strE(1)),
+      p2: n(strE(2)),
+      p3: n(strE(3)),
+      pkW: n(E.solar_power || near("solar_power")),
+    };
+  }
+  function patchToday(r, states) {
+    const L = live(states),
+      o = { ...(r || {}) };
+    KEYS.forEach((k) => {
+      if (L[k] !== null) o[k] = L[k];
+    });
+    if (L.pkW !== null) o.pk = Math.max(o.pk || 0, L.pkW / 1000);
+    o.live = true;
+    return o;
+  }
+
+  function assemble(kind, start, end, states) {
+    const out = {},
+      t = todayIso();
+    monthsIn(start, end).forEach((mk) => {
+      const rows = C[kind][mk] && C[kind][mk].rows;
+      Object.entries(rows || {}).forEach(([d, r]) => {
+        if (d >= start && d < end) out[d] = r;
+      });
+    });
+    if (kind === "m" && t >= start && t < end)
+      out[t] = patchToday(out[t], states);
+    return out;
+  }
+
+  /** Daily rows for [start, end) – sync (null while loading; el is re-rendered when ready). */
+  function daysSync(hass, start, end, el, kind) {
+    kind = kind || "m";
+    C.hass = hass || C.hass;
+    const t = mKey(todayIso());
+    let missing = false;
+    monthsIn(start, end).forEach((mk) => {
+      if (mk > t) return;
+      const c = C[kind][mk];
+      if (!c || !c.rows || c.p || (mk === t && Date.now() - c.t > TTL))
+        ensure(hass, kind, mk);
+      if (!C[kind][mk] || !C[kind][mk].rows) missing = true;
+    });
+    if (missing) {
+      if (el) C.waiters.add(el);
+      return null;
+    }
+    return assemble(kind, start, end, hass && hass.states);
+  }
+  async function daysAsync(hass, start, end, kind) {
+    kind = kind || "m";
+    const t = mKey(todayIso());
+    await Promise.all(
+      monthsIn(start, end)
+        .filter((mk) => mk <= t)
+        .map((mk) => ensure(hass, kind, mk)),
+    );
+    return assemble(kind, start, end, hass && hass.states);
+  }
+  const hoursSync = (hass, start, end, el) =>
+    daysSync(hass, start, end, el, "hm");
+  const hoursAsync = (hass, start, end) => daysAsync(hass, start, end, "hm");
+
+  /** Totals per year (period 'month' since 2015) for the year calendar. */
+  function yearsSync(hass, el) {
+    const c = C.yrs,
+      now = Date.now();
+    if (c && c.rows && !c.p && now - c.t < 30 * 60e3) return c.rows;
+    const I0 = ids();
+    if (!c || (!c.p && !(c.err && now - c.t < 15e3))) {
+      if (I0 && hass && hass.callWS) {
+        const I = { y: I0.y, h: I0.h, i: I0.i, e: I0.e };
+        const p = timeout(
+          hass.callWS({
+            type: "recorder/statistics_during_period",
+            start_time: new Date(historyStart() + "T00:00").toISOString(),
+            end_time: new Date().toISOString(),
+            statistic_ids: [...new Set(Object.values(I).flat())],
+            period: "month",
+            types: ["change"],
+          }),
+          30000,
+        )
+          .then((r) => {
+            const months = parseDaily(r, I),
+              rows = {};
+            Object.entries(months).forEach(([d, m]) => {
+              const y = d.slice(0, 4),
+                o = (rows[y] = rows[y] || {
+                  y: 0,
+                  h: 0,
+                  i: 0,
+                  e: 0,
+                  m: new Array(12).fill(null),
+                });
+              ["y", "h", "i", "e"].forEach((k) => {
+                o[k] += m[k] || 0;
+              });
+              o.m[+d.slice(5, 7) - 1] = m.y || 0;
+            });
+            C.yrs = { rows, t: Date.now() };
+            wake();
+          })
+          .catch(() => {
+            C.yrs = { rows: c && c.rows, t: Date.now(), err: true };
+            wake();
+          });
+        C.yrs = { rows: c && c.rows, t: c ? c.t : 0, p };
+      }
+    }
+    if (!(C.yrs && C.yrs.rows) && el) C.waiters.add(el);
+    return (C.yrs && C.yrs.rows) || null;
+  }
+
+  // ── aggregation ──────────────────────────────────────────────────────────
+  function sum(rows) {
+    const t = { n: 0, pk: 0, pkD: null };
+    KEYS.forEach((k) => {
+      t[k] = 0;
+    });
+    Object.entries(rows || {}).forEach(([d, r]) => {
+      if (!r || !KEYS.some((k) => r[k] !== undefined && r[k] !== null)) return;
+      t.n++;
+      KEYS.forEach((k) => {
+        t[k] += r[k] || 0;
+      });
+      if ((r.pk || 0) > t.pk) {
+        t.pk = r.pk;
+        t.pkD = d;
+      }
+    });
+    return t;
+  }
+  function byMonth(rows) {
+    const g = {};
+    Object.entries(rows || {}).forEach(([d, r]) => {
+      (g[mKey(d)] = g[mKey(d)] || {})[d] = r;
+    });
+    const out = {};
+    Object.keys(g).forEach((mk) => {
+      out[mk] = sum(g[mk]);
+    });
+    return out;
+  }
+  const autarky = (t) =>
+    t && t.h > 0
+      ? Math.max(0, Math.min(100, (1 - (t.i || 0) / t.h) * 100))
+      : null;
+  const selfUse = (t) =>
+    t && t.y > 0
+      ? Math.max(0, Math.min(100, (1 - (t.e || 0) / t.y) * 100))
+      : null;
+
+  // ── forecast per day (kWh) ───────────────────────────────────────────────
+  function loadFcOnce(hass) {
+    const SD = window.SolarDash,
+      G = window.__solarDash;
+    if (!SD || !SD.loadFc || !hass || !hass.callWS) return;
+    if (G && G.fc && G.fc.state === "pending") return;
+    if (G && G.fc && G.fc.t && Date.now() - G.fc.t < 30 * 60e3) return;
+    if (Date.now() - C.fcT < 60e3) return;
+    C.fcT = Date.now();
+    try {
+      Promise.resolve(SD.loadFc(hass)).then(wake, () => {});
+    } catch (x) {
+      /* ignore */
+    }
+  }
+  function fcDay(hass, d) {
+    const st = (hass && hass.states) || {},
+      t = todayIso();
+    const A =
+      (st["sensor.solar_energy_insights_morning_forecast"] || {}).attributes ||
+      {};
+    const sumA = (a) =>
+      Array.isArray(a) ? a.reduce((s, v) => s + (+v || 0), 0) : null;
+    const num = (id) => {
+      const v = parseFloat(st[id] && st[id].state);
+      return isNaN(v) ? null : v;
+    };
+    if (d > t) {
+      const k = diffD(t, d);
+      if (k > 6) return null;
+      const v = num(
+        "sensor.solcast_pv_forecast_forecast_" +
+          (k === 1 ? "tomorrow" : "day_" + (k + 1)),
+      );
+      return v === null ? null : { v, src: "solcast" };
+    }
+    if (d === t) {
+      if (A.today && A.today.d === d) {
+        if (A.today.mo != null) return { v: A.today.mo, src: "06" };
+        const s = sumA(A.today.moh);
+        if (s) return { v: s, src: "06" };
+      }
+      const v = num("sensor.solcast_pv_forecast_forecast_today");
+      return v === null ? null : { v, src: "solcast" };
+    }
+    const e = (A.history || []).find((x) => x.d === d);
+    if (e && e.mo != null) return { v: e.mo, src: "06" };
+    if (e && e.mh) {
+      const s = sumA(e.mh);
+      if (s) return { v: s, src: "06" };
+    }
+    const G = window.__solarDash,
+      SD = window.SolarDash;
+    if (G && G.fc && G.fc.hours && SD && SD.fcHourly) {
+      const a = SD.fcHourly(G.fc.hours, d),
+        s = sumA(a);
+      if (s > 0) return { v: s, src: "energy" };
+    }
+    return null;
+  }
+
+  // ── the object the period tiles render from ──────────────────────────────
+  function view(hass, states, el) {
+    C.hass = hass || C.hass;
+    const S = sel(states || (hass && hass.states)),
+      L = labels(S);
+    const base = { ...S, ...L, loading: false };
+    if (S.P === "Day") return base;
+    loadFcOnce(hass);
+    const rows = daysSync(hass, S.start, S.upto, el);
+    // previous period and same period last year, both cut to the same number of elapsed days
+    const pS = range(S.P, addD(S.start, -1)).start;
+    const pE = minS(addD(pS, S.elapsed), S.start);
+    // week: the week 52 weeks earlier (same weekdays); month/year: same month/year one year earlier
+    const lyStart =
+      S.P === "Week"
+        ? addD(S.start, -364)
+        : Number(S.start.slice(0, 4)) - 1 + S.start.slice(4);
+    const lyEndFull = range(S.P, lyStart).end;
+    const lyE = minS(addD(lyStart, S.elapsed), lyEndFull);
+    const prevRows = daysSync(hass, pS, pE, el);
+    const lyRows = S.P === "Year" ? null : daysSync(hass, lyStart, lyE, el);
+    const lyFullRows =
+      S.P === "Year" ? daysSync(hass, pS, range("Year", pS).end, el) : null;
+    if (!rows) return { ...base, loading: true };
+    const tot = sum(rows);
+    // forecast over the elapsed days that have one
+    // (today is left out: a full-day forecast against a half-finished day would always look bad)
+    let f = 0,
+      a = 0,
+      n = 0;
+    const fcSrc = {},
+      fcEnd = S.inProg ? S.today : S.upto;
+    for (let d = S.start; d < fcEnd; d = addD(d, 1)) {
+      const F = fcDay(hass, d);
+      if (!F || !(F.v > 0)) continue;
+      const r = rows[d];
+      if (!r || r.y === undefined) continue;
+      f += F.v;
+      a += r.y || 0;
+      n++;
+      fcSrc[F.src] = (fcSrc[F.src] || 0) + 1;
+    }
+    const prevWord = {
+      Week: "last week",
+      Month: "last month",
+      Year: "last year",
+    }[S.P];
+    return {
+      ...base,
+      rows,
+      tot,
+      months: S.P === "Year" ? byMonth(rows) : null,
+      prev: prevRows ? sum(prevRows) : null,
+      prevStart: pS,
+      prevEnd: pE,
+      prevWord,
+      ly: lyRows ? sum(lyRows) : null,
+      lyStart,
+      lyEnd: lyE,
+      lyPartial: lyE < lyEndFull,
+      lyFull: lyFullRows ? sum(lyFullRows) : null,
+      fc: n
+        ? {
+            f,
+            a,
+            n,
+            N: diffD(S.start, fcEnd),
+            src: Object.keys(fcSrc).sort((x, y) => fcSrc[y] - fcSrc[x])[0],
+          }
+        : null,
+      aut: autarky(tot),
+      self: selfUse(tot),
+    };
+  }
+
+  // ── chart series (used by apexcharts data_generators) ────────────────────
+  const xDay = (d) => at12(d).getTime();
+  const xMonth = (mk) =>
+    new Date(+mk.slice(0, 4), +mk.slice(5, 7) - 1, 15, 0).getTime();
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const VAL = {
+    y: (r) => r.y,
+    p1: (r) => r.p1,
+    p2: (r) => r.p2,
+    p3: (r) => r.p3,
+    own: (r) => -Math.max((r.h || 0) - (r.i || 0), 0),
+    grid: (r) => -Math.min(r.i || 0, r.h || 0),
+    bc: (r) => r.bc,
+    bd: (r) => -(r.bd || 0),
+    pk: (r) => r.pk,
+  };
+
+  async function series(hass, key) {
+    const S = sel(hass.states);
+    if (S.P === "Day") return [];
+    if (key === "fc") {
+      const out = [];
+      if (S.P === "Year" && TYPICAL) {
+        for (let m = 0; m < 12; m++)
+          out.push([
+            new Date(+S.start.slice(0, 4), m, 15).getTime(),
+            TYPICAL[m],
+          ]);
+        return out;
+      }
+      loadFcOnce(hass);
+      if (S.P === "Year") {
+        // Months whose every past day had a forecast; partial months would mislead
+        const g = {};
+        for (let d = S.start; d < S.end; d = addD(d, 1)) {
+          const F = fcDay(hass, d),
+            o = (g[mKey(d)] = g[mKey(d)] || { v: 0, n: 0, all: 0 });
+          o.all++;
+          if (F && F.v > 0) {
+            o.v += F.v;
+            o.n++;
+          }
+        }
+        return Object.keys(g)
+          .filter((mk) => g[mk].n && g[mk].n === g[mk].all)
+          .map((mk) => [xMonth(mk), r2(g[mk].v)]);
+      }
+      for (let d = S.start; d < S.end; d = addD(d, 1)) {
+        const F = fcDay(hass, d);
+        if (F && F.v > 0) out.push([xDay(d), r2(F.v)]);
+      }
+      return out;
+    }
+    const rows = await daysAsync(hass, S.start, S.upto);
+    const f = VAL[key];
+    if (!f) return [];
+    if (S.P === "Year") {
+      if (key === "pk")
+        return Object.entries(byMonth(rows)).map(([mk, t]) => [
+          xMonth(mk),
+          r2(t.pk),
+        ]);
+      const g = {};
+      Object.entries(rows).forEach(([d, r]) => {
+        const v = f(r);
+        if (v === undefined || v === null) return;
+        g[mKey(d)] = (g[mKey(d)] || 0) + v;
+      });
+      return Object.keys(g)
+        .sort()
+        .map((mk) => [xMonth(mk), r2(g[mk])]);
+    }
+    return Object.keys(rows)
+      .sort()
+      .map((d) => {
+        const v = f(rows[d]);
+        return [xDay(d), v === undefined || v === null ? null : r2(v)];
+      });
+  }
+
+  /** Typical day: average kW per hour over the elapsed days (completed days only if there are any). */
+  async function profile(hass, key) {
+    const S = sel(hass.states);
+    if (S.P === "Day") return [];
+    const H = await hoursAsync(hass, S.start, S.upto);
+    let days = Object.keys(H).sort();
+    if (days.length > 1) days = days.filter((d) => d !== S.today);
+    const out = [],
+      base = new Date();
+    base.setHours(0, 0, 0, 0);
+    for (let h = 0; h < 24; h++) {
+      let s = 0,
+        n = 0;
+      days.forEach((d) => {
+        const R = H[d] || {};
+        const v =
+          key === "y" ? (R.y ? R.y[h] : null) : R[key] ? R[key][h] : null;
+        if (v !== null && v !== undefined) {
+          s += v;
+          n++;
+        }
+      });
+      const t = new Date(base);
+      t.setHours(h, 30, 0, 0);
+      out.push([t.getTime(), n ? r2(s / n) : null]);
+    }
+    return out;
+  }
+
+  /** Hour-of-day averages for insights: {solar:[24], house:[24], imp:[24], n} */
+  function hourAvg(H, today) {
+    let days = Object.keys(H || {}).sort();
+    if (days.length > 1) days = days.filter((d) => d !== today);
+    const o = { solar: [], house: [], imp: [], n: days.length };
+    for (let h = 0; h < 24; h++) {
+      [
+        ["solar", "y"],
+        ["house", "h"],
+        ["imp", "i"],
+      ].forEach(([k, s]) => {
+        let t = 0,
+          n = 0;
+        days.forEach((d) => {
+          const v = H[d] && H[d][s] ? H[d][s][h] : null;
+          if (v !== null && v !== undefined) {
+            t += v;
+            n++;
+          }
+        });
+        o[k].push(n ? t / n : null);
+      });
+    }
+    return o;
+  }
+
+  // ── navigation (from taps) ───────────────────────────────────────────────
+  /** Tap handling for HTML inside button-card custom fields (data-tap="go|calmode|pick", data-more-info). */
+  function tapHook(el) {
+    if (!el || el.__tapP) return;
+    el.__tapP = true;
+    try {
+      const st = document.createElement("style");
+      st.textContent =
+        "[data-more-info],[data-tap]{pointer-events:auto!important;cursor:pointer}";
+      (el.shadowRoot || el).appendChild(st);
+    } catch (x) {
+      /* ignore */
+    }
+    let sx = 0,
+      sy = 0,
+      hit = null;
+    const find = (ev) =>
+      ev
+        .composedPath()
+        .find((n) => n && n.dataset && (n.dataset.moreInfo || n.dataset.tap));
+    const run = (h) => {
+      const d = h.dataset,
+        SD = window.SolarDash;
+      if (d.moreInfo)
+        el.dispatchEvent(
+          new CustomEvent("hass-more-info", {
+            bubbles: true,
+            composed: true,
+            detail: { entityId: d.moreInfo },
+          }),
+        );
+      else if (d.tap === "go") go(d.arg);
+      else if (d.tap === "calmode" && SD && SD.setCalMode)
+        SD.setCalMode(h, d.arg);
+      else if (d.tap === "pick" && SD && SD.pickDay) SD.pickDay(d.arg);
+    };
+    el.addEventListener(
+      "touchstart",
+      (ev) => {
+        hit = find(ev);
+        if (!hit) return;
+        const t = ev.touches[0];
+        sx = t.clientX;
+        sy = t.clientY;
+        ev.stopPropagation();
+      },
+      { capture: true, passive: true },
+    );
+    el.addEventListener(
+      "touchend",
+      (ev) => {
+        const h = hit;
+        hit = null;
+        if (!h) return;
+        ev.stopPropagation();
+        const t = ev.changedTouches[0];
+        if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10)
+          return;
+        if (ev.cancelable) ev.preventDefault();
+        run(h);
+      },
+      { capture: true },
+    );
+    el.addEventListener(
+      "click",
+      (ev) => {
+        const h = find(ev);
+        if (!h) return;
+        ev.stopPropagation();
+        ev.preventDefault();
+        run(h);
+      },
+      { capture: true },
+    );
+  }
+
+  function go(arg) {
+    const hass =
+      C.hass || (document.querySelector("home-assistant") || {}).hass;
+    if (!hass) return;
+    const [P, d] = String(arg).split("|");
+    if (P && PERIODS.includes(P) && periodOf(hass.states) !== P)
+      hass.callService("input_select", "select_option", {
+        entity_id: PERIOD_ENTITY,
+        option: P,
+      });
+    if (d)
+      hass.callService("input_datetime", "set_datetime", {
+        entity_id: DAY_ENTITY,
+        date: minS(d, todayIso()),
+      });
+  }
+
+  window.SolarPeriod = {
+    v: VER,
+    PERIODS,
+    PERIOD_ENTITY,
+    DAY_ENTITY,
+    get typical() {
+      return TYPICAL;
+    },
+    setTypical,
+    KEYS,
+    pad,
+    iso,
+    at12,
+    addD,
+    diffD,
+    todayIso,
+    isoWeek,
+    mKey,
+    ready,
+    range,
+    step,
+    sel,
+    labels,
+    view,
+    fcDay,
+    live,
+    daysSync,
+    daysAsync,
+    hoursSync,
+    hoursAsync,
+    yearsSync,
+    sum,
+    byMonth,
+    autarky,
+    selfUse,
+    hourAvg,
+    series,
+    profile,
+    go,
+    wake,
+    tapHook,
+  };
+})();
