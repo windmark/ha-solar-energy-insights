@@ -15,6 +15,7 @@ from homeassistant.components.recorder.statistics import statistics_during_perio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     UnitOfEnergy,
+    UnitOfPower,
 )
 from homeassistant.core import (
     Event,
@@ -36,9 +37,12 @@ from .const import (
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
     CONF_CHARGE_LIMIT,
+    CONF_FEED_IN_CAP,
+    CONF_FEED_IN_ENTITY,
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
     CONF_PRICE_ENTITY,
+    CONF_SOLAR_POWER,
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
     DOMAIN,
@@ -58,6 +62,7 @@ from .core.backtest import (
 from .core.battery import Rate
 from .core.changes import Answers, Change
 from .core.correction import Correction
+from .core.curtailment import Curtailed, Reading, curtailed
 from .core.live import FullScore, NightScore
 from .core.nights import (
     HourlyUse,
@@ -113,17 +118,23 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
         self.calls: list[live.Call] = []
         self._recent_answers: list[Answers] = []
         self.changes: dict[str, Change] = {}
+        self.limits_seen: list[tuple[datetime, float]] = []
+        # Solar curtailed at the feed-in cap today; None without a cap or the
+        # power readings it needs.
+        self.curtailed: Curtailed | None = None
 
     def inputs(
         self, extra: Rate | None = None, now: datetime | None = None
     ) -> PlanInputs:
         now = now or dt_util.utcnow()
+        battery = self.battery()
         return PlanInputs(
             now=now,
             tz=self.tz,
             sunrise=get_astral_event_next(self.hass, "sunrise", now),
             sunset=get_astral_event_next(self.hass, "sunset", now),
-            battery=self.battery(),
+            battery=battery,
+            charge_limit_now_pct=self.charge_limit_now(battery.floor_pct),
             pv=self.forecast(),
             use=self.use,
             nights=self.nights,
@@ -131,6 +142,7 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
             extra=extra,
             standby_kw=self.standby_kw,
             heavy_share=self.heavy_share,
+            export_cap_kw=self.export_cap_kw(),
         )
 
     async def async_refresh_history(self) -> None:
@@ -251,7 +263,49 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
         self._note_solar_day(result)
         if result.free_power and not (previous is not None and previous.free_power):
             self.hass.bus.async_fire(EVENT_FREE_POWER, {})
+        try:
+            await self._async_curtailed()
+        except Exception:
+            _LOGGER.exception("Could not estimate today's curtailment")
         return result
+
+    async def _async_curtailed(self) -> None:
+        """Estimate today's curtailment from the five-minute statistics of
+        the grid and solar power."""
+        cap = self.export_cap_kw()
+        grid = self.config_entry.data.get(CONF_GRID_POWER)
+        solar = self.config_entry.options.get(CONF_SOLAR_POWER)
+        if cap is None or not grid or not solar:
+            self.curtailed = None
+            return
+        now = dt_util.utcnow()
+        rows = await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period,
+            self.hass,
+            dt_util.start_of_local_day(now),
+            now,
+            {grid, solar},
+            "5minute",
+            {"power": UnitOfPower.KILO_WATT},
+            {"mean"},
+        )
+        made = {
+            row["start"]: max(mean, 0.0)
+            for row in rows.get(solar, [])
+            if (mean := row.get("mean")) is not None
+        }
+        sign = 1.0 if self.exports_positive else -1.0
+        readings = [
+            Reading(
+                dt_util.utc_from_timestamp(row["start"]),
+                5.0,
+                sign * mean,
+                made[row["start"]],
+            )
+            for row in rows.get(grid, [])
+            if (mean := row.get("mean")) is not None and row["start"] in made
+        ]
+        self.curtailed = curtailed(readings, self.forecast(), cap)
 
     def snapshot(self) -> dict[str, Any]:
         """Everything the plan shown was made from, to replay it offline."""
@@ -279,8 +333,11 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
             )
             if (entity_id := self.config_entry.data.get(key))
         ]
-        if price_entity := self.config_entry.options.get(CONF_PRICE_ENTITY):
-            entity_ids.append(price_entity)
+        entity_ids += [
+            entity_id
+            for key in (CONF_PRICE_ENTITY, CONF_FEED_IN_ENTITY, CONF_FEED_IN_CAP)
+            if (entity_id := self.config_entry.options.get(key))
+        ]
         return async_track_state_change_event(
             self.hass, entity_ids, self._async_changed
         )

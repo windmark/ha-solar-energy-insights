@@ -24,6 +24,7 @@ CONF_IMPORT_POSITIVE: Final = "import_positive"
 CONF_PRICE: Final = "price"
 CONF_FEED_IN: Final = "feed_in"
 CONF_PRICE_ENTITY: Final = "price_entity"
+CONF_FEED_IN_ENTITY: Final = "feed_in_entity"
 # Learns a correction to Solcast for this roof.
 CONF_SOLAR_ENERGY: Final = "solar_energy"
 
@@ -35,6 +36,8 @@ CONF_GRID_EXPORT_ENERGY: Final = "grid_export_energy"
 CONF_SOLAR_POWER: Final = "solar_power"
 # For a heat pump in the scenario lab: the hour's outdoor temperature.
 CONF_OUTDOOR_TEMPERATURE: Final = "outdoor_temperature"
+# The most the grid takes: export above it is curtailed.
+CONF_FEED_IN_CAP: Final = "feed_in_cap"
 # For when Solcast's sites don't say the array's size.
 CONF_ARRAY_KWP: Final = "array_kwp"
 EVENT_ACHIEVEMENT: Final = f"{DOMAIN}_achievement"
@@ -70,3 +73,13 @@ LIVE_INTERVAL_MIN: Final = 5
 LIVE_COOLDOWN_S: Final = 30
 
 EVENT_FREE_POWER: Final = f"{DOMAIN}_free_power"
+
+# An appliance to start in the sun: one subentry each.
+SUBENTRY_APPLIANCE: Final = "appliance"
+CONF_RUN_KWH: Final = "kwh"
+CONF_RUN_HOURS: Final = "hours"
+# A sensor that learns the energy of the last run, and the durations of the
+# last runs as its "hours" attribute.
+CONF_ENERGY_PER_RUN: Final = "energy_per_run"
+DEFAULT_RUN_KWH: Final = 1.0
+DEFAULT_RUN_HOURS: Final = 2.0

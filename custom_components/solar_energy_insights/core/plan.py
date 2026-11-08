@@ -44,10 +44,23 @@ class PlanInputs:
     # Calibrated on real nights so a "heavy" night is exceeded as often as intended.
     typical_share: float = 0.5
     heavy_share: float = HEAVY_SHARE
+    # Where charging stops right now, if lowered below the battery's ceiling
+    # for a while, such as to keep room for midday. None: at the ceiling.
+    charge_limit_now_pct: float | None = None
+    # The most the grid takes; above it the inverter curtails. None: uncapped.
+    export_cap_kw: float | None = None
 
     @property
     def sun_up(self) -> bool:
         return self.sunset < self.sunrise
+
+    @property
+    def limit_now_pct(self) -> float:
+        return (
+            self.battery.ceiling_pct
+            if self.charge_limit_now_pct is None
+            else self.charge_limit_now_pct
+        )
 
 
 class Outlook(StrEnum):
@@ -117,6 +130,11 @@ class Surplus:
     after_full_kwh: float
     while_charging_kwh: float
     cloudy_kwh: float
+    # The part of it above the feed-in cap, curtailed unless used at home.
+    clipped_kwh: float = 0.0
+    clipped_cloudy_kwh: float = 0.0
+    clip_from: datetime | None = None
+    clip_until: datetime | None = None
 
     @property
     def total_kwh(self) -> float:
@@ -172,6 +190,8 @@ class Plan:
     free_power: bool
     free_until: datetime | None
     charge_limit_pct: float
+    # Where charging stops right now: below the limit while it is lowered.
+    charge_limit_now_pct: float
     curve: tuple[tuple[datetime, float], ...] = field(repr=False)
     day: Day | None = field(default=None, repr=False, compare=False)
 
@@ -333,10 +353,19 @@ def _day(i: PlanInputs, load: Rate, expected: Simulation, cloudy: Simulation) ->
 def _charge(
     i: PlanInputs, load: Rate
 ) -> tuple[Charge, Surplus, Simulation, Simulation]:
+    cap = i.export_cap_kw
     expected = simulate(
-        i.battery, i.now, i.sunset, _sun(i.pv, Quantile.P50), load, mark_at=i.sunset
+        i.battery,
+        i.now,
+        i.sunset,
+        _sun(i.pv, Quantile.P50),
+        load,
+        mark_at=i.sunset,
+        cap_kw=cap,
     )
-    cloudy = simulate(i.battery, i.now, i.sunset, _sun(i.pv, Quantile.P10), load)
+    cloudy = simulate(
+        i.battery, i.now, i.sunset, _sun(i.pv, Quantile.P10), load, cap_kw=cap
+    )
     charge = Charge(
         full_at=expected.full_at,
         full_at_cloudy=cloudy.full_at,
@@ -348,6 +377,10 @@ def _charge(
         after_full_kwh=expected.export_kwh,
         while_charging_kwh=expected.export_before_full_kwh,
         cloudy_kwh=cloudy.export_kwh + cloudy.export_before_full_kwh,
+        clipped_kwh=expected.clipped_kwh,
+        clipped_cloudy_kwh=cloudy.clipped_kwh,
+        clip_from=expected.clip_from,
+        clip_until=expected.clip_until,
     )
     return charge, surplus, expected, cloudy
 
@@ -450,8 +483,9 @@ def plan(i: PlanInputs) -> Plan:
         night = _budget(
             i, night, start_pct if start_pct is not None else i.battery.soc_pct
         )
+    # Free while the battery takes no more now, even if only for a while.
     free = (
-        i.battery.soc_pct >= i.battery.ceiling_pct - FREE_POWER_FULL_WITHIN_PCT
+        i.battery.soc_pct >= i.limit_now_pct - FREE_POWER_FULL_WITHIN_PCT
         and i.export_kw >= FREE_POWER_MIN_EXPORT_KW
     )
     return Plan(
@@ -466,6 +500,7 @@ def plan(i: PlanInputs) -> Plan:
         free_power=free,
         free_until=_free_until(i, load) if free else None,
         charge_limit_pct=i.battery.ceiling_pct,
+        charge_limit_now_pct=i.limit_now_pct,
         curve=expected.points,
         day=_day(i, load, expected, cloudy),
     )

@@ -310,6 +310,21 @@ check(
   "a dashboard tile's own cache is left alone",
   window.__sei.sims.data.both.full_at === "x",
 );
+// Appliances added under the integration show on cards without their own.
+window.SolarDash.config().appliances = [
+  { name: "Heat pump boost", icon: "mdi:heat-pump", kwh: 2.0, hours: 1.0 },
+];
+const added = await draw("best-time");
+check(
+  "a card without appliances shows the integration's",
+  added.includes("Heat pump boost") && added.includes("2.0 kWh · 1.0 h"),
+);
+const own = await draw("best-time", { appliances: [TWO.appliances[0]] });
+check(
+  "and a card's own appliances win",
+  own.includes("Dishwasher") && !own.includes("Heat pump boost"),
+);
+window.SolarDash.config().appliances = [];
 
 // The scenario lab: the year with the card's starting values.
 const labCard = new (registry.get("solar-energy-insights-scenario-lab"))();

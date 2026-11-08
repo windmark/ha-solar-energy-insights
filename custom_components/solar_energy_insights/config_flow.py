@@ -10,14 +10,18 @@ from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
+    ConfigSubentryFlow,
     OptionsFlow,
+    SubentryFlowResult,
 )
+from homeassistant.const import CONF_ICON, CONF_NAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
     EntitySelectorConfig,
+    IconSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -25,6 +29,7 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
 )
 
 from .array import array_of
@@ -35,7 +40,10 @@ from .const import (
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
     CONF_CHARGE_LIMIT,
+    CONF_ENERGY_PER_RUN,
     CONF_FEED_IN,
+    CONF_FEED_IN_CAP,
+    CONF_FEED_IN_ENTITY,
     CONF_GRID_EXPORT_ENERGY,
     CONF_GRID_IMPORT_ENERGY,
     CONF_GRID_POWER,
@@ -50,6 +58,8 @@ from .const import (
     CONF_PRICE,
     CONF_PRICE_ENTITY,
     CONF_ROUND_TRIP,
+    CONF_RUN_HOURS,
+    CONF_RUN_KWH,
     CONF_SOLAR_ENERGY,
     CONF_SOLAR_POWER,
     CONF_SOLCAST_TODAY,
@@ -62,7 +72,10 @@ from .const import (
     DEFAULT_NIGHTS,
     DEFAULT_PRICE_CT,
     DEFAULT_ROUND_TRIP_PCT,
+    DEFAULT_RUN_HOURS,
+    DEFAULT_RUN_KWH,
     DOMAIN,
+    SUBENTRY_APPLIANCE,
 )
 from .dashboard import (
     discover_strings,
@@ -135,6 +148,9 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Optional(CONF_PRICE_ENTITY): EntitySelector(
             EntitySelectorConfig(domain=["sensor", "input_number"])
         ),
+        vol.Optional(CONF_FEED_IN_ENTITY): EntitySelector(
+            EntitySelectorConfig(domain=["sensor", "input_number"])
+        ),
         vol.Optional(CONF_SOLAR_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Optional(CONF_OUTDOOR_TEMPERATURE): _sensor(SensorDeviceClass.TEMPERATURE),
         vol.Required(CONF_LOOKBACK, default=DEFAULT_LOOKBACK_MIN): _number(
@@ -144,6 +160,9 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Optional(CONF_GRID_IMPORT_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Optional(CONF_GRID_EXPORT_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Optional(CONF_SOLAR_POWER): _sensor(SensorDeviceClass.POWER),
+        vol.Optional(CONF_FEED_IN_CAP): EntitySelector(
+            EntitySelectorConfig(domain=["sensor", "number", "input_number"])
+        ),
         vol.Optional(CONF_ARRAY_KWP): _number(0.1, 1000, 0.01, "kWp"),
         vol.Required(CONF_NIGHTS, default=DEFAULT_NIGHTS): _number(3, 60, 1, "nights"),
         vol.Required(CONF_MIN_RESERVE, default=DEFAULT_MIN_RESERVE_PCT): _number(
@@ -168,6 +187,8 @@ POWEROCEAN_OPTION_KEYS: dict[str, tuple[str, ...]] = {
     CONF_GRID_IMPORT_ENERGY: ("grid_import_total",),
     CONF_GRID_EXPORT_ENERGY: ("grid_export_total",),
     CONF_SOLAR_POWER: ("solar_power",),
+    # The cap in force, which is where the inverter curtails.
+    CONF_FEED_IN_CAP: ("feed_in_power_max",),
 }
 
 
@@ -254,6 +275,70 @@ class InsightsConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(_config_entry: ConfigEntry) -> InsightsOptionsFlow:
         return InsightsOptionsFlow()
+
+    @classmethod
+    @callback
+    def async_get_supported_subentry_types(
+        cls, _config_entry: ConfigEntry
+    ) -> dict[str, type[ConfigSubentryFlow]]:
+        return {SUBENTRY_APPLIANCE: ApplianceFlow}
+
+
+def _slider(low: float, high: float, step: float, unit: str) -> NumberSelector:
+    # Sliders, not boxes: some phone keypads can't type a decimal point.
+    return NumberSelector(
+        NumberSelectorConfig(
+            min=low,
+            max=high,
+            step=step,
+            unit_of_measurement=unit,
+            mode=NumberSelectorMode.SLIDER,
+        )
+    )
+
+
+APPLIANCE_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_NAME): TextSelector(),
+        vol.Optional(CONF_ICON): IconSelector(),
+        vol.Required(CONF_RUN_KWH, default=DEFAULT_RUN_KWH): _slider(
+            0.1, 10, 0.1, "kWh"
+        ),
+        vol.Required(CONF_RUN_HOURS, default=DEFAULT_RUN_HOURS): _slider(
+            0.5, 8, 0.5, "h"
+        ),
+        vol.Optional(CONF_ENERGY_PER_RUN): _sensor(),
+    }
+)
+
+
+class ApplianceFlow(ConfigSubentryFlow):
+    """An appliance to start in the sun: its name, and what a run takes."""
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        if user_input is not None:
+            return self.async_create_entry(title=user_input[CONF_NAME], data=user_input)
+        return self.async_show_form(step_id="user", data_schema=APPLIANCE_SCHEMA)
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        subentry = self._get_reconfigure_subentry()
+        if user_input is not None:
+            return self.async_update_and_abort(
+                self._get_entry(),
+                subentry,
+                title=user_input[CONF_NAME],
+                data=user_input,
+            )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                APPLIANCE_SCHEMA, dict(subentry.data)
+            ),
+        )
 
 
 class InsightsOptionsFlow(OptionsFlow):
