@@ -4,11 +4,14 @@ for when the battery is switched off; the array and the forecast."""
 from __future__ import annotations
 
 import logging
-from datetime import timedelta, tzinfo
+from datetime import datetime, timedelta, tzinfo
 from typing import TYPE_CHECKING
 
 from homeassistant.components.recorder import get_instance
-from homeassistant.components.recorder.history import get_last_state_changes
+from homeassistant.components.recorder.history import (
+    get_last_state_changes,
+    state_changes_during_period,
+)
 from homeassistant.const import (
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
@@ -62,6 +65,10 @@ from .strings import power_kw
 SLEEPING_READING_PCT = 0.5
 # The hour in progress counts towards "today so far" once this much of it is seen.
 MIN_PARTIAL_HOUR = timedelta(minutes=15)
+# A charge limit lowered for part of the day, such as by an automation keeping
+# room for midday, is not what the battery is meant to reach by sunset: the plan
+# uses the highest the limit has been over this long.
+LIMIT_WINDOW = timedelta(hours=24)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -90,6 +97,8 @@ class ReadingsMixin:
     memory: MemoryStore
     remembered: set[str]
     correction: Correction
+    # The charge limit's values over the last day: (since, %).
+    limits_seen: list[tuple[datetime, float]]
 
     @property
     def tz(self) -> tzinfo:
@@ -254,14 +263,53 @@ class ReadingsMixin:
         """Whether the grid power reads exports as positive."""
         return not self.config_entry.options.get(CONF_IMPORT_POSITIVE, True)
 
-    def charge_limit(self, floor: float) -> float:
-        """The level charging stops at: the entity while it gives a sensible
-        value (above the floor, at most 100), else the option, else 100."""
-        value = _number(self._state(CONF_CHARGE_LIMIT))
-        if value is not None and floor < value <= 100:
-            return value
+    def _limit_option(self, floor: float) -> float:
         option = self._option(CONF_MAX_CHARGE, DEFAULT_MAX_CHARGE_PCT)
         return option if floor < option <= 100 else 100.0
+
+    def _limit_entity(self, floor: float) -> float | None:
+        """The entity's limit while it gives a sensible value: above the floor,
+        at most 100."""
+        value = _number(self._state(CONF_CHARGE_LIMIT))
+        return value if value is not None and floor < value <= 100 else None
+
+    def charge_limit_now(self, floor: float) -> float:
+        """The level charging stops at right now: the entity, else the option,
+        else 100."""
+        value = self._limit_entity(floor)
+        return value if value is not None else self._limit_option(floor)
+
+    def charge_limit(self, floor: float) -> float:
+        """The level the battery is meant to reach: the highest the entity has
+        been over the last day, so a limit lowered for a few hours doesn't
+        count as the day's. A limit kept lower for a whole day is the limit.
+        While the entity has no value, the option, else 100."""
+        value = self._limit_entity(floor)
+        if value is None:
+            return self._limit_option(floor)
+        now = dt_util.utcnow()
+        seen = [(t, v) for t, v in self.limits_seen if now - t <= LIMIT_WINDOW]
+        if not seen or seen[-1][1] != value:
+            seen.append((now, value))
+        self.limits_seen = seen
+        return max(v for _, v in seen if floor < v <= 100)
+
+    async def async_seen_limits_from_recorder(self) -> None:
+        """Before the first plan: the charge limit's values over the last day,
+        so a restart while it is lowered doesn't take the lowered value as the
+        day's."""
+        entity_id = self.config_entry.data.get(CONF_CHARGE_LIMIT)
+        if not entity_id:
+            return
+        now = dt_util.utcnow()
+        changes = await get_instance(self.hass).async_add_executor_job(
+            state_changes_during_period, self.hass, now - LIMIT_WINDOW, now, entity_id
+        )
+        self.limits_seen = [
+            (max(state.last_changed, now - LIMIT_WINDOW), value)
+            for state in changes.get(entity_id, [])
+            if (value := _number(state)) is not None
+        ]
 
     def battery(self) -> Battery:
         # Nothing changes while a battery is switched off, so its last readings stand.

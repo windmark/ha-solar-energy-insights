@@ -2,15 +2,15 @@
 
 ## Setup
 
-| Field                      | Entity                                         |
-| -------------------------- | ---------------------------------------------- |
-| Battery state of charge    | %                                              |
-| Battery capacity           | Wh or kWh                                      |
-| Battery reserve            | %; for PowerOcean, _Effective Battery Reserve_ |
-| Charge limit               | %; for PowerOcean, _Charge Limit SOC_          |
-| House energy               | A counter of the house's use                   |
-| Grid power                 | To tell when a full battery exports            |
-| Solcast today and tomorrow | The forecast sensors                           |
+| Field                      | Entity                                                                   |
+| -------------------------- | ------------------------------------------------------------------------ |
+| Battery state of charge    | %                                                                        |
+| Battery capacity           | Wh or kWh                                                                |
+| Battery reserve            | %; for PowerOcean, _Effective Battery Reserve_                           |
+| Charge limit               | %; for PowerOcean, _Battery Charge Limit_; the highest over the last day |
+| House energy               | A counter of the house's use                                             |
+| Grid power                 | To tell when a full battery exports                                      |
+| Solcast today and tomorrow | The forecast sensors                                                     |
 
 Options: prices, a solar energy counter, string sizes and roofs, nights to
 replay, battery limits, the feed-in cap, and how long a changed answer is shown.

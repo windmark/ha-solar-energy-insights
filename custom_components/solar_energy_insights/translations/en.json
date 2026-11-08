@@ -22,7 +22,7 @@
           "grid_power": "Optional: shows when a full battery is exporting (free power).",
           "solcast_today": "The Solcast sensor for today, with its detailedForecast attribute.",
           "solcast_tomorrow": "The Solcast sensor for tomorrow.",
-          "charge_limit": "The level charging stops at, if set below 100 %. For EF-PowerOcean-TcpModbus: Charge Limit SOC. While it has no value, the option is used."
+          "charge_limit": "The level charging stops at, if set below 100 %. For EF-PowerOcean-TcpModbus: Battery Charge Limit. The plan counts the highest it has been over the last day, so a limit an automation lowers for a few hours is not taken as the day's. While it has no value, the option is used."
         }
       },
       "reconfigure": {
@@ -46,7 +46,7 @@
           "grid_power": "Optional: shows when a full battery is exporting (free power).",
           "solcast_today": "The Solcast sensor for today, with its detailedForecast attribute.",
           "solcast_tomorrow": "The Solcast sensor for tomorrow.",
-          "charge_limit": "The level charging stops at, if set below 100 %. For EF-PowerOcean-TcpModbus: Charge Limit SOC. While it has no value, the option is used."
+          "charge_limit": "The level charging stops at, if set below 100 %. For EF-PowerOcean-TcpModbus: Battery Charge Limit. The plan counts the highest it has been over the last day, so a limit an automation lowers for a few hours is not taken as the day's. While it has no value, the option is used."
         }
       }
     },

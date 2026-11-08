@@ -149,6 +149,7 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
                 if p.needed.typical_pct is not None
                 else p.charge_limit_pct,
                 "charge_limit": p.charge_limit_pct,
+                "charge_limit_now": p.charge_limit_now_pct,
                 "full_battery_lasts": p.needed.heavy_pct is not None,
                 "grid_even_when_full_kwh": round(p.needed.heavy_short_kwh, 2),
                 "grid_even_when_full_typical_kwh": round(p.needed.typical_short_kwh, 2),
