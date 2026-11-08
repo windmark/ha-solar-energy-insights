@@ -79,6 +79,10 @@ def plan_dict(
             "after_full_kwh": round(plan.surplus.after_full_kwh, 2),
             "while_charging_kwh": round(plan.surplus.while_charging_kwh, 2),
             "cloudy_kwh": round(plan.surplus.cloudy_kwh, 2),
+            # Above the feed-in cap, if one is set.
+            "clipped_kwh": round(plan.surplus.clipped_kwh, 2),
+            "clip_from": _iso(plan.surplus.clip_from),
+            "clip_until": _iso(plan.surplus.clip_until),
         },
         "needed": None
         if plan.needed is None

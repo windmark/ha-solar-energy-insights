@@ -30,6 +30,7 @@ from .const import (
     CONF_BATTERY_SOC,
     CONF_CHARGE_LIMIT,
     CONF_FEED_IN,
+    CONF_FEED_IN_CAP,
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
     CONF_IMPORT_POSITIVE,
@@ -54,6 +55,7 @@ from .const import (
 from .core.array import Array
 from .core.battery import Battery
 from .core.forecast import PvForecast
+from .strings import power_kw
 
 # A state of charge below this, with a floor above it, is a sleeping battery.
 SLEEPING_READING_PCT = 0.5
@@ -225,6 +227,18 @@ class ReadingsMixin:
         return (
             float(self.config_entry.options.get(CONF_FEED_IN, DEFAULT_FEED_IN_CT)) / 100
         )
+
+    def export_cap_kw(self) -> float | None:
+        """The feed-in cap in kW, while the entity gives one; None means
+        exports are not capped, or the cap is not known."""
+        entity_id = self.config_entry.options.get(CONF_FEED_IN_CAP)
+        kw = power_kw(self.hass.states.get(entity_id)) if entity_id else None
+        return kw if kw is not None and kw > 0 else None
+
+    @property
+    def exports_positive(self) -> bool:
+        """Whether the grid power reads exports as positive."""
+        return not self.config_entry.options.get(CONF_IMPORT_POSITIVE, True)
 
     def charge_limit(self, floor: float) -> float:
         """The level charging stops at: the entity while it gives a sensible
