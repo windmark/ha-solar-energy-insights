@@ -144,6 +144,18 @@ def test_part_of_a_year_is_scaled_to_a_year() -> None:
     assert result.per_year == pytest.approx(365 / 91)
 
 
+def test_a_battery_that_lasts_every_night_gains_nothing_from_more() -> None:
+    # Sunny every day, a small house: the battery lasts every night already.
+    hours = [
+        Hour(START + timedelta(hours=k), 5.0 if 8 <= k % 24 < 16 else 0.0, 0.3)
+        for k in range(30 * 24)
+    ]
+    result = compare(hours, BATTERY, Scenario(extra_battery_kwh=5.0), PRICE, FEED_IN)
+
+    assert result.now.nights_off_grid == result.now.nights
+    assert result.saving_per_year == pytest.approx(0.0, abs=0.5)
+
+
 def test_no_hours_no_answer() -> None:
     result = compare([], BATTERY, Scenario(extra_battery_kwh=5.0), PRICE, FEED_IN)
 

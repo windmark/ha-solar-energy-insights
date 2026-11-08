@@ -85,6 +85,9 @@ class Outcome:
     heat_pump_kwh: float
     nights: int
     nights_off_grid: int
+    # What the battery holds at the end more than at the start, as it would
+    # come out: a run must not look cheaper for leaving it emptier.
+    stored_kwh: float = 0.0
 
     @property
     def days(self) -> float:
@@ -95,7 +98,7 @@ class Outcome:
         return 1 - self.import_kwh / self.load_kwh if self.load_kwh > 0 else 0.0
 
     def cost(self, price: float, feed_in: float) -> float:
-        return self.import_kwh * price - self.export_kwh * feed_in
+        return self.import_kwh * price - (self.export_kwh + self.stored_kwh) * feed_in
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,6 +181,7 @@ def replay(
         heat_pump_kwh=float(pump.sum()),
         nights=nights,
         nights_off_grid=lasted,
+        stored_kwh=float(level[-1] - level[0]) * battery.eta,
     )
 
 
