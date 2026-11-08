@@ -94,3 +94,18 @@ def test_a_limit_never_makes_the_night_better() -> None:
 
     spares = [n.typical.spare_kwh for n in nights]
     assert spares == sorted(spares, reverse=True)
+
+
+def test_free_power_starts_at_a_limit_lowered_for_now() -> None:
+    use = history(SUMMER.day, heavy_evenings)
+    now = at(SUMMER.day, 11)
+    base = inputs(SUMMER, now, peak_kw=9, use=use, soc=70, export_kw=3.0)
+
+    lowered = plan(replace(base, charge_limit_now_pct=70.0))
+
+    assert not plan(base).free_power
+    assert lowered.free_power
+    # The day is still planned to the battery's own limit.
+    assert lowered.charge_limit_pct == 100.0
+    assert lowered.charge_limit_now_pct == 70.0
+    assert lowered.charge == plan(base).charge

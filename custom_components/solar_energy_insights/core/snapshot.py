@@ -49,6 +49,7 @@ def to_snapshot(i: PlanInputs, evenings: Sequence[Evening] = ()) -> dict[str, An
             "ceiling_pct": i.battery.ceiling_pct,
         },
         "export_kw": i.export_kw,
+        "charge_limit_now_pct": i.charge_limit_now_pct,
         "nights": i.nights,
         "standby_kw": i.standby_kw,
         "heavy_share": i.heavy_share,
@@ -94,6 +95,10 @@ def from_snapshot(data: Mapping[str, Any]) -> PlanInputs:
         # Absent in files saved before the hidden load was learned.
         standby_kw=float(s.get("standby_kw", 0.0)),
         heavy_share=float(s.get("heavy_share", 0.8)),
+        # Absent in files saved before a lowered limit was told apart.
+        charge_limit_now_pct=None
+        if s.get("charge_limit_now_pct") is None
+        else float(s["charge_limit_now_pct"]),
     )
 
 

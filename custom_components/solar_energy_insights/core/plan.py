@@ -44,10 +44,21 @@ class PlanInputs:
     # Calibrated on real nights so a "heavy" night is exceeded as often as intended.
     typical_share: float = 0.5
     heavy_share: float = HEAVY_SHARE
+    # Where charging stops right now, if lowered below the battery's ceiling
+    # for a while, such as to keep room for midday. None: at the ceiling.
+    charge_limit_now_pct: float | None = None
 
     @property
     def sun_up(self) -> bool:
         return self.sunset < self.sunrise
+
+    @property
+    def limit_now_pct(self) -> float:
+        return (
+            self.battery.ceiling_pct
+            if self.charge_limit_now_pct is None
+            else self.charge_limit_now_pct
+        )
 
 
 class Outlook(StrEnum):
@@ -172,6 +183,8 @@ class Plan:
     free_power: bool
     free_until: datetime | None
     charge_limit_pct: float
+    # Where charging stops right now: below the limit while it is lowered.
+    charge_limit_now_pct: float
     curve: tuple[tuple[datetime, float], ...] = field(repr=False)
     day: Day | None = field(default=None, repr=False, compare=False)
 
@@ -450,8 +463,9 @@ def plan(i: PlanInputs) -> Plan:
         night = _budget(
             i, night, start_pct if start_pct is not None else i.battery.soc_pct
         )
+    # Free while the battery takes no more now, even if only for a while.
     free = (
-        i.battery.soc_pct >= i.battery.ceiling_pct - FREE_POWER_FULL_WITHIN_PCT
+        i.battery.soc_pct >= i.limit_now_pct - FREE_POWER_FULL_WITHIN_PCT
         and i.export_kw >= FREE_POWER_MIN_EXPORT_KW
     )
     return Plan(
@@ -466,6 +480,7 @@ def plan(i: PlanInputs) -> Plan:
         free_power=free,
         free_until=_free_until(i, load) if free else None,
         charge_limit_pct=i.battery.ceiling_pct,
+        charge_limit_now_pct=i.limit_now_pct,
         curve=expected.points,
         day=_day(i, load, expected, cloudy),
     )
