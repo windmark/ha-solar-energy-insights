@@ -25,7 +25,8 @@ DAYS = recent(30)
 
 
 def evening(hour: int) -> float:
-    return 0.9 if 17 <= hour < 22 else 0.35
+    """A house whose evenings and nights take more than the battery holds."""
+    return 2.0 if 17 <= hour < 23 else 0.6
 
 
 def sun(_day: date, hour: int) -> float:
@@ -73,12 +74,13 @@ async def test_more_battery_buys_less_from_the_grid(home: HomeAssistant) -> None
     result = await scenario(home, extra_battery_kwh=5, battery_price=2500)
 
     assert result["days"] == pytest.approx(30, abs=1)
-    assert result["changed"]["import_kwh"] <= result["now"]["import_kwh"]
+    assert result["changed"]["import_kwh"] < result["now"]["import_kwh"]
     assert (
         result["changed"]["self_sufficiency_pct"]
-        >= result["now"]["self_sufficiency_pct"]
+        > result["now"]["self_sufficiency_pct"]
     )
-    assert result["saving_per_year"] >= 0
+    assert result["saving_per_year"] > 0
+    assert result["payback_years"] > 0
 
 
 async def test_nothing_changed_saves_nothing(home: HomeAssistant) -> None:
