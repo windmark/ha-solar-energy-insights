@@ -33,6 +33,8 @@ from .const import (
     CONF_BATTERY_SOC,
     CONF_CHARGE_LIMIT,
     CONF_FEED_IN,
+    CONF_FEED_IN_CAP,
+    CONF_FEED_IN_ENTITY,
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
     CONF_IMPORT_POSITIVE,
@@ -57,6 +59,7 @@ from .const import (
 from .core.array import Array
 from .core.battery import Battery
 from .core.forecast import PvForecast
+from .strings import power_kw
 
 # A state of charge below this, with a floor above it, is a sleeping battery.
 SLEEPING_READING_PCT = 0.5
@@ -196,8 +199,8 @@ class ReadingsMixin:
         # No export reads as 0.0, not -0.0.
         return max(-imported, 0.0) + 0.0
 
-    def _entity_price(self) -> float | None:
-        entity_id = self.config_entry.options.get(CONF_PRICE_ENTITY)
+    def _entity_price(self, key: str = CONF_PRICE_ENTITY) -> float | None:
+        entity_id = self.config_entry.options.get(key)
         state = self.hass.states.get(entity_id) if entity_id else None
         value = _number(state)
         if value is None or state is None or value < 0:
@@ -229,11 +232,36 @@ class ReadingsMixin:
         return float(self.config_entry.options.get(CONF_PRICE, DEFAULT_PRICE_CT)) / 100
 
     @property
+    def feed_in_source(self) -> str:
+        """Where the feed-in tariff comes from, as price_source."""
+        if self._entity_price(CONF_FEED_IN_ENTITY) is not None:
+            return "entity"
+        if CONF_FEED_IN in self.config_entry.options:
+            return "fixed"
+        return "default"
+
+    @property
     def feed_in(self) -> float:
-        """What a kWh exported earns, in currency per kWh."""
+        """What a kWh exported earns, in currency per kWh: the feed-in entity while
+        it has a value, else the option."""
+        from_entity = self._entity_price(CONF_FEED_IN_ENTITY)
+        if from_entity is not None:
+            return from_entity
         return (
             float(self.config_entry.options.get(CONF_FEED_IN, DEFAULT_FEED_IN_CT)) / 100
         )
+
+    def export_cap_kw(self) -> float | None:
+        """The feed-in cap in kW, while the entity gives one; None means
+        exports are not capped, or the cap is not known."""
+        entity_id = self.config_entry.options.get(CONF_FEED_IN_CAP)
+        kw = power_kw(self.hass.states.get(entity_id)) if entity_id else None
+        return kw if kw is not None and kw > 0 else None
+
+    @property
+    def exports_positive(self) -> bool:
+        """Whether the grid power reads exports as positive."""
+        return not self.config_entry.options.get(CONF_IMPORT_POSITIVE, True)
 
     def _limit_option(self, floor: float) -> float:
         option = self._option(CONF_MAX_CHARGE, DEFAULT_MAX_CHARGE_PCT)

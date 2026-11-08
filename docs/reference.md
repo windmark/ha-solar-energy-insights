@@ -13,30 +13,32 @@
 | Solcast today and tomorrow | The forecast sensors                                                     |
 
 Options: prices, a solar energy counter, string sizes and roofs, nights to
-replay, battery limits, and how long a changed answer is shown.
+replay, battery limits, the feed-in cap, and how long a changed answer is shown.
 
 ## Entities
 
-| Entity                                                                                                         | Meaning                                                                                     |
-| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Night outlook                                                                                                  | `lasts`, `borderline` or `grid`; attributes include the evening budget and the short nights |
-| Battery lasts the night                                                                                        | On when a typical night lasts                                                               |
-| Charge needed for the night                                                                                    | The level from which even a heavy night lasts                                               |
-| Reserve reached at                                                                                             | When the grid takes over on a typical night                                                 |
-| Spare at sunrise                                                                                               | kWh left on a typical night                                                                 |
-| Nights covered                                                                                                 | % of recent nights that would last from now                                                 |
-| Battery full at                                                                                                | Expected time; attributes: the cloudy case                                                  |
-| Battery at sunset                                                                                              | %                                                                                           |
-| Best window for heavy loads                                                                                    | Start; attributes: end, spare kWh                                                           |
-| Solar surplus until sunset                                                                                     | kWh the battery can't take                                                                  |
-| Free power                                                                                                     | On while the battery is full and exporting                                                  |
-| Grid cost until sunrise                                                                                        | At your price                                                                               |
-| Saving from using the surplus                                                                                  | Using it at home instead of exporting                                                       |
-| Summary                                                                                                        | The dashboard's rows as attributes                                                          |
-| Morning forecast                                                                                               | Today's forecast as it stood in the morning                                                 |
-| Forecast checkpoints                                                                                           | Days scored; attributes: frozen forecasts and scores                                        |
-| PV*n* energy today, power per kWp, yield today                                                                 | Per string                                                                                  |
-| Night prediction error, Full-at error, Solcast correction gain, Days of history, Grid share during load spikes | Diagnostics                                                                                 |
+| Entity                                                                                                         | Meaning                                                                                       |
+| -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Night outlook                                                                                                  | `lasts`, `borderline` or `grid`; attributes include the evening budget and the short nights   |
+| Battery lasts the night                                                                                        | On when a typical night lasts                                                                 |
+| Charge needed for the night                                                                                    | The level from which even a heavy night lasts                                                 |
+| Reserve reached at                                                                                             | When the grid takes over on a typical night                                                   |
+| Spare at sunrise                                                                                               | kWh left on a typical night                                                                   |
+| Nights covered                                                                                                 | % of recent nights that would last from now                                                   |
+| Battery full at                                                                                                | Expected time; attributes: the cloudy case                                                    |
+| Battery at sunset                                                                                              | %                                                                                             |
+| Best window for heavy loads                                                                                    | Start; attributes: end, spare kWh                                                             |
+| Solar surplus until sunset                                                                                     | kWh the battery can't take                                                                    |
+| Free power                                                                                                     | On while the battery is full and exporting                                                    |
+| Grid cost until sunrise                                                                                        | At your price                                                                                 |
+| Saving from using the surplus                                                                                  | Using it at home instead of exporting                                                         |
+| Clipping until sunset                                                                                          | With a feed-in cap: kWh above it, with the battery running by itself; attributes: from, until |
+| Curtailed today                                                                                                | With a feed-in cap, grid power and solar power: an estimate of the solar held back today      |
+| Summary                                                                                                        | The dashboard's rows as attributes                                                            |
+| Morning forecast                                                                                               | Today's forecast as it stood in the morning                                                   |
+| Forecast checkpoints                                                                                           | Days scored; attributes: frozen forecasts and scores                                          |
+| PV*n* energy today, power per kWp, yield today                                                                 | Per string                                                                                    |
+| Night prediction error, Full-at error, Solcast correction gain, Days of history, Grid share during load spikes | Diagnostics                                                                                   |
 
 ## Actions
 

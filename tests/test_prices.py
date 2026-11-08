@@ -153,3 +153,79 @@ async def test_simulate_reports_what_the_extra_load_costs(
 
     assert dryer["costs"]["night_grid"] > alone["costs"]["night_grid"]
     assert dryer["costs"]["price"] == pytest.approx(0.40)
+
+
+@pytest.mark.parametrize(
+    ("value", "unit", "per_kwh"),
+    (("12", "ct/kWh", 0.12), ("0.12", "EUR/kWh", 0.12)),
+)
+async def test_a_feed_in_entity_overrides_the_fixed_tariff(
+    home: HomeAssistant, value: str, unit: str, per_kwh: float
+) -> None:
+    home.states.async_set("input_number.feed_in", value, {"unit_of_measurement": unit})
+    await record_house(home, recent(14), heavy_evening)
+    set_states(home, soc=90, peak_kw=9)
+
+    await setup_entry(
+        home,
+        {
+            const.CONF_PRICE: 30.0,
+            const.CONF_FEED_IN: 8.0,
+            const.CONF_FEED_IN_ENTITY: "input_number.feed_in",
+        },
+    )
+
+    saving = home.states.get(SAVING)
+    assert saving is not None
+    surplus = float(state(home, f"sensor.{PREFIX}solar_surplus_until_sunset"))
+    assert saving.attributes["feed_in_source"] == "entity"
+    assert saving.attributes["if_exported"] == pytest.approx(
+        surplus * per_kwh, abs=0.01
+    )
+    assert float(saving.state) == pytest.approx(surplus * (0.30 - per_kwh), abs=0.01)
+
+
+async def test_an_unavailable_feed_in_entity_falls_back_to_the_fixed_tariff(
+    home: HomeAssistant,
+) -> None:
+    home.states.async_set("input_number.feed_in", "unavailable")
+    await record_house(home, recent(14), heavy_evening)
+    set_states(home, soc=90, peak_kw=9)
+
+    await setup_entry(
+        home,
+        {
+            const.CONF_PRICE: 30.0,
+            const.CONF_FEED_IN: 8.0,
+            const.CONF_FEED_IN_ENTITY: "input_number.feed_in",
+        },
+    )
+
+    saving = home.states.get(SAVING)
+    assert saving is not None
+    surplus = float(state(home, f"sensor.{PREFIX}solar_surplus_until_sunset"))
+    assert saving.attributes["feed_in_source"] == "fixed"
+    assert saving.attributes["if_exported"] == pytest.approx(surplus * 0.08, abs=0.01)
+
+
+async def test_a_new_feed_in_tariff_is_picked_up_at_once(
+    home: HomeAssistant,
+) -> None:
+    home.states.async_set(
+        "input_number.feed_in", "8", {"unit_of_measurement": "ct/kWh"}
+    )
+    await record_house(home, recent(14), heavy_evening)
+    set_states(home, soc=90, peak_kw=9)
+    await setup_entry(
+        home,
+        {const.CONF_PRICE: 30.0, const.CONF_FEED_IN_ENTITY: "input_number.feed_in"},
+    )
+
+    home.states.async_set(
+        "input_number.feed_in", "20", {"unit_of_measurement": "ct/kWh"}
+    )
+    await home.async_block_till_done(wait_background_tasks=True)
+
+    saving = home.states.get(SAVING)
+    assert saving is not None
+    assert saving.attributes["feed_in"] == pytest.approx(0.20)

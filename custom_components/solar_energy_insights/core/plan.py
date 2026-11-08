@@ -47,6 +47,8 @@ class PlanInputs:
     # Where charging stops right now, if lowered below the battery's ceiling
     # for a while, such as to keep room for midday. None: at the ceiling.
     charge_limit_now_pct: float | None = None
+    # The most the grid takes; above it the inverter curtails. None: uncapped.
+    export_cap_kw: float | None = None
 
     @property
     def sun_up(self) -> bool:
@@ -128,6 +130,11 @@ class Surplus:
     after_full_kwh: float
     while_charging_kwh: float
     cloudy_kwh: float
+    # The part of it above the feed-in cap, curtailed unless used at home.
+    clipped_kwh: float = 0.0
+    clipped_cloudy_kwh: float = 0.0
+    clip_from: datetime | None = None
+    clip_until: datetime | None = None
 
     @property
     def total_kwh(self) -> float:
@@ -346,10 +353,19 @@ def _day(i: PlanInputs, load: Rate, expected: Simulation, cloudy: Simulation) ->
 def _charge(
     i: PlanInputs, load: Rate
 ) -> tuple[Charge, Surplus, Simulation, Simulation]:
+    cap = i.export_cap_kw
     expected = simulate(
-        i.battery, i.now, i.sunset, _sun(i.pv, Quantile.P50), load, mark_at=i.sunset
+        i.battery,
+        i.now,
+        i.sunset,
+        _sun(i.pv, Quantile.P50),
+        load,
+        mark_at=i.sunset,
+        cap_kw=cap,
     )
-    cloudy = simulate(i.battery, i.now, i.sunset, _sun(i.pv, Quantile.P10), load)
+    cloudy = simulate(
+        i.battery, i.now, i.sunset, _sun(i.pv, Quantile.P10), load, cap_kw=cap
+    )
     charge = Charge(
         full_at=expected.full_at,
         full_at_cloudy=cloudy.full_at,
@@ -361,6 +377,10 @@ def _charge(
         after_full_kwh=expected.export_kwh,
         while_charging_kwh=expected.export_before_full_kwh,
         cloudy_kwh=cloudy.export_kwh + cloudy.export_before_full_kwh,
+        clipped_kwh=expected.clipped_kwh,
+        clipped_cloudy_kwh=cloudy.clipped_kwh,
+        clip_from=expected.clip_from,
+        clip_until=expected.clip_until,
     )
     return charge, surplus, expected, cloudy
 

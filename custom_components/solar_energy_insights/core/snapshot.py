@@ -50,6 +50,7 @@ def to_snapshot(i: PlanInputs, evenings: Sequence[Evening] = ()) -> dict[str, An
         },
         "export_kw": i.export_kw,
         "charge_limit_now_pct": i.charge_limit_now_pct,
+        "export_cap_kw": i.export_cap_kw,
         "nights": i.nights,
         "standby_kw": i.standby_kw,
         "heavy_share": i.heavy_share,
@@ -99,6 +100,10 @@ def from_snapshot(data: Mapping[str, Any]) -> PlanInputs:
         charge_limit_now_pct=None
         if s.get("charge_limit_now_pct") is None
         else float(s["charge_limit_now_pct"]),
+        # Absent in files saved before the feed-in cap was read.
+        export_cap_kw=None
+        if s.get("export_cap_kw") is None
+        else float(s["export_cap_kw"]),
     )
 
 
