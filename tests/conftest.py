@@ -29,3 +29,23 @@ async def home(
     yield hass
     # Let jobs that read the recorder finish before it shuts down.
     await hass.async_block_till_done(wait_background_tasks=True)
+
+
+@pytest.fixture(autouse=True)
+def _bulk_statistics_exists(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Home Assistant checks each imported row for an existing one with its own
+    query, which also flushes the row before it. Answer from one query per
+    statistic and import instead; the rows and their outcome are the same."""
+    from homeassistant.components.recorder import statistics  # noqa: PLC0415
+
+    def exists(session, table, metadata_id, start):  # type: ignore[no-untyped-def]
+        key = ("existing_statistics", table, metadata_id)
+        if (known := session.info.get(key)) is None:
+            known = session.info[key] = dict(
+                session.query(table.start_ts, table.id).filter(
+                    table.metadata_id == metadata_id
+                )
+            )
+        return known.get(start.timestamp())
+
+    monkeypatch.setattr(statistics, "_statistics_exists", exists)
