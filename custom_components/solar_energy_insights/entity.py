@@ -65,7 +65,6 @@ class ApplianceEntity(InsightsEntity):
             identifiers={(DOMAIN, subentry.subentry_id)},
             name=subentry.title,
             entry_type=DeviceEntryType.SERVICE,
-            via_device=(DOMAIN, entry_id),
         )
         self._attr_icon = subentry.data.get(CONF_ICON) or DEFAULT_ICON
 
