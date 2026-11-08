@@ -61,10 +61,7 @@ function release() {
   const date = new Date().toISOString().slice(0, 10);
   writeFileSync(
     CHANGELOG_PATH,
-    changelog.replace(
-      UNRELEASED,
-      `${UNRELEASED}\n## [${version}] - ${date}\n`,
-    ),
+    changelog.replace(UNRELEASED, `${UNRELEASED}\n## [${version}] - ${date}\n`),
   );
   manifest.version = version;
   writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
