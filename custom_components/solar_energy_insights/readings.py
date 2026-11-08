@@ -30,6 +30,7 @@ from .const import (
     CONF_BATTERY_SOC,
     CONF_CHARGE_LIMIT,
     CONF_FEED_IN,
+    CONF_FEED_IN_ENTITY,
     CONF_GRID_POWER,
     CONF_HOUSE_ENERGY,
     CONF_IMPORT_POSITIVE,
@@ -187,8 +188,8 @@ class ReadingsMixin:
         # No export reads as 0.0, not -0.0.
         return max(-imported, 0.0) + 0.0
 
-    def _entity_price(self) -> float | None:
-        entity_id = self.config_entry.options.get(CONF_PRICE_ENTITY)
+    def _entity_price(self, key: str = CONF_PRICE_ENTITY) -> float | None:
+        entity_id = self.config_entry.options.get(key)
         state = self.hass.states.get(entity_id) if entity_id else None
         value = _number(state)
         if value is None or state is None or value < 0:
@@ -220,8 +221,21 @@ class ReadingsMixin:
         return float(self.config_entry.options.get(CONF_PRICE, DEFAULT_PRICE_CT)) / 100
 
     @property
+    def feed_in_source(self) -> str:
+        """Where the feed-in tariff comes from, as price_source."""
+        if self._entity_price(CONF_FEED_IN_ENTITY) is not None:
+            return "entity"
+        if CONF_FEED_IN in self.config_entry.options:
+            return "fixed"
+        return "default"
+
+    @property
     def feed_in(self) -> float:
-        """What a kWh exported earns, in currency per kWh."""
+        """What a kWh exported earns, in currency per kWh: the feed-in entity while
+        it has a value, else the option."""
+        from_entity = self._entity_price(CONF_FEED_IN_ENTITY)
+        if from_entity is not None:
+            return from_entity
         return (
             float(self.config_entry.options.get(CONF_FEED_IN, DEFAULT_FEED_IN_CT)) / 100
         )

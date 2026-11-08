@@ -72,6 +72,7 @@
           "price": "Electricity price",
           "feed_in": "Feed-in tariff",
           "price_entity": "Price entity (optional)",
+          "feed_in_entity": "Feed-in entity (optional)",
           "outdoor_temperature": "Outdoor temperature (optional)",
           "solar_energy": "Solar energy (optional)",
           "max_charge": "Charge limit",
@@ -100,6 +101,7 @@
           "price": "What a kWh bought costs, in cents.",
           "feed_in": "What a kWh exported earns, in cents.",
           "price_entity": "For a dynamic tariff: overrides the electricity price while it has a value. Its current value applies to every hour ahead; nothing is timed to cheap hours. Read as cents if its unit starts with ct, else as your currency per kWh.",
+          "feed_in_entity": "Overrides the feed-in tariff while it has a value. Read as cents if its unit starts with ct, else as your currency per kWh.",
           "outdoor_temperature": "A thermometer with statistics. Nights that followed similar weather may then count more, but only if that predicts recent evenings better.",
           "solar_energy": "A counter of what the panels made. With it, Solcast's morning forecasts are compared with what came, and a correction for this roof is used once it beats the raw forecast.",
           "max_charge": "The level the battery charges to when no entity gives it: lower it if the app stops charging below 100 %. Full means reaching it.",
@@ -256,6 +258,14 @@
               "helper": "Dashboard helper",
               "default": "Default"
             }
+          },
+          "feed_in_source": {
+            "name": "Feed-in source",
+            "state": {
+              "fixed": "Options",
+              "entity": "Entity",
+              "default": "Default"
+            }
           }
         }
       },
@@ -277,6 +287,14 @@
               "fixed": "Options",
               "entity": "Entity",
               "helper": "Dashboard helper",
+              "default": "Default"
+            }
+          },
+          "feed_in_source": {
+            "name": "Feed-in source",
+            "state": {
+              "fixed": "Options",
+              "entity": "Entity",
               "default": "Default"
             }
           }
