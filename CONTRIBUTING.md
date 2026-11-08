@@ -13,7 +13,7 @@ uv run pre-commit install
 ## Checks
 
 ```shell
-uv run pytest
+uv run pytest -n auto
 uv run mypy
 uv run pre-commit run --all-files
 ```
