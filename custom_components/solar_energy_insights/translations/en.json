@@ -22,7 +22,7 @@
           "grid_power": "Optional: shows when a full battery is exporting (free power).",
           "solcast_today": "The Solcast sensor for today, with its detailedForecast attribute.",
           "solcast_tomorrow": "The Solcast sensor for tomorrow.",
-          "charge_limit": "The level charging stops at, if set below 100 %. For EF-PowerOcean-TcpModbus: Charge Limit SOC. While it has no value, the option is used."
+          "charge_limit": "The level charging stops at, if set below 100 %. For EF-PowerOcean-TcpModbus: Battery Charge Limit. The plan counts the highest it has been over the last day, so a limit an automation lowers for a few hours is not taken as the day's. While it has no value, the option is used."
         }
       },
       "reconfigure": {
@@ -46,7 +46,7 @@
           "grid_power": "Optional: shows when a full battery is exporting (free power).",
           "solcast_today": "The Solcast sensor for today, with its detailedForecast attribute.",
           "solcast_tomorrow": "The Solcast sensor for tomorrow.",
-          "charge_limit": "The level charging stops at, if set below 100 %. For EF-PowerOcean-TcpModbus: Charge Limit SOC. While it has no value, the option is used."
+          "charge_limit": "The level charging stops at, if set below 100 %. For EF-PowerOcean-TcpModbus: Battery Charge Limit. The plan counts the highest it has been over the last day, so a limit an automation lowers for a few hours is not taken as the day's. While it has no value, the option is used."
         }
       }
     },
@@ -72,6 +72,7 @@
           "price": "Electricity price",
           "feed_in": "Feed-in tariff",
           "price_entity": "Price entity (optional)",
+          "feed_in_entity": "Feed-in entity (optional)",
           "outdoor_temperature": "Outdoor temperature (optional)",
           "solar_energy": "Solar energy (optional)",
           "max_charge": "Charge limit",
@@ -79,6 +80,7 @@
           "grid_import_energy": "Grid import energy (optional)",
           "grid_export_energy": "Grid export energy (optional)",
           "solar_power": "Solar power (optional)",
+          "feed_in_cap": "Feed-in cap (optional)",
           "array_kwp": "Array size (optional)",
           "lookback": "Show changes for",
           "string_roof_pv1": "Roof of string PV1 (optional)",
@@ -100,13 +102,15 @@
           "price": "What a kWh bought costs, in cents.",
           "feed_in": "What a kWh exported earns, in cents.",
           "price_entity": "For a dynamic tariff: overrides the electricity price while it has a value. Its current value applies to every hour ahead; nothing is timed to cheap hours. Read as cents if its unit starts with ct, else as your currency per kWh.",
+          "feed_in_entity": "Overrides the feed-in tariff while it has a value. Read as cents if its unit starts with ct, else as your currency per kWh.",
           "outdoor_temperature": "A thermometer with statistics. Nights that followed similar weather may then count more, but only if that predicts recent evenings better.",
           "solar_energy": "A counter of what the panels made. With it, Solcast's morning forecasts are compared with what came, and a correction for this roof is used once it beats the raw forecast.",
           "max_charge": "The level the battery charges to when no entity gives it: lower it if the app stops charging below 100 %. Full means reaching it.",
           "achievements": "Score, levels, streaks, records, badges and quests, earned from your history. The first start replays the history the recorder holds.",
           "grid_import_energy": "A counter of energy bought. With the export counter, unlocks self-sufficiency, grid-free days and the badges that use them.",
           "grid_export_energy": "A counter of energy sold. Unlocks solar kept at home and export badges.",
-          "solar_power": "For the peak power record.",
+          "solar_power": "For the peak power record, and for estimating what the feed-in cap curtailed.",
+          "feed_in_cap": "The most the grid takes, as power: above it the inverter curtails solar. For EF-PowerOcean-TcpModbus: Maximum feed-in Power. Adds what would be clipped until sunset and an estimate of what was curtailed today; the estimate needs the grid power and the solar power.",
           "array_kwp": "The panels' DC size. Read from Solcast's rooftop sites, with where each one faces; set it here only if Solcast's sites do not give it.",
           "lookback": "How long a changed answer (tonight's outlook, the grid time, when the battery is full) shows what it was before and why: from 30 minutes to 2 hours.",
           "string_roof_pv1": "Which of your Solcast sites the panels on string PV1 are on. Strings on the same roof should make about the same per kWp, so the dashboard compares them with each other.",
@@ -236,6 +240,9 @@
       "surplus": {
         "name": "Solar surplus until sunset"
       },
+      "expected_clipping": {
+        "name": "Clipping until sunset"
+      },
       "night_error": {
         "name": "Night prediction error",
         "state_attributes": {
@@ -283,6 +290,9 @@
       "history_days": {
         "name": "Days of history"
       },
+      "curtailed_today": {
+        "name": "Curtailed today"
+      },
       "night_grid_cost": {
         "name": "Grid cost until sunrise",
         "state_attributes": {
@@ -301,6 +311,14 @@
               "fixed": "Options",
               "entity": "Entity",
               "helper": "Dashboard helper",
+              "default": "Default"
+            }
+          },
+          "feed_in_source": {
+            "name": "Feed-in source",
+            "state": {
+              "fixed": "Options",
+              "entity": "Entity",
               "default": "Default"
             }
           }
@@ -324,6 +342,14 @@
               "fixed": "Options",
               "entity": "Entity",
               "helper": "Dashboard helper",
+              "default": "Default"
+            }
+          },
+          "feed_in_source": {
+            "name": "Feed-in source",
+            "state": {
+              "fixed": "Options",
+              "entity": "Entity",
               "default": "Default"
             }
           }

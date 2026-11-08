@@ -95,4 +95,9 @@ date `input_datetime.solar_day`. `SolarPeriod.view(hass, states, this)` returns 
 selected period's totals with the previous period and the same period last year;
 `SolarPeriod.series(hass, key)` and `SolarPeriod.profile(hass, key)` feed
 apexcharts' `data_generator`. Pass a typical year, kWh per month, with
-`SolarPeriod.setTypical([...])` to compare a year with it.
+`SolarPeriod.setTypical([...])` to compare a year with it. To value days in €, pass the
+price entities (ct/kWh) with `SolarPeriod.setPrices({ buy, sell, buyDefault,
+sellDefault })`: each day then carries `v` (€ saved), `va` (not bought), `ve` (fed
+in) and `vb` (spent) at that day's price. Prices come from the entity's long-term
+statistics, else its recorded history, which the recorder keeps only for its purge
+window.

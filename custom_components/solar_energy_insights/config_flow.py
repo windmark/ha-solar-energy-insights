@@ -42,6 +42,8 @@ from .const import (
     CONF_CHARGE_LIMIT,
     CONF_ENERGY_PER_RUN,
     CONF_FEED_IN,
+    CONF_FEED_IN_CAP,
+    CONF_FEED_IN_ENTITY,
     CONF_GRID_EXPORT_ENERGY,
     CONF_GRID_IMPORT_ENERGY,
     CONF_GRID_POWER,
@@ -145,6 +147,9 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Optional(CONF_PRICE_ENTITY): EntitySelector(
             EntitySelectorConfig(domain=["sensor", "input_number"])
         ),
+        vol.Optional(CONF_FEED_IN_ENTITY): EntitySelector(
+            EntitySelectorConfig(domain=["sensor", "input_number"])
+        ),
         vol.Optional(CONF_SOLAR_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Required(CONF_LOOKBACK, default=DEFAULT_LOOKBACK_MIN): _number(
             30, 120, 15, "min"
@@ -153,6 +158,9 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Optional(CONF_GRID_IMPORT_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Optional(CONF_GRID_EXPORT_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Optional(CONF_SOLAR_POWER): _sensor(SensorDeviceClass.POWER),
+        vol.Optional(CONF_FEED_IN_CAP): EntitySelector(
+            EntitySelectorConfig(domain=["sensor", "number", "input_number"])
+        ),
         vol.Optional(CONF_ARRAY_KWP): _number(0.1, 1000, 0.01, "kWp"),
         vol.Required(CONF_NIGHTS, default=DEFAULT_NIGHTS): _number(3, 60, 1, "nights"),
         vol.Required(CONF_MIN_RESERVE, default=DEFAULT_MIN_RESERVE_PCT): _number(
@@ -177,6 +185,8 @@ POWEROCEAN_OPTION_KEYS: dict[str, tuple[str, ...]] = {
     CONF_GRID_IMPORT_ENERGY: ("grid_import_total",),
     CONF_GRID_EXPORT_ENERGY: ("grid_export_total",),
     CONF_SOLAR_POWER: ("solar_power",),
+    # The cap in force, which is where the inverter curtails.
+    CONF_FEED_IN_CAP: ("feed_in_power_max",),
 }
 
 
