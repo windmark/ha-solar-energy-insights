@@ -122,6 +122,7 @@ def plan_dict(
                 "slots": [[t.isoformat(), pv, load] for t, pv, load in plan.day.slots],
             }
         data["charge_limit_pct"] = plan.charge_limit_pct
+        data["charge_limit_now_pct"] = plan.charge_limit_now_pct
     return data
 
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- A charge limit lowered for part of the day no longer counts as the day's. The plan, the charge needed and the night use the highest the limit has been over the last day, read back from the recorder after a restart, so an automation that keeps room for midday doesn't make the morning's answers pessimistic. A limit kept lower for a whole day is the limit. Free power follows the limit as it is now, and "Charge needed for the night" shows it as `charge_limit_now`.
+
 ## [0.4.0] - 2026-11-08
 
 ### Changed

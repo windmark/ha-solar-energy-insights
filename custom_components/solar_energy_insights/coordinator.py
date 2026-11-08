@@ -111,17 +111,20 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
         self.calls: list[live.Call] = []
         self._recent_answers: list[Answers] = []
         self.changes: dict[str, Change] = {}
+        self.limits_seen: list[tuple[datetime, float]] = []
 
     def inputs(
         self, extra: Rate | None = None, now: datetime | None = None
     ) -> PlanInputs:
         now = now or dt_util.utcnow()
+        battery = self.battery()
         return PlanInputs(
             now=now,
             tz=self.tz,
             sunrise=get_astral_event_next(self.hass, "sunrise", now),
             sunset=get_astral_event_next(self.hass, "sunset", now),
-            battery=self.battery(),
+            battery=battery,
+            charge_limit_now_pct=self.charge_limit_now(battery.floor_pct),
             pv=self.forecast(),
             use=self.use,
             nights=self.nights,
