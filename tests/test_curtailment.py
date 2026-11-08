@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.components.recorder.common import (
     async_wait_recording_done,
@@ -35,7 +36,9 @@ CURTAILED = f"sensor.{PREFIX}curtailed_today"
 OPTIONS = {const.CONF_FEED_IN_CAP: CAP, const.CONF_SOLAR_POWER: SOLAR}
 
 
-def set_power(home: HomeAssistant, entity_id: str, watts: float) -> None:
+def set_power(
+    home: HomeAssistant, entity_id: str, watts: float, *, force: bool = False
+) -> None:
     home.states.async_set(
         entity_id,
         str(watts),
@@ -44,7 +47,30 @@ def set_power(home: HomeAssistant, entity_id: str, watts: float) -> None:
             "device_class": "power",
             "state_class": "measurement",
         },
+        force_update=force,
     )
+
+
+async def hold_power(
+    home: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    start: datetime,
+    readings: dict[str, float],
+    minutes: int,
+) -> None:
+    """Keep the power readings from *start* for *minutes*, and have the
+    recorder compile their five-minute statistics."""
+    assert await async_setup_component(home, "sensor", {})
+    for k in range(minutes // 5):
+        freezer.move_to(start + timedelta(minutes=5 * k, seconds=1))
+        for entity_id, watts in readings.items():
+            set_power(home, entity_id, watts, force=True)
+        await async_wait_recording_done(home)
+        freezer.move_to(start + timedelta(minutes=5 * (k + 1)))
+        do_adhoc_statistics(
+            home, start=dt_util.as_utc(start + timedelta(minutes=5 * k))
+        )
+        await async_wait_recording_done(home)
 
 
 async def test_a_full_battery_on_a_clear_day_would_be_clipped(
@@ -108,15 +134,8 @@ async def test_solar_held_at_the_cap_is_counted_as_curtailed(
     set_power(home, CAP, 6000)
     # Exporting at the cap, the house using 0.5 kW: the roof is held at 6.5 kW
     # while the forecast says more than 11.
-    set_power(home, ENTITIES[const.CONF_GRID_POWER], -6000)
-    set_power(home, SOLAR, 6500)
-    await async_wait_recording_done(home)
-    for k in range(6):
-        freezer.move_to(start + timedelta(minutes=5 * (k + 1)))
-        do_adhoc_statistics(
-            home, start=dt_util.as_utc(start + timedelta(minutes=5 * k))
-        )
-        await async_wait_recording_done(home)
+    grid = ENTITIES[const.CONF_GRID_POWER]
+    await hold_power(home, freezer, start, {grid: -6000, SOLAR: 6500}, 30)
 
     await setup_entry(home, OPTIONS)
 
@@ -135,15 +154,8 @@ async def test_below_the_cap_nothing_is_curtailed(
     freezer.move_to(start)
     set_states(home, soc=100, peak_kw=12)
     set_power(home, CAP, 9000)
-    set_power(home, ENTITIES[const.CONF_GRID_POWER], -4000)
-    set_power(home, SOLAR, 4500)
-    await async_wait_recording_done(home)
-    for k in range(3):
-        freezer.move_to(start + timedelta(minutes=5 * (k + 1)))
-        do_adhoc_statistics(
-            home, start=dt_util.as_utc(start + timedelta(minutes=5 * k))
-        )
-        await async_wait_recording_done(home)
+    grid = ENTITIES[const.CONF_GRID_POWER]
+    await hold_power(home, freezer, start, {grid: -4000, SOLAR: 4500}, 15)
 
     await setup_entry(home, OPTIONS)
 
