@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Week, month and year totals and the day calendar leave out counter jumps. A counter that drops out and comes back makes the recorder book its whole total in one hour; the daily and monthly statistics keep those hours, so a summer month could show several times its real yield. Day totals are now summed from the hourly statistics, dropping such hours the way the integration's own records do.
+- Today's row in the week, month and year view comes from the five-minute statistics. It read the configured counters' states, which are lifetime totals, so today showed the whole system's yield.
+
 ## [0.1.0] - 2026-11-08
 
 ### Changed
