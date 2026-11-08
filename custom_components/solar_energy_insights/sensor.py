@@ -24,7 +24,8 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .appliance import appliances
+from .const import CONF_FEED_IN_CAP, DOMAIN
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
 from .core.achievements.facts import MAX_SPIKE_SHARE, MIN_SPIKE_HOURS, DayFacts
 from .core.history import (
@@ -41,7 +42,7 @@ from .core.history import (
 from .core.nights import days_covered
 from .core.plan import Outlook, Plan
 from .dashboard import discover_strings, history_start, string_kwp
-from .entity import InsightsEntity
+from .entity import ApplianceEntity, InsightsEntity
 from .serialize import costs
 from .strings import backfill_energy, energy_today, power_kw
 from .summary import changed, summary_for
@@ -160,6 +161,7 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
                 if p.needed.typical_pct is not None
                 else p.charge_limit_pct,
                 "charge_limit": p.charge_limit_pct,
+                "charge_limit_now": p.charge_limit_now_pct,
                 "full_battery_lasts": p.needed.heavy_pct is not None,
                 "grid_even_when_full_kwh": round(p.needed.heavy_short_kwh, 2),
                 "grid_even_when_full_typical_kwh": round(p.needed.typical_short_kwh, 2),
@@ -218,6 +220,23 @@ SENSORS: tuple[InsightsSensorDescription, ...] = (
             "spare_kwh": round(p.best_window.kwh, 2) if p.best_window else None,
         },
     ),
+)
+
+
+CLIPPING = InsightsSensorDescription(
+    key="expected_clipping",
+    translation_key="expected_clipping",
+    device_class=SensorDeviceClass.ENERGY,
+    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+    suggested_display_precision=1,
+    # With the battery as it runs by itself: what holding room for midday saves.
+    value_fn=lambda p: round(p.surplus.clipped_kwh, 2),
+    attrs_fn=lambda p: {
+        "from": _iso(p.surplus.clip_from),
+        "until": _iso(p.surplus.clip_until),
+        "cloudy": round(p.surplus.clipped_cloudy_kwh, 2),
+    },
+    extra_fn=lambda _p, c: {"cap_kw": _r(c.export_cap_kw())},
 )
 
 
@@ -331,6 +350,23 @@ STATUS: tuple[InsightsStatusDescription, ...] = (
 )
 
 
+CURTAILED = InsightsStatusDescription(
+    key="curtailed_today",
+    translation_key="curtailed_today",
+    device_class=SensorDeviceClass.ENERGY,
+    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+    suggested_display_precision=1,
+    # An estimate: the forecast less what was made, while held at the cap.
+    value_fn=lambda c: None if c.curtailed is None else c.curtailed.kwh,
+    attrs_fn=lambda c: {
+        "minutes_at_cap": None
+        if c.curtailed is None
+        else round(c.curtailed.minutes_at_cap),
+        "cap_kw": _r(c.export_cap_kw()),
+    },
+)
+
+
 async def async_setup_entry(
     _hass: HomeAssistant,
     entry: InsightsConfigEntry,
@@ -339,6 +375,13 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     async_add_entities(InsightsSensor(coordinator, d) for d in SENSORS)
     async_add_entities(InsightsStatusSensor(coordinator, d) for d in STATUS)
+    if entry.options.get(CONF_FEED_IN_CAP):
+        async_add_entities(
+            [
+                InsightsSensor(coordinator, CLIPPING),
+                InsightsStatusSensor(coordinator, CURTAILED),
+            ]
+        )
     async_add_entities(InsightsCostSensor(coordinator, d) for d in COSTS)
     async_add_entities([SummarySensor(coordinator, SUMMARY)])
     async_add_entities([MorningForecastSensor(coordinator, MORNING)])
@@ -363,6 +406,32 @@ async def async_setup_entry(
         )
     if coordinator.achievements.enabled:
         async_add_entities(GameSensor(coordinator, d) for d in GAME)
+    for subentry in appliances(entry):
+        async_add_entities(
+            [ApplianceStartSensor(coordinator, subentry, APPLIANCE_START)],
+            config_subentry_id=subentry.subentry_id,
+        )
+
+
+APPLIANCE_START = SensorEntityDescription(
+    key="best_start",
+    translation_key="appliance_best_start",
+    device_class=SensorDeviceClass.TIMESTAMP,
+)
+
+
+class ApplianceStartSensor(ApplianceEntity, SensorEntity):
+    """When to start the appliance so it takes the most from free sun, until
+    sunset; after sunset, tomorrow's."""
+
+    @property
+    def native_value(self) -> datetime | None:
+        start = self.start
+        return None if start is None else start.at
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self.run_attributes()
 
 
 class InsightsSensor(InsightsEntity, SensorEntity):
@@ -447,6 +516,7 @@ class InsightsCostSensor(InsightsEntity, SensorEntity):
             "price": values["price"],
             "feed_in": values["feed_in"],
             "price_source": self.coordinator.price_source,
+            "feed_in_source": self.coordinator.feed_in_source,
         }
 
 

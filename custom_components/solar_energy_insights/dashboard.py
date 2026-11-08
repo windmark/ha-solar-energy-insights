@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
+from .appliance import card_appliances
 from .const import (
     CONF_BATTERY_SOC,
     CONF_GRID_EXPORT_ENERGY,
@@ -206,6 +207,8 @@ async def dashboard_config(c: InsightsCoordinator) -> dict[str, Any]:
             day: [[slot[0], slot[1]] for slot in slots]
             for day, slots in sorted(c.memory.memory.forecasts.items())
         },
+        # For cards without appliances of their own.
+        "appliances": card_appliances(entry),
     }
 
 

@@ -13,6 +13,9 @@ from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
 )
+from pytest_homeassistant_custom_component.components.recorder.common import (
+    async_wait_recording_done,
+)
 
 from custom_components.solar_energy_insights import const
 from tests.common import (
@@ -72,17 +75,80 @@ async def test_without_a_value_the_option_is_used(home: HomeAssistant) -> None:
     assert entry.runtime_data.plan.charge_limit_pct == 90
 
 
-async def test_a_new_limit_replans_at_once(home: HomeAssistant) -> None:
+async def test_a_raised_limit_replans_at_once(home: HomeAssistant) -> None:
+    await record_house(home, recent(14), evening_load)
+    set_states(home)
+    home.states.async_set(LIMIT, "80", {"unit_of_measurement": "%"})
+    entry = await setup_with_limit(home)
+
+    home.states.async_set(LIMIT, "95", {"unit_of_measurement": "%"})
+    await home.async_block_till_done(wait_background_tasks=True)
+
+    assert entry.runtime_data.plan is not None
+    assert entry.runtime_data.plan.charge_limit_pct == 95
+    assert entry.runtime_data.plan.charge_limit_now_pct == 95
+
+
+async def test_a_limit_lowered_for_a_while_is_not_the_days(
+    home: HomeAssistant,
+) -> None:
+    """An automation keeping room for midday lowers the limit until the
+    afternoon: the night is still planned from a full battery."""
     await record_house(home, recent(14), evening_load)
     set_states(home)
     home.states.async_set(LIMIT, "100", {"unit_of_measurement": "%"})
     entry = await setup_with_limit(home)
 
-    home.states.async_set(LIMIT, "85", {"unit_of_measurement": "%"})
+    home.states.async_set(LIMIT, "70", {"unit_of_measurement": "%"})
     await home.async_block_till_done(wait_background_tasks=True)
 
+    plan = entry.runtime_data.plan
+    assert plan is not None
+    assert plan.charge_limit_pct == 100
+    assert plan.charge_limit_now_pct == 70
+    needed = home.states.get(f"sensor.{PREFIX}charge_needed_for_the_night")
+    assert needed is not None
+    assert needed.attributes["charge_limit"] == 100
+    assert needed.attributes["charge_limit_now"] == 70
+
+
+async def test_a_restart_while_the_limit_is_lowered_keeps_the_days(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    await record_house(home, recent(14), evening_load)
+    set_states(home)
+    freezer.move_to(local(DAY, 6))
+    home.states.async_set(LIMIT, "100", {"unit_of_measurement": "%"})
+    await async_wait_recording_done(home)
+    freezer.move_to(local(DAY, 8))
+    home.states.async_set(LIMIT, "65", {"unit_of_measurement": "%"})
+    await async_wait_recording_done(home)
+    freezer.move_to(local(DAY, 10))
+
+    entry = await setup_with_limit(home)
+
     assert entry.runtime_data.plan is not None
-    assert entry.runtime_data.plan.charge_limit_pct == 85
+    assert entry.runtime_data.plan.charge_limit_pct == 100
+    assert entry.runtime_data.plan.charge_limit_now_pct == 65
+
+
+async def test_a_limit_kept_lower_for_a_day_is_the_limit(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    await record_house(home, recent(14), evening_load)
+    set_states(home)
+    freezer.move_to(local(DAY, 6) - timedelta(days=2))
+    home.states.async_set(LIMIT, "100", {"unit_of_measurement": "%"})
+    await async_wait_recording_done(home)
+    freezer.move_to(local(DAY, 6) - timedelta(hours=26))
+    home.states.async_set(LIMIT, "80", {"unit_of_measurement": "%"})
+    await async_wait_recording_done(home)
+    freezer.move_to(local(DAY, 6))
+
+    entry = await setup_with_limit(home)
+
+    assert entry.runtime_data.plan is not None
+    assert entry.runtime_data.plan.charge_limit_pct == 80
 
 
 async def test_setup_finds_powerocean_charge_limit(home: HomeAssistant) -> None:

@@ -726,6 +726,11 @@
           : tag;
       },
     );
+  // The card's own appliances, else those added under the integration.
+  const cardAppliances = (el) => {
+    const own = (el._config || {}).appliances;
+    return own && own.length ? own : (config() || {}).appliances || [];
+  };
   const APPLIANCES = {
     name: "appliances",
     selector: {
@@ -886,6 +891,39 @@
       schema: [{ name: "sections", selector: choose(SECTIONS) }],
       labels: { sections: "Sections" },
       stub: { sections: SECTIONS.map(([k]) => k) },
+    },
+    scenarioLab: {
+      schema: [
+        {
+          name: "extra_battery_kwh",
+          selector: {
+            number: { min: 0, max: 30, step: 0.5, unit_of_measurement: "kWh" },
+          },
+        },
+        {
+          name: "heat_loss_w_per_k",
+          selector: {
+            number: { min: 0, max: 600, step: 5, unit_of_measurement: "W/K" },
+          },
+        },
+        {
+          name: "hot_water_kwh_per_day",
+          selector: {
+            number: { min: 0, max: 20, step: 0.5, unit_of_measurement: "kWh" },
+          },
+        },
+        {
+          name: "battery_price_per_kwh",
+          selector: { number: { min: 0, max: 2000, step: 10, mode: "box" } },
+        },
+      ],
+      labels: {
+        extra_battery_kwh: "Extra battery to start from",
+        heat_loss_w_per_k: "Heat loss to start from (0: no heat pump)",
+        hot_water_kwh_per_day: "Hot water heat per day, with a heat pump",
+        battery_price_per_kwh: "Battery price per kWh, for the payback",
+      },
+      stub: { extra_battery_kwh: 5, heat_loss_w_per_k: 0 },
     },
   };
 
@@ -2007,7 +2045,7 @@
       } = window.SolarDash.ui(this, hass, states);
 
       // Appliances from the card's settings; a sensor that learns energy per run beats the typical figures.
-      const APPS = ((el._config || {}).appliances || []).map((a, i) => {
+      const APPS = cardAppliances(el).map((a, i) => {
         const e = a.energy_per_run ? st(a.energy_per_run) : null;
         const typical = +a.kwh || 1;
         let k = parseFloat(e?.state);
@@ -2295,7 +2333,7 @@
       } = window.SolarDash.ui(this, hass, states);
 
       // Appliances from the card's settings; a sensor that learns energy per run beats the typical figures.
-      const APPS = ((el._config || {}).appliances || []).map((a, i) => {
+      const APPS = cardAppliances(el).map((a, i) => {
         const e = a.energy_per_run ? st(a.energy_per_run) : null;
         const typical = +a.kwh || 1;
         let k = parseFloat(e?.state);
@@ -2694,6 +2732,183 @@
     },
     FORMS.forecastTrust,
   );
+
+  defineCard(
+    "solar-energy-insights-scenario-lab",
+    "Scenario lab",
+    "Your last year again, with a bigger battery or a heat pump.",
+    function (states, hass) {
+      const el = this;
+      const { W, C, sub, head } = window.SolarDash.ui(this, hass, states);
+      const cfg = el._config || {};
+      // The sliders are the card's own: a change asks again, nothing is saved.
+      const lab = (el._lab = el._lab || {
+        battery: +cfg.extra_battery_kwh || 0,
+        loss: +cfg.heat_loss_w_per_k || 0,
+      });
+      if (!el._labListen && el.shadowRoot) {
+        el._labListen = true;
+        el.shadowRoot.addEventListener("change", (ev) => {
+          const k = ev.target?.dataset?.lab;
+          if (!k) return;
+          lab[k] = +ev.target.value;
+          el.requestUpdate();
+        });
+      }
+      const water = lab.loss > 0 ? +cfg.hot_water_kwh_per_day || 0 : 0;
+      const key = [lab.battery, lab.loss, water].join("|");
+      const cache = (W.scenarios = W.scenarios || {});
+      const c = cache[key];
+      if ((!c || (!c.pending && Date.now() - c.t > 3600e3)) && hass?.callWS) {
+        cache[key] = { ...(c || {}), t: Date.now(), pending: true };
+        hass
+          .callWS({
+            type: "call_service",
+            domain: "solar_energy_insights",
+            service: "scenario",
+            service_data: {
+              extra_battery_kwh: lab.battery,
+              heat_loss_w_per_k: lab.loss,
+              hot_water_kwh_per_day: water,
+              ...(cfg.battery_price_per_kwh && lab.battery
+                ? { battery_price: cfg.battery_price_per_kwh * lab.battery }
+                : {}),
+            },
+            return_response: true,
+          })
+          .then((r) => (cache[key] = { t: Date.now(), data: r.response }))
+          .catch(
+            (e) =>
+              (cache[key] = {
+                t: Date.now(),
+                error: String(e?.message || e),
+              }),
+          )
+          .finally(() => (W.listeners || []).forEach((f) => f()));
+      }
+      const slider = (k, label, max, step, unit) =>
+        `<label style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;font-size:13px;color:${
+          C.text
+        };margin:6px 0">${label}<span style="color:${C.muted}">${
+          lab[k] ? lab[k] + " " + unit : "none"
+        }</span><input type="range" data-lab="${k}" min="0" max="${max}" step="${step}" value="${
+          lab[k]
+        }" style="grid-column:1 / -1;width:100%"></label>`;
+      const controls =
+        slider(
+          "battery",
+          "Extra battery",
+          cfg.max_battery_kwh || 20,
+          0.5,
+          "kWh",
+        ) +
+        slider(
+          "loss",
+          "Heat pump, heat loss",
+          cfg.max_heat_loss || 400,
+          5,
+          "W/K",
+        );
+      const r = cache[key]?.data;
+      const top = head("mdi:flask-outline", "Scenario lab", "your last year");
+      if (!r)
+        return (
+          top +
+          controls +
+          sub(
+            cache[key]?.error
+              ? "Could not replay the year: " + cache[key].error
+              : "Replaying your year…",
+          )
+        );
+      const n = (v, d = 0) =>
+        (+v).toLocaleString(undefined, {
+          maximumFractionDigits: d,
+          minimumFractionDigits: d,
+        });
+      const money = (v) =>
+        (+v).toLocaleString(undefined, {
+          style: "currency",
+          currency: hass?.config?.currency || "EUR",
+          maximumFractionDigits: 0,
+        });
+      const row = (label, now, changed, better) =>
+        `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;font-size:13px;padding:4px 0;border-top:1px solid ${
+          C.track
+        }"><span style="color:${C.muted}">${label}</span><span style="color:${
+          C.muted
+        };text-align:right">${now}</span><span style="text-align:right;color:${
+          better === null ? C.text : better ? C.ok : C.heavy
+        }">${changed}</span></div>`;
+      const a = r.now,
+        b = r.changed;
+      const saving = r.saving_per_year;
+      const rows =
+        `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;font-size:11px;color:${C.muted};margin-top:8px"><span></span><span style="text-align:right">as it is</span><span style="text-align:right">with it</span></div>` +
+        row(
+          "Bought from the grid",
+          n(a.import_kwh) + " kWh",
+          n(b.import_kwh) + " kWh",
+          b.import_kwh <= a.import_kwh,
+        ) +
+        row(
+          "Exported",
+          n(a.export_kwh) + " kWh",
+          n(b.export_kwh) + " kWh",
+          null,
+        ) +
+        row(
+          "Self-sufficiency",
+          n(a.self_sufficiency_pct) + "%",
+          n(b.self_sufficiency_pct) + "%",
+          b.self_sufficiency_pct >= a.self_sufficiency_pct,
+        ) +
+        row(
+          "Nights without the grid",
+          `${a.nights_off_grid} of ${a.nights}`,
+          `${b.nights_off_grid} of ${b.nights}`,
+          b.nights_off_grid >= a.nights_off_grid,
+        ) +
+        (b.heat_pump_kwh
+          ? row(
+              "Heat pump",
+              "",
+              `${n(b.heat_pump_kwh)} kWh, ${n(
+                r.heat_pump_solar_pct,
+              )}% from the roof`,
+              null,
+            )
+          : "");
+      const verdict =
+        !lab.battery && !lab.loss
+          ? "Move a slider to see what would change."
+          : saving >= 0
+            ? `Saves about ${money(saving)} a year${
+                r.payback_years
+                  ? `, paid back in ${n(r.payback_years, 1)} years`
+                  : ""
+              }.`
+            : `Costs about ${money(-saving)} a year more in electricity${
+                b.heat_pump_kwh ? ", in place of the heating you use now" : ""
+              }.`;
+      return (
+        top +
+        controls +
+        rows +
+        `<div style="font-size:14px;color:${C.text};margin-top:10px">${verdict}</div>` +
+        sub(
+          `Your last ${n(r.days)} recorded days, per year, at ${n(
+            r.price * 100,
+            1,
+          )} ct bought and ${n(
+            r.feed_in * 100,
+            1,
+          )} ct exported. The heat pump is a simple model: heat loss below a heating limit, divided by a COP that falls in the cold.`,
+        )
+      );
+    },
+    FORMS.scenarioLab,
+  );
 })();
 
 /* ── Solar history by week, month and year (window.SolarPeriod) ─────────────────────
@@ -2714,7 +2929,22 @@
   const DAY_ENTITY = "input_datetime.solar_day";
   const PERIODS = ["Day", "Week", "Month", "Year"];
   const TTL = 5 * 60e3; // refresh data of the running month every 5 min
-  const KEYS = ["y", "h", "i", "e", "p1", "p2", "p3", "bc", "bd"];
+  // v € saved = va not bought + ve fed in; vb € spent on the grid (with setPrices)
+  const KEYS = [
+    "y",
+    "h",
+    "i",
+    "e",
+    "p1",
+    "p2",
+    "p3",
+    "bc",
+    "bd",
+    "v",
+    "va",
+    "ve",
+    "vb",
+  ];
   // A typical year, kWh per month (PVGIS, say), is the home's own: a dashboard
   // passes it with setTypical(). Without it a year compares with the forecasts.
   let TYPICAL = null;
@@ -3155,8 +3385,105 @@
     return o;
   }
 
+  // ── Prices on the day ────────────────────────────────────────────────────
+  /* setPrices({ buy, sell, buyDefault, sellDefault }): entities holding the price
+     paid and the feed-in tariff in ct/kWh. A day's € figures use the price that
+     applied that day: the entity's daily mean from long-term statistics when it has
+     them, else its state at noon from the recorded history. Before the oldest record
+     the oldest known value counts; with no record at all, the current state, else
+     the default. The recorder keeps a helper's history only for its purge window, so
+     prices from earlier need statistics (a sensor with a state_class). */
+  let PRICES = null;
+  const setPrices = (p) => {
+    PRICES = p && (p.buy || p.sell) ? { ...p } : null;
+    C.pr = {};
+  };
+  function priceTrack(hass, id) {
+    C.pr = C.pr || {};
+    const c = C.pr[id],
+      now = Date.now();
+    if (c && (c.p || now - c.t < 30 * 60e3)) return c;
+    if (!hass || !hass.callWS) return c || null;
+    const start = new Date(historyStart() + "T00:00").toISOString(),
+      end = new Date().toISOString();
+    const p = Promise.all([
+      hass
+        .callWS({
+          type: "history/history_during_period",
+          start_time: start,
+          end_time: end,
+          entity_ids: [id],
+          minimal_response: true,
+          no_attributes: true,
+          significant_changes_only: false,
+        })
+        .catch(() => null),
+      hass
+        .callWS({
+          type: "recorder/statistics_during_period",
+          start_time: start,
+          end_time: end,
+          statistic_ids: [id],
+          period: "day",
+          types: ["mean"],
+        })
+        .catch(() => null),
+    ]).then(([h, st]) => {
+      const steps = [],
+        days = {};
+      ((h && h[id]) || []).forEach((x) => {
+        const v = parseFloat(x.s !== undefined ? x.s : x.state);
+        const t =
+          x.lu !== undefined
+            ? x.lu * 1000
+            : Date.parse(x.last_updated || x.last_changed);
+        if (!isNaN(v) && t) steps.push([t, v]);
+      });
+      steps.sort((a, b) => a[0] - b[0]);
+      ((st && st[id]) || []).forEach((x) => {
+        if (x.mean !== null && x.mean !== undefined)
+          days[iso(new Date(startMs(x)))] = x.mean;
+      });
+      C.pr[id] = { steps, days, t: Date.now() };
+      wake();
+    });
+    C.pr[id] = { ...(c || {}), t: c ? c.t : 0, p };
+    return C.pr[id];
+  }
+  /** The price (ct/kWh) an entity held on a day; fallback when nothing is known. */
+  function priceOn(hass, id, d, fallback) {
+    if (!id) return fallback;
+    const c = priceTrack(hass, id);
+    if (c && c.days && c.days[d] !== undefined) return c.days[d];
+    const st = c && c.steps,
+      noon = at12(d).getTime();
+    if (st && st.length) {
+      let v = st[0][1];
+      for (const [t, x] of st) {
+        if (t > noon) break;
+        v = x;
+      }
+      return v;
+    }
+    const cur = parseFloat(
+      hass && hass.states && hass.states[id] && hass.states[id].state,
+    );
+    return isNaN(cur) ? fallback : cur;
+  }
+  /** A day row with its € figures at that day's prices (unchanged without setPrices). */
+  function valueOf(hass, d, r) {
+    if (!PRICES || !r) return r;
+    const buy = (priceOn(hass, PRICES.buy, d, PRICES.buyDefault) || 0) / 100,
+      sell = (priceOn(hass, PRICES.sell, d, PRICES.sellDefault) || 0) / 100;
+    const own = Math.max((r.h || 0) - (r.i || 0), 0);
+    const va = own * buy,
+      ve = (r.e || 0) * sell;
+    return { ...r, va, ve, v: va + ve, vb: (r.i || 0) * buy };
+  }
+
   // kind "rows": day rows (today from the five-minute statistics); "hours": hour arrays
-  function assemble(kind, start, end, states) {
+  function assemble(kind, start, end, hass) {
+    const states = hass && hass.states;
     const out = {},
       t = todayIso();
     monthsIn(start, end).forEach((mk) => {
@@ -3167,6 +3494,10 @@
     });
     if (kind === "rows" && t >= start && t < end)
       out[t] = patchToday(out[t], states);
+    if (kind === "rows" && PRICES)
+      Object.keys(out).forEach((d) => {
+        out[d] = valueOf(hass, d, out[d]);
+      });
     return out;
   }
 
@@ -3194,7 +3525,16 @@
       if (el) C.waiters.add(el);
       return null;
     }
-    return assemble(kind, start, end, hass && hass.states);
+    const out = assemble(kind, start, end, hass);
+    // Prices still loading: the € figures use the current price until they arrive
+    if (
+      el &&
+      kind === "rows" &&
+      PRICES &&
+      [PRICES.buy, PRICES.sell].some((id) => id && C.pr[id] && C.pr[id].p)
+    )
+      C.waiters.add(el);
+    return out;
   }
   async function daysAsync(hass, start, end, kind) {
     kind = kind || "rows";
@@ -3206,14 +3546,14 @@
     );
     const t0 = todayIso();
     if (kind === "rows" && t0 >= start && t0 < end) await ensureToday(hass);
-    return assemble(kind, start, end, hass && hass.states);
+    return assemble(kind, start, end, hass);
   }
   const hoursSync = (hass, start, end, el) =>
     daysSync(hass, start, end, el, "hours");
   const hoursAsync = (hass, start, end) => daysAsync(hass, start, end, "hours");
 
   /** Totals per year since the first statistics, from the same day rows, so a
-      year adds up to its months and days: { 'YYYY': { y, h, i, e, m: [12] } }. */
+      year adds up to its months and days: { 'YYYY': { y, h, i, e, v…, m: [12] } }. */
   function yearsSync(hass, el) {
     const rows = daysSync(hass, historyStart(), addD(todayIso(), 1), el);
     if (!rows) return null;
@@ -3224,9 +3564,13 @@
         h: 0,
         i: 0,
         e: 0,
+        v: 0,
+        va: 0,
+        ve: 0,
+        vb: 0,
         m: new Array(12).fill(null),
       });
-      ["y", "h", "i", "e"].forEach((k) => {
+      ["y", "h", "i", "e", "v", "va", "ve", "vb"].forEach((k) => {
         o[k] += r[k] || 0;
       });
       const mi = +d.slice(5, 7) - 1;
@@ -3647,6 +3991,9 @@
       return TYPICAL;
     },
     setTypical,
+    setPrices,
+    priceOn,
+    valueOf,
     KEYS,
     pad,
     iso,

@@ -7,6 +7,43 @@
 - "Typical day": the house's typical day, with its mean use for each hour of the week over the last five weeks as an attribute, for charts of the week.
 - With achievements on, "Sun against the forecast", the sun of the last 30 days against each morning's forecast, energy-weighted, with each day and today so far, and "Battery size", whether the battery is the right size: of the days it got full over the last 60, how many ran out at night, with each day's verdict.
 
+## [0.10.0] - 2026-11-08
+
+### Added
+
+- A scenario lab: the `scenario` action replays the last year's recorded solar and house use through the battery, as it is and with more capacity or a heat pump, and says per year what would be bought and exported, the self-sufficiency, the nights without the grid, the saving and the payback. A heat pump needs the outdoor thermometer, now an option again; its load is the heat lost below the heating limit at each hour's temperature, divided by a coefficient of performance that falls in the cold. The `custom:solar-energy-insights-scenario-lab` card has sliders for both.
+
+## [0.9.0] - 2026-11-08
+
+### Added
+
+- Appliances can be added under the integration with **Add appliance**: a name, an icon, what a run takes, and optionally a sensor that learns it. Each is its own device with a "Best start" sensor, the start until sunset that takes the most from free sun, and a "Good time to start" binary sensor, on while starting now takes at least half the run from free sun and about as much as the best start. Cards without appliances of their own show them.
+- A blueprint, `start_appliance.yaml`, that starts an appliance once it is a good time, and optionally once it is ready to be started remotely.
+
+## [0.8.0] - 2026-11-08
+
+### Changed
+
+- A charge limit lowered for part of the day no longer counts as the day's. The plan, the charge needed and the night use the highest the limit has been over the last day, read back from the recorder after a restart, so an automation that keeps room for midday doesn't make the morning's answers pessimistic. A limit kept lower for a whole day is the limit. Free power follows the limit as it is now, and "Charge needed for the night" shows it as `charge_limit_now`.
+
+## [0.7.0] - 2026-11-08
+
+### Added
+
+- A feed-in cap in the options, prefilled with PowerOcean's _Maximum feed-in Power_. With it, "Clipping until sunset" says how much solar the cap would curtail with the battery running by itself, and from when until when, and "Curtailed today" estimates what it held back so far: while the export sits at the cap, the forecast less what the roof made. They show whether holding battery room for midday is worth it.
+
+## [0.6.0] - 2026-11-08
+
+### Added
+
+- A feed-in entity in the options, beside the price entity: it overrides the feed-in tariff while it has a value, read as cents when its unit starts with ct. Costs and savings follow it at once, and their sensors show where the tariff came from (`feed_in_source`).
+
+## [0.5.0] - 2026-11-08
+
+### Added
+
+- `SolarPeriod.setPrices()` gives day rows their value in € at the price that applied that day: what wasn't bought, what was fed in and what was spent, summed into weeks, months and years. Prices come from the entities' long-term statistics or their recorded history.
+
 ## [0.4.0] - 2026-11-08
 
 ### Changed

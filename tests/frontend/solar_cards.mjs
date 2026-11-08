@@ -68,6 +68,32 @@ eval(
 const simulate = (sd) => ({
   response: { ...data.plan, night: { ...data.plan.night } },
 });
+const outcome = (imported, offGrid) => ({
+  import_kwh: imported,
+  export_kwh: 9000,
+  use_kwh: 4200,
+  heat_pump_kwh: 0,
+  self_sufficiency_pct: Math.round((1 - imported / 4200) * 1000) / 10,
+  nights: 365,
+  nights_off_grid: offGrid,
+});
+const scenario = (sd) => ({
+  response: {
+    days: 365,
+    now: outcome(900, 240),
+    changed: outcome(
+      900 - 40 * sd.extra_battery_kwh,
+      240 + sd.extra_battery_kwh,
+    ),
+    saving_per_year: 12 * sd.extra_battery_kwh,
+    heat_pump_solar_pct: null,
+    payback_years: sd.battery_price
+      ? sd.battery_price / (12 * sd.extra_battery_kwh)
+      : null,
+    price: 0.3,
+    feed_in: 0.08,
+  },
+});
 const hourly = (q) => {
   const out = {};
   for (const id of q.statistic_ids) {
@@ -96,7 +122,9 @@ const hass = {
       : q.type === "solar_energy_insights/config"
         ? data.config
         : q.type === "call_service"
-          ? simulate(q.service_data)
+          ? q.service === "scenario"
+            ? scenario(q.service_data)
+            : simulate(q.service_data)
           : q.type === "recorder/statistics_during_period"
             ? hourly(q)
             : {},
@@ -281,5 +309,40 @@ await html("best-time", TWO);
 check(
   "a dashboard tile's own cache is left alone",
   window.__sei.sims.data.both.full_at === "x",
+);
+// Appliances added under the integration show on cards without their own.
+window.SolarDash.config().appliances = [
+  { name: "Heat pump boost", icon: "mdi:heat-pump", kwh: 2.0, hours: 1.0 },
+];
+const added = await draw("best-time");
+check(
+  "a card without appliances shows the integration's",
+  added.includes("Heat pump boost") && added.includes("2.0 kWh · 1.0 h"),
+);
+const own = await draw("best-time", { appliances: [TWO.appliances[0]] });
+check(
+  "and a card's own appliances win",
+  own.includes("Dishwasher") && !own.includes("Heat pump boost"),
+);
+window.SolarDash.config().appliances = [];
+
+// The scenario lab: the year with the card's starting values.
+const labCard = new (registry.get("solar-energy-insights-scenario-lab"))();
+labCard.setConfig({ extra_battery_kwh: 5, battery_price_per_kwh: 400 });
+for (let k = 0; k < 6; k++) {
+  labCard.hass = hass;
+  await settle();
+}
+const lab = text(labCard.shadowRoot.innerHTML);
+check(
+  "the scenario lab compares the year as it is and with more battery",
+  lab.includes("Bought from the grid") &&
+    lab.includes("900 kWh") &&
+    lab.includes("700 kWh") &&
+    lab.includes("245 of 365"),
+);
+check(
+  "and says what it saves and when it pays back",
+  lab.includes("Saves about") && lab.includes("paid back in 33.3 years"),
 );
 console.log("ok");

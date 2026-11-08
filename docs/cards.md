@@ -30,6 +30,9 @@ running: # optional
   name: Washing machine
 ```
 
+Without `appliances`, the cards show the appliances added under the
+integration.
+
 ## Best time to run
 
 ```yaml
@@ -45,6 +48,20 @@ type: custom:solar-energy-insights-forecast-trust
 checkpoints: ["18:00", "21:00", "06:00", "12:00"]
 footnotes: true
 ```
+
+## Scenario lab
+
+```yaml
+type: custom:solar-energy-insights-scenario-lab
+extra_battery_kwh: 5 # where the sliders start
+heat_loss_w_per_k: 0 # 0: no heat pump
+hot_water_kwh_per_day: 6 # with a heat pump
+battery_price_per_kwh: 400 # optional, for the payback
+```
+
+Your last year replayed with the sliders' battery and heat pump, against the
+house as it is. Needs the solar energy counter, and for a heat pump the outdoor
+thermometer, in the integration's options.
 
 ## Achievements
 
@@ -92,4 +109,9 @@ date `input_datetime.solar_day`. `SolarPeriod.view(hass, states, this)` returns 
 selected period's totals with the previous period and the same period last year;
 `SolarPeriod.series(hass, key)` and `SolarPeriod.profile(hass, key)` feed
 apexcharts' `data_generator`. Pass a typical year, kWh per month, with
-`SolarPeriod.setTypical([...])` to compare a year with it.
+`SolarPeriod.setTypical([...])` to compare a year with it. To value days in €, pass the
+price entities (ct/kWh) with `SolarPeriod.setPrices({ buy, sell, buyDefault,
+sellDefault })`: each day then carries `v` (€ saved), `va` (not bought), `ve` (fed
+in) and `vb` (spent) at that day's price. Prices come from the entity's long-term
+statistics, else its recorded history, which the recorder keeps only for its purge
+window.

@@ -17,3 +17,56 @@ simulate:
           max: 24
           step: 0.1
           unit_of_measurement: h
+scenario:
+  fields:
+    extra_battery_kwh:
+      default: 0
+      example: 5
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 0.5
+          unit_of_measurement: kWh
+    heat_loss_w_per_k:
+      default: 0
+      example: 180
+      selector:
+        number:
+          min: 0
+          max: 2000
+          step: 5
+          unit_of_measurement: W/K
+    heating_limit_c:
+      default: 15
+      selector:
+        number:
+          min: 5
+          max: 22
+          step: 0.5
+          unit_of_measurement: °C
+    indoor_c:
+      default: 20
+      selector:
+        number:
+          min: 15
+          max: 25
+          step: 0.5
+          unit_of_measurement: °C
+    hot_water_kwh_per_day:
+      default: 0
+      example: 6
+      selector:
+        number:
+          min: 0
+          max: 50
+          step: 0.5
+          unit_of_measurement: kWh
+    battery_price:
+      example: 2500
+      selector:
+        number:
+          min: 0
+          max: 1000000
+          step: 1
+          mode: box

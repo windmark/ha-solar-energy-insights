@@ -86,11 +86,17 @@ The cards ship with the integration, each with settings in the dashboard editor:
 - type: custom:solar-energy-insights-best-time
   appliances: [] # the same list
 - type: custom:solar-energy-insights-forecast-trust
+- type: custom:solar-energy-insights-scenario-lab # your last year, what if
 - type: custom:solar-energy-insights-level
 - type: custom:solar-energy-insights-streaks
 - type: custom:solar-energy-insights-records
 - type: custom:solar-energy-insights-badges
 ```
+
+Appliances can also be added under the integration (**Add appliance** on its
+page): each gets a "Best start" sensor and a "Good time to start" binary sensor
+for automations, and cards without appliances of their own show them. The
+blueprint `start_appliance.yaml` starts one when it is a good time.
 
 For your own cards, `sensor.solar_energy_insights_summary` has each tile's
 headline and details as attributes.
