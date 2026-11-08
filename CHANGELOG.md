@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.6.0] - 2026-11-08
+
 ### Added
 
 - A feed-in entity in the options, beside the price entity: it overrides the feed-in tariff while it has a value, read as cents when its unit starts with ct. Costs and savings follow it at once, and their sensors show where the tariff came from (`feed_in_source`).
