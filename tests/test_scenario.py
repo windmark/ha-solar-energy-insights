@@ -26,7 +26,7 @@ DAYS = recent(30)
 
 def evening(hour: int) -> float:
     """A house whose evenings and nights take more than the battery holds."""
-    return 2.0 if 17 <= hour < 23 else 0.6
+    return 3.0 if 19 <= hour < 24 else 1.0
 
 
 def sun(_day: date, hour: int) -> float:

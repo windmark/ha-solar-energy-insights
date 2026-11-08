@@ -35,7 +35,6 @@ NIGHT_HOURS = 4
 NO_SUN_KWH = 0.01
 # Less than this from the grid in a night counts as without it.
 NIGHT_GRID_KWH = 0.1
-START_PCT = 50.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,17 +199,21 @@ def _flows(
 
 
 def _nights(sun: Floats, grid: Floats) -> tuple[int, int]:
-    """How many nights there were, and how many got by without the grid."""
+    """How many nights there were, and how many got by without the grid. The
+    dark hours the replay starts in are not a whole night, and the battery
+    starts them empty: they don't count."""
     nights = lasted = 0
     run_hours, run_grid = 0, 0.0
+    seen_sun = False
     for kwh, bought in zip(sun.tolist(), grid.tolist(), strict=True):
         if kwh < NO_SUN_KWH:
             run_hours += 1
             run_grid += bought
             continue
-        if run_hours >= NIGHT_HOURS:
+        if seen_sun and run_hours >= NIGHT_HOURS:
             nights += 1
             lasted += run_grid < NIGHT_GRID_KWH
+        seen_sun = True
         run_hours, run_grid = 0, 0.0
     return nights, lasted
 
@@ -222,9 +225,9 @@ def compare(
     price: float,
     feed_in: float,
 ) -> Comparison:
-    """The house as it is against the house with *scenario*, both from half
-    full at the first hour."""
-    start = replace(battery, soc_pct=max(START_PCT, battery.floor_pct))
+    """The house as it is against the house with *scenario*, both starting
+    empty: a bigger battery must not start with more to give."""
+    start = replace(battery, soc_pct=battery.floor_pct)
     now = replay(hours, start)
     bigger = replace(
         start, capacity_kwh=start.capacity_kwh + max(scenario.extra_battery_kwh, 0.0)
