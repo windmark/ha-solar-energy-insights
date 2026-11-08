@@ -21,17 +21,17 @@ from pytest_homeassistant_custom_component.components.recorder.common import (
 
 from custom_components.solar_energy_insights import const
 
-_clock = time.perf_counter  # freezegun patches the attribute later
+_CLOCK = (time.perf_counter,)  # freezegun replaces module attributes, not this
 
 
 def _timed(fn):
     @functools.wraps(fn)
     async def wrapper(*args, **kwargs):
-        start = _clock()
+        start = _CLOCK[0]()
         try:
             return await fn(*args, **kwargs)
         finally:
-            print(f"TIMING {os.environ.get('PYTEST_CURRENT_TEST', '').split('::')[-1][:50]} {fn.__name__} {_clock() - start:.3f}s")
+            print(f"TIMING {os.environ.get('PYTEST_CURRENT_TEST', '').split('::')[-1][:50]} {fn.__name__} {_CLOCK[0]() - start:.3f}s")
 
     return wrapper
 
