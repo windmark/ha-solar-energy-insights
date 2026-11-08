@@ -84,6 +84,10 @@ class Simulation:
     night_grid_kwh: float
     night_load_kwh: float
     points: tuple[tuple[datetime, float], ...] = field(repr=False)
+    # Export above the feed-in cap, which the inverter curtails; 0 without a cap.
+    clipped_kwh: float = 0.0
+    clip_from: datetime | None = None
+    clip_until: datetime | None = None
 
     @property
     def peak_pct(self) -> float:
@@ -135,11 +139,13 @@ def simulate(
     pv: Rate,
     load: Rate,
     mark_at: datetime | None = None,
+    cap_kw: float | None = None,
 ) -> Simulation:
     """Step the battery from *start* to *end* in slices of at most 30 minutes.
 
     One battery through `batch.run`, so the day and the night share one engine.
-    *mark_at* records the level at that moment, such as sunset.
+    *mark_at* records the level at that moment, such as sunset. *cap_kw* is the
+    feed-in cap, if exports are capped.
     """
     from . import batch
 
@@ -177,6 +183,7 @@ def simulate(
         slices.sample(load)[np.newaxis, :],
         record=True,
         detail=True,
+        cap_kw=cap_kw,
     )
     d = runs.detail
     assert d is not None
@@ -212,4 +219,7 @@ def simulate(
         points=tuple(
             (t, float(v)) for t, v in zip(times, runs.levels_pct[0], strict=True)
         ),
+        clipped_kwh=float(d["clipped_kwh"][0]),
+        clip_from=d["clip_from"][0],
+        clip_until=d["clip_until"][0],
     )
