@@ -7,6 +7,7 @@ from datetime import timedelta
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.components.recorder.common import (
     async_wait_recording_done,
     do_adhoc_statistics,
@@ -112,7 +113,9 @@ async def test_solar_held_at_the_cap_is_counted_as_curtailed(
     await async_wait_recording_done(home)
     for k in range(6):
         freezer.move_to(start + timedelta(minutes=5 * (k + 1)))
-        do_adhoc_statistics(home, start=start + timedelta(minutes=5 * k))
+        do_adhoc_statistics(
+            home, start=dt_util.as_utc(start + timedelta(minutes=5 * k))
+        )
         await async_wait_recording_done(home)
 
     await setup_entry(home, OPTIONS)
@@ -137,7 +140,9 @@ async def test_below_the_cap_nothing_is_curtailed(
     await async_wait_recording_done(home)
     for k in range(3):
         freezer.move_to(start + timedelta(minutes=5 * (k + 1)))
-        do_adhoc_statistics(home, start=start + timedelta(minutes=5 * k))
+        do_adhoc_statistics(
+            home, start=dt_util.as_utc(start + timedelta(minutes=5 * k))
+        )
         await async_wait_recording_done(home)
 
     await setup_entry(home, OPTIONS)
