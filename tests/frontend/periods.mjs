@@ -221,6 +221,13 @@ const month = await window.SolarDash.monthDays(
 );
 check("month days without the jump", month[JUMP_DAY].y < 11);
 
+// The day view's hours drop it too
+const H = await window.SolarDash.loadHourly(hass, JUMP_DAY);
+check(
+  "an hour without the jump",
+  Math.max(...H.solar.filter((v) => v !== null)) < 1,
+);
+
 // A year without a typical year: only months whose every day had a forecast
 const fc = await SP.series(hass, "fc");
 check("no forecast, no reference line", fc.length === 0);

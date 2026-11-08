@@ -143,19 +143,22 @@
             if (rows && rows.length) {
               const arr = new Array(24).fill(null);
               const cnt = new Array(24).fill(0);
-              rows.forEach(function (row) {
-                const v = row[type];
-                if (v === null || v === undefined) return;
-                const hr = new Date(row.start).getHours();
-                /* DST: an hour can occur twice – add energy, average the battery level */
-                if (arr[hr] === null) arr[hr] = v;
-                else
-                  arr[hr] =
-                    type === "mean"
-                      ? (arr[hr] * cnt[hr] + v) / (cnt[hr] + 1)
-                      : arr[hr] + v;
-                cnt[hr]++;
-              });
+              // Energy hours without counter jumps (see plausible below)
+              (type === "mean" ? rows : plausible(rows, 1)).forEach(
+                function (row) {
+                  const v = row[type];
+                  if (v === null || v === undefined) return;
+                  const hr = new Date(row.start).getHours();
+                  /* DST: an hour can occur twice – add energy, average the battery level */
+                  if (arr[hr] === null) arr[hr] = v;
+                  else
+                    arr[hr] =
+                      type === "mean"
+                        ? (arr[hr] * cnt[hr] + v) / (cnt[hr] + 1)
+                        : arr[hr] + v;
+                  cnt[hr]++;
+                },
+              );
               out[k] = arr;
               break;
             }
