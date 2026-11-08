@@ -26,7 +26,18 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
-from .core.achievements.facts import MAX_SPIKE_SHARE, MIN_SPIKE_HOURS
+from .core.achievements.facts import MAX_SPIKE_SHARE, MIN_SPIKE_HOURS, DayFacts
+from .core.history import (
+    RATIO_DAYS,
+    SIZING_DAYS,
+    DayVerdict,
+    Sizing,
+    day_ratios,
+    mean_ratio,
+    sized_days,
+    sizing,
+    typical_week,
+)
 from .core.nights import days_covered
 from .core.plan import Outlook, Plan
 from .dashboard import discover_strings, history_start, string_kwp
@@ -332,8 +343,15 @@ async def async_setup_entry(
     async_add_entities([SummarySensor(coordinator, SUMMARY)])
     async_add_entities([MorningForecastSensor(coordinator, MORNING)])
     async_add_entities([CheckpointsSensor(coordinator, CHECKPOINTS_SENSOR)])
+    async_add_entities([TypicalWeekSensor(coordinator, TYPICAL_WEEK)])
     if coordinator.achievements.enabled:
-        async_add_entities([SpikeShareSensor(coordinator, SPIKE_SHARE)])
+        async_add_entities(
+            [
+                SpikeShareSensor(coordinator, SPIKE_SHARE),
+                PerformanceRatioSensor(coordinator, PERFORMANCE_RATIO),
+                BatterySizingSensor(coordinator, BATTERY_SIZING),
+            ]
+        )
     for found in discover_strings(coordinator.hass, entry):
         n, power = found["n"], found["power"]
         async_add_entities(
@@ -879,4 +897,149 @@ class SpikeShareSensor(InsightsEntity, SensorEntity):
             "hours_seen": a.spike_hours,
             "cap_pct": round(MAX_SPIKE_SHARE * 100),
             "excused_today_kwh": None if live is None else live.spike_kwh,
+        }
+
+
+TYPICAL_WEEK = SensorEntityDescription(
+    key="typical_week",
+    translation_key="typical_week",
+    device_class=SensorDeviceClass.ENERGY,
+    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+    suggested_display_precision=1,
+)
+
+
+class TypicalWeekSensor(InsightsEntity, SensorEntity):
+    """The house's typical day, in kWh, with its mean use for each hour of the
+    week as the house attribute: 168 values, Monday 0:00 first, over the last
+    five weeks."""
+
+    _unrecorded_attributes = frozenset({"house"})
+
+    def _week(self) -> list[float]:
+        return typical_week(self.coordinator.use, dt_util.now().date())
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success and bool(self.coordinator.use)
+
+    @property
+    def native_value(self) -> StateType:
+        return round(sum(self._week()) / 7, 2)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"house": self._week()}
+
+
+def _facts(coordinator: InsightsCoordinator) -> list[DayFacts]:
+    """The closed days the achievements keep."""
+    saved = coordinator.achievements.memory.facts
+    return [DayFacts.from_dict(v) for _, v in sorted(saved.items())]
+
+
+PERFORMANCE_RATIO = SensorEntityDescription(
+    key="performance_ratio",
+    translation_key="performance_ratio",
+    native_unit_of_measurement=PERCENTAGE,
+    state_class=SensorStateClass.MEASUREMENT,
+    suggested_display_precision=0,
+)
+
+
+class PerformanceRatioSensor(InsightsEntity, SensorEntity):
+    """How much of the morning's forecast the sun delivered over the last 30
+    days, weighted by energy; each day's as the history attribute (d, r in %,
+    f forecast kWh, a actual kWh), and today's so far against the latest
+    forecast."""
+
+    _unrecorded_attributes = frozenset({"history", "today"})
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success and bool(
+            day_ratios(_facts(self.coordinator))
+        )
+
+    @property
+    def native_value(self) -> StateType:
+        ratio = mean_ratio(day_ratios(_facts(self.coordinator))[-RATIO_DAYS:])
+        return None if ratio is None else round(ratio * 100, 1)
+
+    def _today(self) -> dict[str, Any] | None:
+        live = self.coordinator.achievements.live
+        if live is None or live.solar_kwh is None:
+            return None
+        now = dt_util.utcnow()
+        expected = self.coordinator.raw_forecast().energy(
+            dt_util.start_of_local_day(), now
+        )
+        return {
+            "a": round(live.solar_kwh, 2),
+            "f": round(expected, 2),
+            "r": round(live.solar_kwh / expected * 100) if expected > 0.3 else None,
+        }
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        ratios = day_ratios(_facts(self.coordinator))
+        before = mean_ratio(ratios[-2 * RATIO_DAYS : -RATIO_DAYS])
+        return {
+            "previous_30_days": None if before is None else round(before * 100, 1),
+            "history": [
+                {
+                    "d": r.day.isoformat(),
+                    "r": round(r.ratio * 100, 1),
+                    "f": round(r.forecast_kwh, 2),
+                    "a": round(r.solar_kwh, 2),
+                }
+                for r in ratios[-2 * RATIO_DAYS :]
+            ],
+            "today": self._today(),
+        }
+
+
+BATTERY_SIZING = SensorEntityDescription(
+    key="battery_sizing",
+    translation_key="battery_sizing",
+    device_class=SensorDeviceClass.ENUM,
+    options=[str(s) for s in Sizing],
+)
+
+
+class BatterySizingSensor(InsightsEntity, SensorEntity):
+    """Whether the battery is the right size for how the house uses it, over
+    the last 60 days: full and lasted the night, full and ran out, or never
+    full, each day in the history attribute."""
+
+    _unrecorded_attributes = frozenset({"history"})
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success
+
+    def _days(self) -> list[Any]:
+        return sized_days(_facts(self.coordinator))[-SIZING_DAYS:]
+
+    @property
+    def native_value(self) -> StateType:
+        return str(sizing(self._days())[0])
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        days = self._days()
+        _, share = sizing(days)
+        counts = {str(v): sum(d.verdict is v for d in days) for v in DayVerdict}
+        return {
+            "too_small_share": round(share * 100),
+            "days": counts,
+            "history": [
+                {
+                    "d": d.day.isoformat(),
+                    "v": str(d.verdict),
+                    "export_kwh": _r(d.export_kwh, 1),
+                    "import_kwh": _r(d.import_kwh, 1),
+                }
+                for d in days
+            ],
         }

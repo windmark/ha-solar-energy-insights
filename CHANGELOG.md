@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- "Typical day": the house's typical day, with its mean use for each hour of the week over the last five weeks as an attribute, for charts of the week.
+- With achievements on, "Sun against the forecast", the sun of the last 30 days against each morning's forecast, energy-weighted, with each day and today so far, and "Battery size", whether the battery is the right size: of the days it got full over the last 60, how many ran out at night, with each day's verdict.
+
 ## [0.4.0] - 2026-11-08
 
 ### Changed
