@@ -68,6 +68,7 @@ async def async_get_config_entry_diagnostics(
             "factors": [float(f) for f in coordinator.correction.factors],
         },
         "price_source": coordinator.price_source,
+        "feed_in_source": coordinator.feed_in_source,
         "plan": plan_dict(
             current, detail=False, prices=(coordinator.price, coordinator.feed_in)
         )
