@@ -444,6 +444,21 @@
       },
       "appliance_best_start": {
         "name": "Best start"
+      },
+      "typical_week": {
+        "name": "Typical day"
+      },
+      "performance_ratio": {
+        "name": "Sun against the forecast"
+      },
+      "battery_sizing": {
+        "name": "Battery size",
+        "state": {
+          "right_size": "Right size",
+          "sometimes_too_small": "Sometimes too small",
+          "too_small": "Too small",
+          "not_enough_days": "Not enough full days yet"
+        }
       }
     },
     "binary_sensor": {
