@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - custom_components/**
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One release at a time. Each run starts from the tip of main, so a queued run
+# sees the version the run before it committed.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Bump version and changelog
+        id: release
+        run: node scripts/release.mjs
+
+      # Pushed with the workflow token, so this commit does not start another run.
+      - name: Commit and tag
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md custom_components/solar_energy_insights/manifest.json
+          git diff --cached --quiet || git commit -m "Release $TAG"
+          git tag "$TAG"
+          git push --atomic origin HEAD:main "$TAG"
+
+      - name: Package integration
+        working-directory: custom_components/solar_energy_insights
+        run: zip -r "$RUNNER_TEMP/solar_energy_insights.zip" . -x "__pycache__/*" "*/__pycache__/*"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: ${{ steps.release.outputs.tag }}
+          body_path: RELEASE_NOTES.md
+          files: ${{ runner.temp }}/solar_energy_insights.zip
+          generate_release_notes: true
