@@ -2919,9 +2919,13 @@
       p1: str(1),
       p2: str(2),
       p3: str(3),
-      bc: [PFX + "battery_charged_today", PFX + "battery_charged_total"],
-      bd: [PFX + "battery_discharged_today", PFX + "battery_discharged_total"],
-      pk: [E.solar_power || PFX + "solar_power"],
+      bc: PFX
+        ? [PFX + "battery_charged_today", PFX + "battery_charged_total"]
+        : [],
+      bd: PFX
+        ? [PFX + "battery_discharged_today", PFX + "battery_discharged_total"]
+        : [],
+      pk: E.solar_power ? [E.solar_power] : PFX ? [PFX + "solar_power"] : [],
     };
   }
   const ready = () => !!ids();
@@ -3029,10 +3033,11 @@
   }
 
   function live(states) {
-    const PFX =
-      (window.SolarDash && window.SolarDash.PFX) ||
-      "sensor.ecoflow_powerocean_";
+    // The configured counters; the battery's have no setting, so they are found
+    // next to them by name, and only when the counters share a prefix.
+    const PFX = (window.SolarDash && window.SolarDash.PFX) || "";
     const n = (id) => {
+      if (!id) return null;
       const v = parseFloat(states && states[id] && states[id].state);
       return isNaN(v) ? null : v;
     };
@@ -3048,17 +3053,19 @@
         "sensor.solar_energy_insights_pv" + k + "_energy_today"
       );
     };
+    const E = c.entities || {};
+    const near = (name) => (PFX ? PFX + name : null);
     return {
-      y: n(PFX + "solar_yield_today"),
-      h: n(PFX + "house_consumption_today"),
-      i: n(PFX + "grid_import_today"),
-      e: n(PFX + "grid_export_today"),
-      bc: n(PFX + "battery_charged_today"),
-      bd: n(PFX + "battery_discharged_today"),
+      y: n(E.solar),
+      h: n(E.house),
+      i: n(E.import),
+      e: n(E.export),
+      bc: n(near("battery_charged_today")),
+      bd: n(near("battery_discharged_today")),
       p1: n(strE(1)),
       p2: n(strE(2)),
       p3: n(strE(3)),
-      pkW: n((c.entities && c.entities.solar_power) || PFX + "solar_power"),
+      pkW: n(E.solar_power || near("solar_power")),
     };
   }
   function patchToday(r, states) {
