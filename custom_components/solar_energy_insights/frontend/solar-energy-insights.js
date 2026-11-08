@@ -2868,7 +2868,9 @@
           ? row(
               "Heat pump",
               "",
-              `${n(b.heat_pump_kwh)} kWh, ${n(r.heat_pump_solar_pct)}% from the roof`,
+              `${n(b.heat_pump_kwh)} kWh, ${n(
+                r.heat_pump_solar_pct,
+              )}% from the roof`,
               null,
             )
           : "");
@@ -2893,7 +2895,10 @@
           `Your last ${n(r.days)} recorded days, per year, at ${n(
             r.price * 100,
             1,
-          )} ct bought and ${n(r.feed_in * 100, 1)} ct exported. The heat pump is a simple model: heat loss below a heating limit, divided by a COP that falls in the cold.`,
+          )} ct bought and ${n(
+            r.feed_in * 100,
+            1,
+          )} ct exported. The heat pump is a simple model: heat loss below a heating limit, divided by a COP that falls in the cold.`,
         )
       );
     },
