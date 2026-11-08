@@ -1,11 +1,14 @@
 name: Release
 
+# Releases what Validate has checked on main, never before.
 on:
-  push:
+  workflow_run:
+    workflows:
+      - Validate
+    types:
+      - completed
     branches:
       - main
-    paths:
-      - custom_components/**
   workflow_dispatch:
 
 permissions:
@@ -20,6 +23,10 @@ concurrency:
 jobs:
   release:
     name: Create GitHub release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -27,12 +34,31 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      # Skip when main moved on after the validated commit (Validate on the
+      # newer commit releases both), or when the integration has not changed
+      # since the last release.
+      - name: Check for changes
+        id: check
+        env:
+          VALIDATED: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ -n "$VALIDATED" ] && [ "$(git rev-parse HEAD)" != "$VALIDATED" ]; then
+            echo "main has moved on from $VALIDATED; skipping."
+          elif LATEST=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null) &&
+            git diff --quiet "$LATEST" HEAD -- custom_components; then
+            echo "Nothing in custom_components changed since $LATEST; skipping."
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Bump version and changelog
         id: release
+        if: steps.check.outputs.release == 'true'
         run: node scripts/release.mjs
 
       # Pushed with the workflow token, so this commit does not start another run.
       - name: Commit and tag
+        if: steps.check.outputs.release == 'true'
         env:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
@@ -44,10 +70,12 @@ jobs:
           git push --atomic origin HEAD:main "$TAG"
 
       - name: Package integration
+        if: steps.check.outputs.release == 'true'
         working-directory: custom_components/solar_energy_insights
         run: zip -r "$RUNNER_TEMP/solar_energy_insights.zip" . -x "__pycache__/*" "*/__pycache__/*"
 
       - name: Create GitHub release
+        if: steps.check.outputs.release == 'true'
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ steps.release.outputs.tag }}
