@@ -58,7 +58,7 @@ async def setup_entry(home: HomeAssistant, **options: Any) -> None:
     await record_house(home, DAYS, evening)
     await record_energy(home, SOLAR, DAYS, sun)
     set_states(home)
-    await setup({const.CONF_SOLAR_ENERGY: SOLAR, **options})
+    await setup(home, {const.CONF_SOLAR_ENERGY: SOLAR, **options})
 
 
 async def scenario(home: HomeAssistant, **data: Any) -> Any:
@@ -117,7 +117,7 @@ async def test_a_heat_pump_needs_the_outdoor_temperature(home: HomeAssistant) ->
 async def test_the_scenario_needs_the_solar_counter(home: HomeAssistant) -> None:
     await record_house(home, DAYS, evening)
     set_states(home)
-    await setup()
+    await setup(home)
 
     with pytest.raises(ServiceValidationError) as err:
         await scenario(home, extra_battery_kwh=5)
@@ -129,7 +129,7 @@ async def test_too_little_history_is_refused(home: HomeAssistant) -> None:
     await record_house(home, recent(3), evening)
     await record_energy(home, SOLAR, recent(3), sun)
     set_states(home)
-    await setup({const.CONF_SOLAR_ENERGY: SOLAR})
+    await setup(home, {const.CONF_SOLAR_ENERGY: SOLAR})
 
     with pytest.raises(ServiceValidationError) as err:
         await scenario(home, extra_battery_kwh=5)
