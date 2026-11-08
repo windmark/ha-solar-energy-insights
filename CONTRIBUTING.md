@@ -20,6 +20,12 @@ uv run pre-commit run --all-files
 
 The Home Assistant tests run against a real Home Assistant and recorder from [pytest-homeassistant-custom-component](https://github.com/MatthewFlamm/pytest-homeassistant-custom-component); `tests/common.py` records past days into it.
 
+## Releases
+
+Note user-facing changes under the `Unreleased` heading in [CHANGELOG.md](CHANGELOG.md). Every merge to `main` that touches `custom_components/` publishes a release: the `Release` workflow bumps the minor version, moves the Unreleased section under a dated version heading, commits both to `main`, tags `v<version>` and attaches `solar_energy_insights.zip`, which HACS installs. The release description is that changelog section, followed by GitHub's generated notes.
+
+For a patch or major release instead, set `version` in `manifest.json` to it in the pull request; a version that is not released yet is released as it is. The workflow can also be run by hand from the Actions tab.
+
 ## Architecture
 
 - `core/` holds the logic as plain Python, with no Home Assistant imports:
