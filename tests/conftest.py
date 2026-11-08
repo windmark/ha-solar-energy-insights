@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -9,6 +10,10 @@ from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 
 from tests.common import DAY, configure_home, local
+
+# The harness logs every SQL statement at INFO. The recorder runs thousands of
+# them per test and no test reads them, but each is still captured and formatted.
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 
 @pytest.fixture
