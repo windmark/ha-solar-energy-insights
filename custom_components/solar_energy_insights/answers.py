@@ -248,7 +248,7 @@ class AnswersMixin(ReadingsMixin):
         memory = self.memory.memory
         today = dt_util.as_local(now).date()
         try:
-            battery = self.battery()
+            battery = self.battery(as_reported=True)
         except UpdateFailed:
             return
         # The night answers, against the same evenings the backtest uses.

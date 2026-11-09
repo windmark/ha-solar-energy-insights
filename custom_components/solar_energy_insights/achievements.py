@@ -136,7 +136,7 @@ class Achievements:
                 if (v := r.get(name)) is not None
             }
 
-        floor = self.c.battery().floor_pct
+        floor = self.c.battery(as_reported=True).floor_pct
         lows, _ = clean_lows(
             {
                 dt_util.utc_from_timestamp(r["start"]): (r.get("min"), r.get("mean"))
@@ -208,7 +208,7 @@ class Achievements:
         local = dt_util.as_local(now)
         today = local.date()
         try:
-            battery = self.c.battery()
+            battery = self.c.battery(as_reported=True)
         except UpdateFailed:
             return
         memory = self.memory
@@ -453,7 +453,7 @@ class Achievements:
             self.trophies,
             today,
             self.live,
-            self.c.battery().floor_pct,
+            self.c.battery(as_reported=True).floor_pct,
             (self.c.price, self.c.feed_in),
         )
         history = [DayFacts.from_dict(v) for _, v in sorted(self.memory.facts.items())]

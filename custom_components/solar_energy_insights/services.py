@@ -120,7 +120,7 @@ async def _scenario(call: ServiceCall) -> ServiceResponse:
     if pump is not None and lab.temperature is None:
         raise _refuse("needs_temperature")
     try:
-        battery = coordinator.battery()
+        battery = coordinator.battery(as_reported=True)
     except UpdateFailed as err:
         raise ServiceValidationError(
             translation_domain=DOMAIN,

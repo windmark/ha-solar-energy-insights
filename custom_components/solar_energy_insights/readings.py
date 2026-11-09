@@ -57,7 +57,7 @@ from .const import (
     DEFAULT_ROUND_TRIP_PCT,
 )
 from .core.array import Array
-from .core.battery import Battery
+from .core.battery import Battery, held_floor
 from .core.forecast import PvForecast
 from .strings import power_kw
 
@@ -99,6 +99,9 @@ class ReadingsMixin:
     correction: Correction
     # The charge limit's values over the last day: (since, %).
     limits_seen: list[tuple[datetime, float]]
+    # The level the battery is held at above its floor, giving nothing; None
+    # while it is not.
+    held_pct: float | None
 
     @property
     def tz(self) -> tzinfo:
@@ -183,21 +186,27 @@ class ReadingsMixin:
                 readings[key] = value
                 break
 
-    def _export_kw(self) -> float:
+    def _imported_kw(self) -> float | None:
+        """The grid power now, positive while importing; None without a reading."""
         state = self._state(CONF_GRID_POWER)
         value = _number(state)
         if value is None or state is None:
-            return 0.0
+            return None
         unit = state.attributes.get("unit_of_measurement") or UnitOfPower.WATT
         try:
             kw = PowerConverter.convert(value, unit, UnitOfPower.KILO_WATT)
         except Exception:
-            return 0.0
-        imported = (
-            kw if self.config_entry.options.get(CONF_IMPORT_POSITIVE, True) else -kw
-        )
+            return None
+        return kw if self.config_entry.options.get(CONF_IMPORT_POSITIVE, True) else -kw
+
+    def _export_kw(self) -> float:
+        imported = self._imported_kw()
         # No export reads as 0.0, not -0.0.
-        return max(-imported, 0.0) + 0.0
+        return 0.0 if imported is None else max(-imported, 0.0) + 0.0
+
+    def _import_kw(self) -> float:
+        imported = self._imported_kw()
+        return 0.0 if imported is None else max(imported, 0.0)
 
     def _entity_price(self, key: str = CONF_PRICE_ENTITY) -> float | None:
         entity_id = self.config_entry.options.get(key)
@@ -311,9 +320,14 @@ class ReadingsMixin:
             if (value := _number(state)) is not None
         ]
 
-    def battery(self) -> Battery:
+    def battery(self, *, as_reported: bool = False) -> Battery:
+        """The battery now. A battery held above its floor, giving nothing while
+        the grid supplies the house, is empty: its floor is where it is held.
+        *as_reported* keeps the floor it reports, for judging past days."""
         # Nothing changes while a battery is switched off, so its last readings stand.
-        soc = _number(self._state(CONF_BATTERY_SOC))
+        soc_state = self._state(CONF_BATTERY_SOC)
+        soc = _number(soc_state)
+        live = soc is not None
         soc = (
             self._keep_reading("soc_pct", soc)
             if soc is not None
@@ -335,6 +349,26 @@ class ReadingsMixin:
             # Some inverters report 0 % while the battery sleeps at its reserve;
             # it cannot be below a floor it never discharges past.
             soc = floor
+        held = (
+            held_floor(
+                soc,
+                floor,
+                dt_util.utcnow() - soc_state.last_changed,
+                self._import_kw(),
+            )
+            if live and soc_state is not None
+            else None
+        )
+        if held != self.held_pct:
+            if held is not None:
+                _LOGGER.debug(
+                    "The battery is held at %s %% and gives nothing; "
+                    "it counts as empty",
+                    held,
+                )
+            self.held_pct = held
+        if held is not None and not as_reported:
+            floor = held
         return Battery(
             capacity_kwh=capacity,
             soc_pct=soc,

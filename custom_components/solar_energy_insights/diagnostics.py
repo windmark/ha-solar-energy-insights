@@ -29,6 +29,8 @@ async def async_get_config_entry_diagnostics(
         "corrected_readings": coordinator.corrected_readings,
         "heavy_share": coordinator.heavy_share,
         "array": _array(coordinator),
+        # The level the battery is held at, giving nothing; None while it is not.
+        "battery_held_pct": coordinator.held_pct,
         "battery_remembered": {
             key: coordinator.memory.memory.battery.get(key)
             for key in sorted(coordinator.remembered)
