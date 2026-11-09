@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import Event, HomeAssistant
@@ -117,6 +119,66 @@ async def test_a_live_reading_replaces_the_remembered_one(home: HomeAssistant) -
 
     assert coordinator.battery().soc_pct == 55.0
     assert coordinator.remembered == set()
+
+
+NO_RESERVE = {const.CONF_MIN_RESERVE: 0.0}
+NEEDED = "sensor.solar_energy_insights_charge_needed_for_the_night"
+
+
+async def test_a_battery_held_above_its_reserve_is_empty(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Some inverters stop discharging a few percent above the reserve they
+    report and leave the house on the grid: the battery is empty there."""
+    set_states(home, soc=1.0, reserve=0.0, grid_w=400)
+    entry = await setup_entry(home, NO_RESERVE)
+    coordinator = entry.runtime_data
+    assert coordinator.battery().floor_pct == 0.0
+
+    freezer.tick(timedelta(minutes=20))
+    await coordinator.async_refresh()
+    await home.async_block_till_done()
+
+    assert coordinator.held_pct == 1.0
+    battery = coordinator.battery()
+    assert battery.floor_pct == 1.0
+    assert battery.usable_kwh == 0
+    # Past days are judged against the reserve the battery reports.
+    assert coordinator.battery(as_reported=True).floor_pct == 0.0
+    needed = home.states.get(NEEDED)
+    assert needed is not None
+    assert needed.attributes["battery_held"] is True
+
+
+async def test_a_held_battery_is_released_once_its_level_moves(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    set_states(home, soc=1.0, reserve=0.0, grid_w=400)
+    entry = await setup_entry(home, NO_RESERVE)
+    coordinator = entry.runtime_data
+    freezer.tick(timedelta(minutes=20))
+    await coordinator.async_refresh()
+    assert coordinator.held_pct == 1.0
+
+    set_states(home, soc=2.0, reserve=0.0, grid_w=-1500)
+    await coordinator.async_refresh()
+
+    assert coordinator.held_pct is None
+    assert coordinator.battery().floor_pct == 0.0
+
+
+async def test_a_low_battery_still_covering_the_house_is_not_held(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    set_states(home, soc=2.0, reserve=0.0, grid_w=10)
+    entry = await setup_entry(home, NO_RESERVE)
+    coordinator = entry.runtime_data
+
+    freezer.tick(timedelta(minutes=30))
+    await coordinator.async_refresh()
+
+    assert coordinator.held_pct is None
+    assert coordinator.battery().floor_pct == 0.0
 
 
 async def test_without_history_the_night_is_unknown(home: HomeAssistant) -> None:

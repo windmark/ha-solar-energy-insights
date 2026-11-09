@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- A battery that stops discharging a percent or so above the reserve it reports, such as a PowerOcean stuck at 1 % while the house runs on the grid, now counts as empty. Once its level has sat at 2 % or less for 15 minutes while the grid supplies the house, the plan takes that level as its floor, so it no longer says the battery runs out in a few minutes, over and over. Past nights are still judged against the reported reserve. "Charge needed for the night" shows it as `battery_held`, and diagnostics as `battery_held_pct`.
+
 ## [0.11.0] - 2026-11-08
 
 ### Added

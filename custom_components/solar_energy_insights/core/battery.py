@@ -14,6 +14,29 @@ type Rate = Callable[[datetime], float]
 
 STEP = timedelta(minutes=30)
 FULL_WITHIN_PCT = 0.5
+# Some inverters stop discharging a percent or so above the reserve they report
+# and leave the house on the grid. A low level that has not moved for this long
+# while the grid supplies the house is where the battery stops.
+HELD_UP_TO_PCT = 2.0
+HELD_AFTER = timedelta(minutes=15)
+HELD_IMPORT_KW = 0.1
+
+
+def held_floor(
+    soc_pct: float, floor_pct: float, unchanged_for: timedelta, import_kw: float
+) -> float | None:
+    """The level the battery is held at, when it gives nothing above its floor.
+
+    A battery that still discharges covers the house, so the grid supplies
+    next to nothing, or it covers its maximum and its level drops within
+    minutes. One that sits at a low level while the grid supplies the house is
+    empty there. None while the battery is not held.
+    """
+    if not floor_pct < soc_pct <= HELD_UP_TO_PCT:
+        return None
+    if unchanged_for < HELD_AFTER or import_kw < HELD_IMPORT_KW:
+        return None
+    return soc_pct
 
 
 @dataclass(frozen=True, slots=True)

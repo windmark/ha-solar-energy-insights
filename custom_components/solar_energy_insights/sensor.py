@@ -62,10 +62,12 @@ class InsightsSensorDescription(SensorEntityDescription):
 
 def _battery_now(p: Plan, c: InsightsCoordinator) -> dict[str, Any]:
     """The level the plan starts from: the battery's last reading while it is
-    switched off below its reserve and reports nothing."""
+    switched off below its reserve and reports nothing. Held above its floor
+    while the grid supplies the house, the battery counts as empty."""
     return {
         "battery_now": round(p.curve[0][1], 1) if p.curve else None,
         "battery_remembered": "soc_pct" in c.remembered,
+        "battery_held": c.held_pct is not None,
     }
 
 

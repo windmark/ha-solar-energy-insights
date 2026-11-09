@@ -119,6 +119,7 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
         self._recent_answers: list[Answers] = []
         self.changes: dict[str, Change] = {}
         self.limits_seen: list[tuple[datetime, float]] = []
+        self.held_pct: float | None = None
         # Solar curtailed at the feed-in cap today; None without a cap or the
         # power readings it needs.
         self.curtailed: Curtailed | None = None
@@ -235,7 +236,7 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
     ) -> None:
         """Learn from recent evenings: the hidden load and the heavy night."""
         try:
-            battery = self.battery()
+            battery = self.battery(as_reported=True)
         except UpdateFailed:
             return
         lows, self.corrected_readings = clean_lows(soc_hours, battery.floor_pct)
