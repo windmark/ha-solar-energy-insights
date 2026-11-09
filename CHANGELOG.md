@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- A battery held above its reserve is recognised right after a restart or after its level was unavailable for a while. Both gave the level a new last change, so the 15 minutes started over; the wait now follows the level itself, read back from the recorder at startup.
+
 ## [0.12.0] - 2026-11-09
 
 ### Fixed

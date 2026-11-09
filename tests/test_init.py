@@ -150,6 +150,41 @@ async def test_a_battery_held_above_its_reserve_is_empty(
     assert needed.attributes["battery_held"] is True
 
 
+async def test_a_restart_does_not_restart_the_wait_for_a_held_battery(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Updating the integration restarts Home Assistant, which gives the level a
+    new last change though it has sat at 1 % all evening."""
+    set_states(home, soc=1.0, reserve=0.0, grid_w=400)
+    await async_wait_recording_done(home)
+    freezer.tick(timedelta(minutes=30))
+    set_states(home, soc="unavailable", reserve=0.0, grid_w=400)
+    set_states(home, soc=1.0, reserve=0.0, grid_w=400)
+    await async_wait_recording_done(home)
+
+    entry = await setup_entry(home, NO_RESERVE)
+
+    assert entry.runtime_data.held_pct == 1.0
+    assert entry.runtime_data.battery().floor_pct == 1.0
+
+
+async def test_a_dropout_does_not_restart_the_wait_for_a_held_battery(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    set_states(home, soc=1.0, reserve=0.0, grid_w=400)
+    entry = await setup_entry(home, NO_RESERVE)
+    coordinator = entry.runtime_data
+    freezer.tick(timedelta(minutes=10))
+    set_states(home, soc="unavailable", reserve=0.0, grid_w=400)
+    await coordinator.async_refresh()
+
+    set_states(home, soc=1.0, reserve=0.0, grid_w=400)
+    freezer.tick(timedelta(minutes=10))
+    await coordinator.async_refresh()
+
+    assert coordinator.held_pct == 1.0
+
+
 async def test_a_held_battery_is_released_once_its_level_moves(
     home: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
