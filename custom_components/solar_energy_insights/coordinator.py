@@ -120,6 +120,7 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
         self.changes: dict[str, Change] = {}
         self.limits_seen: list[tuple[datetime, float]] = []
         self.held_pct: float | None = None
+        self.soc_steady: tuple[float, datetime] | None = None
         # Solar curtailed at the feed-in cap today; None without a cap or the
         # power readings it needs.
         self.curtailed: Curtailed | None = None

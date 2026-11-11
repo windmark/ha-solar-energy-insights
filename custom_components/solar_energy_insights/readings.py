@@ -102,6 +102,9 @@ class ReadingsMixin:
     # The level the battery is held at above its floor, giving nothing; None
     # while it is not.
     held_pct: float | None
+    # The battery's level and since when it has read so, across restarts and
+    # spells of being unavailable.
+    soc_steady: tuple[float, datetime] | None
 
     @property
     def tz(self) -> tzinfo:
@@ -198,6 +201,35 @@ class ReadingsMixin:
         except Exception:
             return None
         return kw if self.config_entry.options.get(CONF_IMPORT_POSITIVE, True) else -kw
+
+    async def async_steady_from_recorder(self) -> None:
+        """Before the first plan: since when the battery's level has read as it
+        does now. A restart, or a spell of being unavailable, gives the entity a
+        new last change though its level has not moved."""
+        entity_id = self.config_entry.data.get(CONF_BATTERY_SOC)
+        if not entity_id:
+            return
+        states = await get_instance(self.hass).async_add_executor_job(
+            get_last_state_changes, self.hass, 50, entity_id
+        )
+        level: float | None = None
+        since: datetime | None = None
+        for state in reversed(states.get(entity_id, [])):
+            value = _number(state)
+            if value is None:
+                continue
+            if level is not None and value != level:
+                break
+            level, since = value, state.last_changed
+        if level is not None and since is not None:
+            self.soc_steady = (level, since)
+
+    def _unchanged_for(self, soc: float) -> timedelta:
+        """How long the battery's level has read *soc*."""
+        now = dt_util.utcnow()
+        if self.soc_steady is None or self.soc_steady[0] != soc:
+            self.soc_steady = (soc, now)
+        return now - self.soc_steady[1]
 
     def _export_kw(self) -> float:
         imported = self._imported_kw()
@@ -325,9 +357,7 @@ class ReadingsMixin:
         the grid supplies the house, is empty: its floor is where it is held.
         *as_reported* keeps the floor it reports, for judging past days."""
         # Nothing changes while a battery is switched off, so its last readings stand.
-        soc_state = self._state(CONF_BATTERY_SOC)
-        soc = _number(soc_state)
-        live = soc is not None
+        reading = soc = _number(self._state(CONF_BATTERY_SOC))
         soc = (
             self._keep_reading("soc_pct", soc)
             if soc is not None
@@ -350,13 +380,8 @@ class ReadingsMixin:
             # it cannot be below a floor it never discharges past.
             soc = floor
         held = (
-            held_floor(
-                soc,
-                floor,
-                dt_util.utcnow() - soc_state.last_changed,
-                self._import_kw(),
-            )
-            if live and soc_state is not None
+            held_floor(soc, floor, self._unchanged_for(reading), self._import_kw())
+            if reading is not None
             else None
         )
         if held != self.held_pct:
