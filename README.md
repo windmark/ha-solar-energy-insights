@@ -1,5 +1,9 @@
 # Solar Energy Insights
 
+> [!NOTE]
+> This integration was vibe coded. It's just a fun side companion project of
+> mine to formalize and share my solar tiles and logic.
+
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5?style=flat-square&logo=homeassistantcommunitystore&logoColor=white)](https://hacs.xyz/docs/faq/custom_repositories)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.9.0%2B-18BCF2?style=flat-square&logo=homeassistant&logoColor=white)](https://www.home-assistant.io/)
 [![Status](https://img.shields.io/badge/status-alpha-orange?style=flat-square)](#)
