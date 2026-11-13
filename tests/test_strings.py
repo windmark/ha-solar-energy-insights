@@ -16,16 +16,19 @@ from homeassistant.components.recorder.statistics import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 from pytest_homeassistant_custom_component.components.recorder.common import (
     async_wait_recording_done,
 )
 from pytest_homeassistant_custom_component.typing import WebSocketGenerator
 
+from custom_components.solar_energy_insights import sensor as sensor_module
 from custom_components.solar_energy_insights.dashboard import (
     string_panel_w_key,
     string_panels_key,
     string_roof_key,
 )
+from custom_components.solar_energy_insights.strings import repair_energy_sums
 from tests.common import DAY, local, set_states, setup_entry
 from tests.test_config_flow import suggested
 from tests.test_dashboard import config_of, powerocean_strings
@@ -134,6 +137,117 @@ async def test_the_energy_sensor_starts_with_the_strings_whole_history(
         {"change"},
     )
     assert [round(r["change"], 2) for r in rows[energy]] == [6.0, 6.0, 6.0]
+
+
+async def hourly(home: HomeAssistant, entity_id: str, start: Any) -> list[Any]:
+    rows: dict[str, Any] = await get_instance(home).async_add_executor_job(
+        statistics_during_period,
+        home,
+        dt_util.as_utc(start),
+        None,
+        {entity_id},
+        "hour",
+        None,
+        {"sum", "state"},
+    )
+    return rows.get(entity_id) or []
+
+
+async def test_a_running_total_that_dropped_is_lifted_back_into_line(
+    home: HomeAssistant,
+) -> None:
+    """An install from before: the backfill's total ran up to 12 kWh, then the
+    recorder started its own at zero. Every later hour moves up with the repair;
+    the next day's first hour adds that day's energy, not the difference."""
+    energy = f"{PREFIX}pv1_energy_today"
+    day1, day2 = DAY - timedelta(days=2), DAY - timedelta(days=1)
+    points = [
+        (local(day1, 10), 3.0, 3.0),
+        (local(day1, 11), 6.0, 6.0),
+        (local(day1, 12), 9.0, 9.0),
+        (local(day1, 13), 12.0, 12.0),
+        # the recorder's own total, from zero
+        (local(day2, 10), 2.0, 0.0),
+        (local(day2, 11), 5.0, 3.0),
+        (local(day2, 12), 7.0, 5.0),
+    ]
+    async_import_statistics(
+        home,
+        StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            mean_type=StatisticMeanType.NONE,
+            name=None,
+            source="recorder",
+            statistic_id=energy,
+            unit_class="energy",
+            unit_of_measurement="kWh",
+        ),
+        [StatisticData(start=t, state=st, sum=sm) for t, st, sm in points],
+    )
+    await async_wait_recording_done(home)
+
+    repaired, last = await repair_energy_sums(home, energy)
+    assert repaired == 1
+    await async_wait_recording_done(home)
+    rows = await hourly(home, energy, local(day1, 0))
+    assert [r["sum"] for r in rows] == pytest.approx(
+        [3.0, 6.0, 9.0, 12.0, 14.0, 17.0, 19.0]
+    )
+    assert last is not None
+    assert last["sum"] == pytest.approx(19.0)
+    assert (await repair_energy_sums(home, energy))[0] == 0  # once only
+    # The next check picks up after the last hour seen, and catches a later drop.
+    async_import_statistics(
+        home,
+        StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            mean_type=StatisticMeanType.NONE,
+            name=None,
+            source="recorder",
+            statistic_id=energy,
+            unit_class="energy",
+            unit_of_measurement="kWh",
+        ),
+        [StatisticData(start=local(day2, 13), state=8.0, sum=1.0)],
+    )
+    await async_wait_recording_done(home)
+    repaired, last = await repair_energy_sums(home, energy, last)
+    assert repaired == 1
+    await async_wait_recording_done(home)
+    rows = await hourly(home, energy, local(day1, 0))
+    assert rows[-1]["sum"] == pytest.approx(20.0)
+
+
+async def test_todays_energy_never_dips_until_the_day_turns(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Just after the hour, the hour that ended isn't in the statistics yet: the
+    sensor holds its value rather than dip, which would read as a meter reset."""
+    powerocean_strings(home, (1,))
+    readings = [8.0, 6.5, 9.0, 1.0]
+
+    async def fake(*_: Any) -> float:
+        return readings.pop(0) if len(readings) > 1 else readings[0]
+
+    monkeypatch.setattr(sensor_module, "energy_today", fake)
+    freezer.move_to(local(DAY, 15))
+    set_states(home)
+    await setup_entry(home)
+    await home.async_block_till_done()
+    energy = f"{PREFIX}pv1_energy_today"
+    seen = [float(state_of(home, energy))]
+    for when in (
+        local(DAY, 15, 6),
+        local(DAY, 15, 12),
+        local(DAY + timedelta(days=1), 0, 6),
+    ):
+        freezer.move_to(when)
+        async_fire_time_changed(home)
+        await home.async_block_till_done()
+        seen.append(float(state_of(home, energy)))
+    assert seen == [8.0, 8.0, 9.0, 1.0]
 
 
 async def test_this_mornings_forecast_is_kept_day_by_day(home: HomeAssistant) -> None:

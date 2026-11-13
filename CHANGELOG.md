@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- The strings' energy no longer comes out at zero for the month and year they were installed in. After the backfill the recorder started its own running total again at zero; the integration now finds that drop and lifts every later hour back into line, at startup and then every hour.
+- Today's energy per string no longer dips for a moment just after the hour, which the recorder could read as a meter reset and count the day twice.
+
 ## [0.14.0] - 2026-11-13
 
 ### Fixed
