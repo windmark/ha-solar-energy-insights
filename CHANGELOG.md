@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.15.0] - 2026-11-13
+
 ### Fixed
 
 - The strings' energy no longer comes out at zero for the month and year they were installed in. After the backfill the recorder started its own running total again at zero; the integration now finds that drop and lifts every later hour back into line, at startup and then every hour.
