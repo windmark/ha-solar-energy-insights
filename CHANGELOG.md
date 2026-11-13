@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.14.0] - 2026-11-13
+
 ### Fixed
 
 - The chart of spare sun in Best time to run and the Appliances card shows its bars and times again. Moving theme colours into a style dropped the closing slash of self-closing shapes, so the browser nested every later shape inside the first one and drew none of them.
