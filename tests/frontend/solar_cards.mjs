@@ -237,6 +237,11 @@ check(
   "svg colours arrive as styles, never as attributes",
   !/\s(fill|stroke)="var\(/.test(light) && /style="fill:var\(/.test(light),
 );
+check(
+  "and a self-closing shape stays closed, so the shapes after it are drawn",
+  /<rect[^>]*style="fill:var\([^"]*"\/>/.test(light) &&
+    !/<(rect|line|path|circle)[^>]*\/ style=/.test(light),
+);
 // Settings: each does what it says, and the editor's defaults look like none.
 const html = async (key, config) => {
   const card = new (registry.get("solar-energy-insights-" + key))();
