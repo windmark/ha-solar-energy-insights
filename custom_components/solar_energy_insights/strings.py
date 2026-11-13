@@ -4,10 +4,9 @@ Energy comes from the recorder's hourly mean power (kW over an hour is kWh), so
 it agrees with history; the energy sensor's statistics are backfilled once.
 
 The recorder carries an energy sensor's running total on from its own
-five-minute statistics, which a backfill doesn't write: it starts that total at
-zero. So the backfill ends at zero too, and an install whose total dropped there
-is repaired once (`repair_energy_sums`), or every month and year across the drop
-shows nothing.
+five-minute statistics, which a backfill doesn't write, so after the backfill it
+starts the total again at zero. `repair_energy_sums` lifts it back into line,
+or every month and year across that point would show nothing.
 """
 
 from __future__ import annotations
@@ -71,17 +70,10 @@ async def energy_today(hass: HomeAssistant, power: str, now: datetime) -> float:
 
 
 async def backfill_energy(
-    hass: HomeAssistant,
-    power: str,
-    energy: str,
-    name: str,
-    start: date | None,
-    today_now: float = 0.0,
+    hass: HomeAssistant, power: str, energy: str, name: str, start: date | None
 ) -> int:
     """Fill in the energy sensor's long-term statistics from the string's power
     history, once: hour by hour, the mean power as the hour's energy, summed.
-    The total ends where the recorder will start it, at zero, with the energy
-    since the last whole hour (`today_now` is today's so far) still to come.
     Returns the hours filled in."""
     if start is None:
         return 0
@@ -94,8 +86,7 @@ async def backfill_energy(
     now = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
     begin = dt_util.start_of_local_day(datetime.combine(start, datetime.min.time()))
     rows = await _means(hass, power, begin, now - timedelta(hours=1), "hour")
-    hours: list[tuple[datetime, float, float]] = []
-    total = 0.0
+    total, out = 0.0, []
     day: date | None = None
     for r in rows:
         kwh = max(r.get("mean") or 0.0, 0.0)
@@ -105,18 +96,9 @@ async def backfill_energy(
             day, today = local_day, 0.0
         today += kwh
         total += kwh
-        hours.append((t, today, total))
-    if not hours:
+        out.append(StatisticData(start=t, state=round(today, 3), sum=round(total, 3)))
+    if not out:
         return 0
-    # Between the last whole hour and the recorder's first reading: what today
-    # has made since, or all of today when the day has turned.
-    last_t, last_today, _ = hours[-1]
-    same_day = dt_util.as_local(last_t).date() == dt_util.now().date()
-    gap = max(today_now - last_today, 0.0) if same_day else max(today_now, 0.0)
-    out = [
-        StatisticData(start=t, state=round(v, 3), sum=round(run - total - gap, 3))
-        for t, v, run in hours
-    ]
     async_import_statistics(
         hass,
         StatisticMetaData(
@@ -134,32 +116,33 @@ async def backfill_energy(
     return len(out)
 
 
-async def repair_energy_sums(hass: HomeAssistant, energy: str) -> int:
+async def repair_energy_sums(
+    hass: HomeAssistant, energy: str, prev: dict[str, Any] | None = None
+) -> tuple[int, dict[str, Any] | None]:
     """Lift the energy sensor's running total back into line wherever it
     dropped: a running total never falls, so a drop is where the recorder started
     its own at zero after the backfill. The hour after the drop gets what the
     sensor rose by in it (all of it on a new day), and every later hour moves
-    with it. Returns the drops repaired."""
+    with it. Checks from the hour after `prev`, the last hour seen before, or from
+    the start. Returns the drops repaired and the last hour seen."""
     recorder = get_instance(hass)
-    last = await recorder.async_add_executor_job(
-        get_last_statistics, hass, 1, energy, True, {"sum"}
-    )
-    if not last.get(energy):
-        return 0
-    first = await recorder.async_add_executor_job(
-        statistics_during_period,
-        hass,
-        datetime(2000, 1, 1, tzinfo=dt_util.UTC),
-        None,
-        {energy},
-        "month",
-        None,
-        {"sum"},
-    )
-    months = first.get(energy) or []
-    if not months:
-        return 0
-    begin = dt_util.utc_from_timestamp(months[0]["start"])
+    if prev is None:
+        months = await recorder.async_add_executor_job(
+            statistics_during_period,
+            hass,
+            datetime(2000, 1, 1, tzinfo=dt_util.UTC),
+            None,
+            {energy},
+            "month",
+            None,
+            {"sum"},
+        )
+        first = months.get(energy) or []
+        if not first:
+            return 0, None
+        begin = dt_util.utc_from_timestamp(first[0]["start"])
+    else:
+        begin = dt_util.utc_from_timestamp(prev["start"])
     rows = await recorder.async_add_executor_job(
         statistics_during_period,
         hass,
@@ -171,25 +154,27 @@ async def repair_energy_sums(hass: HomeAssistant, energy: str) -> int:
         {"sum", "state"},
     )
     shift, repaired = 0.0, 0
-    prev: dict[str, Any] | None = None
     for r in rows.get(energy) or []:
-        if r.get("sum") is None:
+        if r.get("sum") is None or (prev is not None and r["start"] <= prev["start"]):
             continue
-        here = r["sum"] + shift
-        if prev is not None and here < prev["sum"] - 0.001:
+        here = float(r["sum"]) + shift
+        if prev is not None and here < float(prev["sum"]) - 0.001:
             t = dt_util.utc_from_timestamp(r["start"])
             same_day = (
                 dt_util.as_local(t).date()
                 == dt_util.as_local(dt_util.utc_from_timestamp(prev["start"])).date()
             )
-            state, before = r.get("state") or 0.0, prev.get("state") or 0.0
+            state, before = (
+                float(r.get("state") or 0.0),
+                float(prev.get("state") or 0.0),
+            )
             rose = max(state - before, 0.0) if same_day else max(state, 0.0)
-            fix = prev["sum"] + rose - here
+            fix = float(prev["sum"]) + rose - here
             recorder.async_adjust_statistics(
                 energy, t, fix, UnitOfEnergy.KILO_WATT_HOUR
             )
             shift += fix
             here += fix
             repaired += 1
-        prev = {**r, "sum": here}
-    return repaired
+        prev = {"start": r["start"], "sum": here, "state": r.get("state")}
+    return repaired, prev

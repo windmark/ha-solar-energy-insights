@@ -153,28 +153,6 @@ async def hourly(home: HomeAssistant, entity_id: str, start: Any) -> list[Any]:
     return rows.get(entity_id) or []
 
 
-async def test_the_backfill_ends_where_the_recorder_starts_its_total(
-    home: HomeAssistant, freezer: FrozenDateTimeFactory
-) -> None:
-    """The recorder starts the sensor's running total at zero; the backfilled
-    history ends there too, so no month or year across the install comes out
-    below zero."""
-    strings = powerocean_strings(home, (3,))
-    past = [DAY - timedelta(days=k) for k in (3, 2, 1)]
-    await record_power(home, strings[3], past, 1.5)
-    freezer.move_to(local(DAY, 9))
-    set_states(home)
-
-    await setup_entry(home)
-    await home.async_block_till_done()
-    await async_wait_recording_done(home)
-
-    rows = await hourly(home, f"{PREFIX}pv3_energy_today", local(past[0], 0))
-    assert rows[-1]["sum"] == pytest.approx(0.0)
-    assert rows[0]["sum"] == pytest.approx(-18.0 + 1.5)
-    assert [r["state"] for r in rows[-4:]] == pytest.approx([1.5, 3.0, 4.5, 6.0])
-
-
 async def test_a_running_total_that_dropped_is_lifted_back_into_line(
     home: HomeAssistant,
 ) -> None:
@@ -209,13 +187,37 @@ async def test_a_running_total_that_dropped_is_lifted_back_into_line(
     )
     await async_wait_recording_done(home)
 
-    assert await repair_energy_sums(home, energy) == 1
+    repaired, last = await repair_energy_sums(home, energy)
+    assert repaired == 1
     await async_wait_recording_done(home)
     rows = await hourly(home, energy, local(day1, 0))
     assert [r["sum"] for r in rows] == pytest.approx(
         [3.0, 6.0, 9.0, 12.0, 14.0, 17.0, 19.0]
     )
-    assert await repair_energy_sums(home, energy) == 0  # once only
+    assert last is not None
+    assert last["sum"] == pytest.approx(19.0)
+    assert (await repair_energy_sums(home, energy))[0] == 0  # once only
+    # The next check picks up after the last hour seen, and catches a later drop.
+    async_import_statistics(
+        home,
+        StatisticMetaData(
+            has_mean=False,
+            has_sum=True,
+            mean_type=StatisticMeanType.NONE,
+            name=None,
+            source="recorder",
+            statistic_id=energy,
+            unit_class="energy",
+            unit_of_measurement="kWh",
+        ),
+        [StatisticData(start=local(day2, 13), state=8.0, sum=1.0)],
+    )
+    await async_wait_recording_done(home)
+    repaired, last = await repair_energy_sums(home, energy, last)
+    assert repaired == 1
+    await async_wait_recording_done(home)
+    rows = await hourly(home, energy, local(day1, 0))
+    assert rows[-1]["sum"] == pytest.approx(20.0)
 
 
 async def test_todays_energy_never_dips_until_the_day_turns(

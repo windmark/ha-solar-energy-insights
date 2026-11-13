@@ -696,6 +696,7 @@ class SummarySensor(InsightsEntity, SensorEntity):
 
 
 ENERGY_REFRESH = timedelta(minutes=5)
+SUMS_CHECK = timedelta(hours=1)
 # Every write goes into the recorder: write a meaningful change at once and
 # small drift at most this often.
 SIGNIFICANT_KW_PER_KWP = 0.01
@@ -740,6 +741,7 @@ class StringEnergySensor(_StringSensor):
     _attr_suggested_display_precision = 2
     _today: float | None = None
     _day: date | None = None
+    _checked: dict[str, Any] | None = None
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -750,14 +752,19 @@ class StringEnergySensor(_StringSensor):
         # Once, so charts on this sensor keep the string's past days.
         start = await history_start(self.hass, self.power)
         await backfill_energy(
-            self.hass,
-            self.power,
-            self.entity_id,
-            f"PV{self.n} energy",
-            start,
-            self._today or 0.0,
+            self.hass, self.power, self.entity_id, f"PV{self.n} energy", start
         )
-        await repair_energy_sums(self.hass, self.entity_id)
+        # The recorder starts its own running total at zero after a backfill;
+        # check for that drop now and every hour, from the last hour checked.
+        self.async_on_remove(
+            async_track_time_interval(self.hass, self._async_repair, SUMS_CHECK)
+        )
+        await self._async_repair()
+
+    async def _async_repair(self, _now: datetime | None = None) -> None:
+        _, self._checked = await repair_energy_sums(
+            self.hass, self.entity_id, self._checked
+        )
 
     async def _async_refresh(self, _now: datetime | None = None) -> None:
         now = dt_util.utcnow()
