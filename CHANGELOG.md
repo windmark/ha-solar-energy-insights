@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Tapping a row of the Now card sends a `sei-jump` event with the row's target before scrolling, so a card with views can open the one the row is about.
+
 ### Fixed
 
 - A battery held above its reserve is recognised right after a restart or after its level was unavailable for a while. Both gave the level a new last change, so the 15 minutes started over; the wait now follows the level itself, read back from the recorder at startup.

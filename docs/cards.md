@@ -96,6 +96,11 @@ content: >
   {% endfor %}
 ```
 
+A card of your own can be a target for the Now card's taps: put
+`SolarDash.jumpMark(key)` in it, with `battery`, `sunrise`, `today` or
+`forecast`. Before scrolling, the tap sends a `sei-jump` event on `window` with
+the key in `detail.key`, so a card with views can open the one the row is about.
+
 The other sensors are in the [reference](reference.md). For everything the
 cards draw, the `solar_energy_insights/plan` WebSocket command returns the full
 plan.

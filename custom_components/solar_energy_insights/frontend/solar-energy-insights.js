@@ -486,6 +486,11 @@
     battery: "Battery",
   };
   const jump = function (key) {
+    // Tell the page first: a card with views opens the one the row is about.
+    try {
+      if (window.dispatchEvent && typeof CustomEvent === "function")
+        window.dispatchEvent(new CustomEvent("sei-jump", { detail: { key } }));
+    } catch (x) {}
     let el = deepFind(function (e) {
       return e.getAttribute && e.getAttribute("data-solar-jump") === key;
     });
