@@ -486,6 +486,11 @@
     battery: "Battery",
   };
   const jump = function (key) {
+    // Tell the page first: a card with views opens the one the row is about.
+    try {
+      if (window.dispatchEvent && typeof CustomEvent === "function")
+        window.dispatchEvent(new CustomEvent("sei-jump", { detail: { key } }));
+    } catch (x) {}
     let el = deepFind(function (e) {
       return e.getAttribute && e.getAttribute("data-solar-jump") === key;
     });
@@ -864,6 +869,52 @@
         appliances: "Appliances",
       },
       stub: { chart: true, appliances: [] },
+    },
+    appliances: {
+      schema: [
+        {
+          name: "view",
+          selector: {
+            select: {
+              mode: "dropdown",
+              options: [
+                {
+                  value: "auto",
+                  label: "Today while the sun is up, then tonight",
+                },
+                { value: "today", label: "Today" },
+                { value: "tonight", label: "Tonight" },
+              ],
+            },
+          },
+        },
+        { name: "chart", selector: { boolean: {} } },
+        {
+          name: "columns",
+          selector: choose([
+            ["typical", "Typical night"],
+            ["heavy", "Heavy night"],
+          ]),
+        },
+        { name: "footnotes", selector: { boolean: {} } },
+        APPLIANCES,
+        RUNNING,
+      ],
+      labels: {
+        view: "Opens on",
+        chart: "Today: show the chart of spare sun",
+        columns: "Tonight: columns",
+        footnotes: "Tonight: show the notes underneath",
+        appliances: "Appliances",
+        running: "An appliance that may already be running",
+      },
+      stub: {
+        view: "auto",
+        chart: true,
+        columns: ["typical", "heavy"],
+        footnotes: true,
+        appliances: [],
+      },
     },
     forecastTrust: {
       schema: [
@@ -2022,195 +2073,174 @@
     FORMS.now,
   );
 
-  defineCard(
-    "solar-energy-insights-until-sunrise",
-    "Until sunrise",
-    "Your recent nights replayed from the battery as it is now, with your appliances.",
-    function (states, hass) {
-      const el = this;
-      const {
-        W,
-        C,
-        st,
-        val,
-        attr,
-        num,
-        hm,
-        kwh,
-        sub,
-        head,
-        pill,
-        ws,
-        waiting,
-      } = window.SolarDash.ui(this, hass, states);
+  // Until sunrise and best time to run, each a card of its own and the two views of
+  // the appliances card. Embedded, the host card draws the title and passes the
+  // status line up through `el.__status`.
+  const untilSunrise = function (states, hass) {
+    const el = this;
+    const embedded = !!el.__embedded;
+    const { W, C, st, val, attr, num, hm, kwh, sub, head, pill, ws, waiting } =
+      window.SolarDash.ui(this, hass, states);
 
-      // Appliances from the card's settings; a sensor that learns energy per run beats the typical figures.
-      const APPS = cardAppliances(el).map((a, i) => {
-        const e = a.energy_per_run ? st(a.energy_per_run) : null;
-        const typical = +a.kwh || 1;
-        let k = parseFloat(e?.state);
-        const est = !(k > 0.05 && k <= 4 * typical);
-        if (est) k = typical;
-        const hrs = (e?.attributes?.hours || [])
-          .filter((h) => h > 0.2 && h < 8)
-          .slice(-5);
-        return {
-          id: "a" + i,
-          name: a.name || "Appliance",
-          icon: a.icon || "mdi:power-plug-outline",
-          kwh: k,
-          est: est && !!a.energy_per_run,
-          h: hrs.length
-            ? hrs.reduce((s, h) => s + h, 0) / hrs.length
-            : +a.hours || 2,
-        };
-      });
-      const sims = () => {
-        if (!APPS.length) return null;
-        const socNow = num(attr("sensor.solar_energy_insights_summary", "soc"));
-        const key = [
-          Math.round(socNow ?? -1),
-          ...APPS.map((a) => a.kwh.toFixed(2)),
-          val("sensor.solar_energy_insights_night_outlook"),
-        ].join("|");
-        const c = W.applianceRuns;
-        if (
-          (!c || c.key !== key || (!c.pending && Date.now() - c.t > 300e3)) &&
-          !(c && c.pending && c.key === key) &&
-          hass?.callWS
-        ) {
-          W.applianceRuns = {
-            key,
-            t: Date.now(),
-            pending: true,
-            data: c?.data,
-          };
-          const call = (list) =>
-            hass
-              .callWS({
-                type: "call_service",
-                domain: "solar_energy_insights",
-                service: "simulate",
-                service_data: {
-                  extra_kwh: +list.reduce((s, a) => s + a.kwh, 0).toFixed(2),
-                  extra_hours: +Math.max(...list.map((a) => a.h)).toFixed(2),
-                },
-                return_response: true,
-              })
-              .then((r) => r.response);
-          Promise.all([
-            ...APPS.map((a) => call([a])),
-            APPS.length > 1 ? call(APPS) : null,
-          ])
-            .then((res) => {
-              W.applianceRuns = {
-                key,
-                t: Date.now(),
-                data: {
-                  each: res.slice(0, APPS.length),
-                  all: APPS.length > 1 ? res[APPS.length] : null,
-                },
-              };
-            })
-            .catch((e) => {
-              W.applianceRuns = {
-                key,
-                t: Date.now(),
-                error: String(e?.message || e),
-              };
-            })
-            .finally(() => (W.listeners || []).forEach((f) => f()));
-        }
-        return W.applianceRuns?.data;
+    // Appliances from the card's settings; a sensor that learns energy per run beats the typical figures.
+    const APPS = cardAppliances(el).map((a, i) => {
+      const e = a.energy_per_run ? st(a.energy_per_run) : null;
+      const typical = +a.kwh || 1;
+      let k = parseFloat(e?.state);
+      const est = !(k > 0.05 && k <= 4 * typical);
+      if (est) k = typical;
+      const hrs = (e?.attributes?.hours || [])
+        .filter((h) => h > 0.2 && h < 8)
+        .slice(-5);
+      return {
+        id: "a" + i,
+        name: a.name || "Appliance",
+        icon: a.icon || "mdi:power-plug-outline",
+        kwh: k,
+        est: est && !!a.energy_per_run,
+        h: hrs.length
+          ? hrs.reduce((s, h) => s + h, 0) / hrs.length
+          : +a.hours || 2,
       };
+    });
+    const sims = () => {
+      if (!APPS.length) return null;
+      const socNow = num(attr("sensor.solar_energy_insights_summary", "soc"));
+      const key = [
+        Math.round(socNow ?? -1),
+        ...APPS.map((a) => a.kwh.toFixed(2)),
+        val("sensor.solar_energy_insights_night_outlook"),
+      ].join("|");
+      const c = W.applianceRuns;
+      if (
+        (!c || c.key !== key || (!c.pending && Date.now() - c.t > 300e3)) &&
+        !(c && c.pending && c.key === key) &&
+        hass?.callWS
+      ) {
+        W.applianceRuns = {
+          key,
+          t: Date.now(),
+          pending: true,
+          data: c?.data,
+        };
+        const call = (list) =>
+          hass
+            .callWS({
+              type: "call_service",
+              domain: "solar_energy_insights",
+              service: "simulate",
+              service_data: {
+                extra_kwh: +list.reduce((s, a) => s + a.kwh, 0).toFixed(2),
+                extra_hours: +Math.max(...list.map((a) => a.h)).toFixed(2),
+              },
+              return_response: true,
+            })
+            .then((r) => r.response);
+        Promise.all([
+          ...APPS.map((a) => call([a])),
+          APPS.length > 1 ? call(APPS) : null,
+        ])
+          .then((res) => {
+            W.applianceRuns = {
+              key,
+              t: Date.now(),
+              data: {
+                each: res.slice(0, APPS.length),
+                all: APPS.length > 1 ? res[APPS.length] : null,
+              },
+            };
+          })
+          .catch((e) => {
+            W.applianceRuns = {
+              key,
+              t: Date.now(),
+              error: String(e?.message || e),
+            };
+          })
+          .finally(() => (W.listeners || []).forEach((f) => f()));
+      }
+      return W.applianceRuns?.data;
+    };
 
-      // Until sunrise, from Solar Energy Insights: your recent nights replayed from the battery as it
-      // is now. Columns: a typical night and a heavy one; rows: with an appliance started now.
-      const mark = window.SolarDash?.jumpMark
+    // Until sunrise, from Solar Energy Insights: your recent nights replayed from the battery as it
+    // is now. Columns: a typical night and a heavy one; rows: with an appliance started now.
+    const mark =
+      window.SolarDash?.jumpMark && !embedded
         ? window.SolarDash.jumpMark("sunrise")
         : "";
-      const plan = ws("plan", "solar_energy_insights/plan", 60);
-      if (!plan)
-        return (
-          mark +
-          head("mdi:weather-night", "Until sunrise") +
-          waiting("plan", "the plan")
-        );
-      if (!plan.night)
-        return (
-          mark +
-          head("mdi:weather-night", "Until sunrise") +
-          sub("Waiting for a day of history.")
-        );
-      const S = sims();
-      const ROWS = [
-        { label: "House only", icon: "mdi:home-outline", night: plan.night },
-        ...APPS.map((a, i) => ({
-          label: "+ " + a.name,
-          icon: a.icon,
-          night: S?.each?.[i]?.night,
-        })),
-        ...(APPS.length > 1
-          ? [
-              {
-                label: APPS.length === 2 ? "+ Both" : "+ All",
-                icon: "mdi:plus-circle-multiple-outline",
-                night: S?.all?.night,
-              },
-            ]
-          : []),
-      ];
-      const heavyPct =
-        num(
-          attr(
-            "sensor.solar_energy_insights_night_prediction_error",
-            "heavy_share_pct",
-          ),
-        ) ?? 80;
-      const cell = (o) => {
-        const base =
-          "border-radius:8px;padding:6px 4px;text-align:center;font-size:13px;";
-        if (!o)
-          return `<div style="${base}background:${C.track};color:${C.faint}">…</div>`;
-        return o.lasts
-          ? `<div style="${base}background:color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 18%, transparent);color:${
-              C.ok
-            }">✓ ${o.spare_kwh.toFixed(1)}</div>`
-          : `<div style="${base}background:color-mix(in srgb, var(--sei-bad, var(--sei-bad-auto, #ff8a80)) 18%, transparent);color:${
-              C.bad
-            }">grid ${hm(o.reserve_at)}</div>`;
-      };
-      const n = plan.night,
-        outlook = n.outlook;
-      const tag = (c, i, t) =>
-        `<span style="color:${c}"><ha-icon icon="${i}" style="--mdc-icon-size:15px"></ha-icon> ${t}</span>`;
-      const headline =
-        outlook === "lasts"
-          ? tag(C.ok, "mdi:check-circle", "Covered, even a heavy night")
-          : outlook === "borderline"
-            ? tag(
-                C.heavy,
-                "mdi:help-circle",
-                "Covered unless it is a heavy night",
-              )
-            : tag(C.bad, "mdi:close-circle", "Grid needed before sunrise");
-      const rise = new Date(plan.sunrise),
-        nowD = new Date(plan.at),
-        hours = Math.max((rise - nowD) / 3600e3, 0);
-      const socNow = plan.curve?.[0]?.[1];
-      const setPct = plan.charge?.sunset_pct,
-        beforeSunset = new Date(plan.sunset) < rise;
-      const colHead = (
-        label,
-        note,
-      ) => `<div style="text-align:center;font-size:12px;color:var(--secondary-text-color, #c7c7cc)">${label}
+    const title = embedded ? "" : head("mdi:weather-night", "Until sunrise");
+    const plan = ws("plan", "solar_energy_insights/plan", 60);
+    if (!plan) return mark + title + waiting("plan", "the plan");
+    if (!plan.night) return mark + title + sub("Waiting for a day of history.");
+    const S = sims();
+    const ROWS = [
+      { label: "House only", icon: "mdi:home-outline", night: plan.night },
+      ...APPS.map((a, i) => ({
+        label: "+ " + a.name,
+        icon: a.icon,
+        night: S?.each?.[i]?.night,
+      })),
+      ...(APPS.length > 1
+        ? [
+            {
+              label: APPS.length === 2 ? "+ Both" : "+ All",
+              icon: "mdi:plus-circle-multiple-outline",
+              night: S?.all?.night,
+            },
+          ]
+        : []),
+    ];
+    const heavyPct =
+      num(
+        attr(
+          "sensor.solar_energy_insights_night_prediction_error",
+          "heavy_share_pct",
+        ),
+      ) ?? 80;
+    const cell = (o) => {
+      const base =
+        "border-radius:8px;padding:6px 4px;text-align:center;font-size:13px;";
+      if (!o)
+        return `<div style="${base}background:${C.track};color:${C.faint}">…</div>`;
+      return o.lasts
+        ? `<div style="${base}background:color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 18%, transparent);color:${
+            C.ok
+          }">✓ ${o.spare_kwh.toFixed(1)}</div>`
+        : `<div style="${base}background:color-mix(in srgb, var(--sei-bad, var(--sei-bad-auto, #ff8a80)) 18%, transparent);color:${
+            C.bad
+          }">grid ${hm(o.reserve_at)}</div>`;
+    };
+    const n = plan.night,
+      outlook = n.outlook;
+    const tag = (c, i, t) =>
+      `<span style="color:${c}"><ha-icon icon="${i}" style="--mdc-icon-size:15px"></ha-icon> ${t}</span>`;
+    const headline =
+      outlook === "lasts"
+        ? tag(C.ok, "mdi:check-circle", "Covered, even a heavy night")
+        : outlook === "borderline"
+          ? tag(
+              C.heavy,
+              "mdi:help-circle",
+              "Covered unless it is a heavy night",
+            )
+          : tag(C.bad, "mdi:close-circle", "Grid needed before sunrise");
+    const rise = new Date(plan.sunrise),
+      nowD = new Date(plan.at),
+      hours = Math.max((rise - nowD) / 3600e3, 0);
+    const socNow = plan.curve?.[0]?.[1];
+    const setPct = plan.charge?.sunset_pct,
+      beforeSunset = new Date(plan.sunset) < rise;
+    const colHead = (
+      label,
+      note,
+    ) => `<div style="text-align:center;font-size:12px;color:var(--secondary-text-color, #c7c7cc)">${label}
   <div style="font-size:10px;color:${C.faint}">${note}</div></div>`;
-      const COLS = (
-        (this._config || {}).columns || ["typical", "heavy"]
-      ).filter((c) => c === "typical" || c === "heavy");
-      const rowHtml = (
-        r,
-      ) => `<div style="display:flex;align-items:center;justify-content:flex-start;justify-self:stretch;gap:8px;font-size:13px;color:var(--primary-text-color, #fff);min-width:0;text-align:left">
+    const COLS = ((this._config || {}).columns || ["typical", "heavy"]).filter(
+      (c) => c === "typical" || c === "heavy",
+    );
+    const rowHtml = (
+      r,
+    ) => `<div style="display:flex;align-items:center;justify-content:flex-start;justify-self:stretch;gap:8px;font-size:13px;color:var(--primary-text-color, #fff);min-width:0;text-align:left">
     <ha-icon icon="${r.icon}" style="--mdc-icon-size:18px;width:18px;color:${
       C.muted
     };flex-shrink:0"></ha-icon>
@@ -2218,65 +2248,66 @@
       r.label
     }</span></div>
   ${COLS.map((k) => cell(r.night?.[k])).join("")}`;
-      const RUN = (el._config || {}).running;
-      const washerOn = !!RUN && val(RUN.entity) === String(RUN.state ?? "on");
-      const est = APPS.filter((a) => a.est).map((a) => a.name.toLowerCase());
-      const foot = [
-        "✓ = kWh left above the reserve at the lowest point · grid = when the reserve is reached",
-        APPS.map(
-          (a) => `${a.name} ${a.kwh.toFixed(1)} kWh over ${a.h.toFixed(1)} h`,
-        ).join(" · ") +
-          (est.length
-            ? ` (${est.join(" and ")} estimated until first run)`
-            : ""),
-        washerOn
-          ? `${
-              RUN.name || "An appliance"
-            } is running – already in the battery level`
-          : "",
-        (() => {
-          const sh =
-            attr(
-              "sensor.solar_energy_insights_night_outlook",
-              "short_nights",
-            ) || [];
-          return sh.length
-            ? "Ran short: " +
-                sh
-                  .slice(0, 4)
-                  .map(
-                    (x) =>
-                      `${new Date(x.date).toLocaleDateString("en-GB", {
-                        weekday: "short",
-                        day: "numeric",
-                        month: "short",
-                      })} (${x.evening_kwh} kWh by midnight)`,
-                  )
-                  .join(" · ")
-            : "";
-        })(),
-        S &&
-        beforeSunset &&
-        ROWS.slice(1).every(
-          (r) =>
-            r.night &&
-            r.night.typical.spare_kwh === n.typical.spare_kwh &&
-            r.night.heavy.lasts === n.heavy.lasts,
-        )
-          ? "Started now, in daylight, the sun covers them and the battery still fills: tonight is the same."
-          : "",
-        `Replays your last ${n.nights} nights from the battery as it is now; ${n.lasting} of them last`,
-        S === undefined && W.applianceRuns?.error
-          ? "Could not simulate the appliances: " + W.applianceRuns.error
-          : "",
-      ]
-        .filter(Boolean)
-        .map((t) => `<div>${t}</div>`)
-        .join("");
-      return `${mark}
+    const RUN = (el._config || {}).running;
+    const washerOn = !!RUN && val(RUN.entity) === String(RUN.state ?? "on");
+    const est = APPS.filter((a) => a.est).map((a) => a.name.toLowerCase());
+    const foot = [
+      "✓ = kWh left above the reserve at the lowest point · grid = when the reserve is reached",
+      APPS.map(
+        (a) => `${a.name} ${a.kwh.toFixed(1)} kWh over ${a.h.toFixed(1)} h`,
+      ).join(" · ") +
+        (est.length ? ` (${est.join(" and ")} estimated until first run)` : ""),
+      washerOn
+        ? `${
+            RUN.name || "An appliance"
+          } is running – already in the battery level`
+        : "",
+      (() => {
+        const sh =
+          attr("sensor.solar_energy_insights_night_outlook", "short_nights") ||
+          [];
+        return sh.length
+          ? "Ran short: " +
+              sh
+                .slice(0, 4)
+                .map(
+                  (x) =>
+                    `${new Date(x.date).toLocaleDateString("en-GB", {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                    })} (${x.evening_kwh} kWh by midnight)`,
+                )
+                .join(" · ")
+          : "";
+      })(),
+      S &&
+      beforeSunset &&
+      ROWS.slice(1).every(
+        (r) =>
+          r.night &&
+          r.night.typical.spare_kwh === n.typical.spare_kwh &&
+          r.night.heavy.lasts === n.heavy.lasts,
+      )
+        ? "Started now, in daylight, the sun covers them and the battery still fills: tonight is the same."
+        : "",
+      `Replays your last ${n.nights} nights from the battery as it is now; ${n.lasting} of them last`,
+      S === undefined && W.applianceRuns?.error
+        ? "Could not simulate the appliances: " + W.applianceRuns.error
+        : "",
+    ]
+      .filter(Boolean)
+      .map((t) => `<div>${t}</div>`)
+      .join("");
+    el.__status = headline;
+    return `${mark}${
+      embedded
+        ? ""
+        : `
   <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
     <div style="font-size:17px;color:var(--primary-text-color, #fff);font-weight:500">Until sunrise</div>
-    <div style="font-size:13px">${headline}</div></div>
+    <div style="font-size:13px">${headline}</div></div>`
+    }
   <div style="font-size:12px;color:${C.muted};margin-top:2px">
     ${hm(rise)} · ${Math.floor(hours)} h ${String(
       Math.round((hours % 1) * 60),
@@ -2306,220 +2337,204 @@
       ? ""
       : `<div style="font-size:10px;color:${C.faint};margin-top:12px;line-height:1.5;white-space:normal;text-align:left">${foot}</div>`
   }`;
-    },
+  };
+  defineCard(
+    "solar-energy-insights-until-sunrise",
+    "Until sunrise",
+    "Your recent nights replayed from the battery as it is now, with your appliances.",
+    untilSunrise,
     FORMS.untilSunrise,
   );
 
-  defineCard(
-    "solar-energy-insights-best-time",
-    "Best time to run",
-    "When spare sun is coming, and when to start your appliances.",
-    function (states, hass) {
-      const el = this;
-      const {
-        W,
-        C,
-        st,
-        val,
-        attr,
-        num,
-        hm,
-        kwh,
-        sub,
-        head,
-        pill,
-        ws,
-        waiting,
-      } = window.SolarDash.ui(this, hass, states);
+  const bestTime = function (states, hass) {
+    const el = this;
+    const embedded = !!el.__embedded;
+    const { W, C, st, val, attr, num, hm, kwh, sub, head, pill, ws, waiting } =
+      window.SolarDash.ui(this, hass, states);
 
-      // Appliances from the card's settings; a sensor that learns energy per run beats the typical figures.
-      const APPS = cardAppliances(el).map((a, i) => {
-        const e = a.energy_per_run ? st(a.energy_per_run) : null;
-        const typical = +a.kwh || 1;
-        let k = parseFloat(e?.state);
-        const est = !(k > 0.05 && k <= 4 * typical);
-        if (est) k = typical;
-        const hrs = (e?.attributes?.hours || [])
-          .filter((h) => h > 0.2 && h < 8)
-          .slice(-5);
-        return {
-          id: "a" + i,
-          name: a.name || "Appliance",
-          icon: a.icon || "mdi:power-plug-outline",
-          kwh: k,
-          est: est && !!a.energy_per_run,
-          h: hrs.length
-            ? hrs.reduce((s, h) => s + h, 0) / hrs.length
-            : +a.hours || 2,
-        };
-      });
-      const sims = () => {
-        if (!APPS.length) return null;
-        const socNow = num(attr("sensor.solar_energy_insights_summary", "soc"));
-        const key = [
-          Math.round(socNow ?? -1),
-          ...APPS.map((a) => a.kwh.toFixed(2)),
-          val("sensor.solar_energy_insights_night_outlook"),
-        ].join("|");
-        const c = W.applianceRuns;
-        if (
-          (!c || c.key !== key || (!c.pending && Date.now() - c.t > 300e3)) &&
-          !(c && c.pending && c.key === key) &&
-          hass?.callWS
-        ) {
-          W.applianceRuns = {
-            key,
-            t: Date.now(),
-            pending: true,
-            data: c?.data,
-          };
-          const call = (list) =>
-            hass
-              .callWS({
-                type: "call_service",
-                domain: "solar_energy_insights",
-                service: "simulate",
-                service_data: {
-                  extra_kwh: +list.reduce((s, a) => s + a.kwh, 0).toFixed(2),
-                  extra_hours: +Math.max(...list.map((a) => a.h)).toFixed(2),
-                },
-                return_response: true,
-              })
-              .then((r) => r.response);
-          Promise.all([
-            ...APPS.map((a) => call([a])),
-            APPS.length > 1 ? call(APPS) : null,
-          ])
-            .then((res) => {
-              W.applianceRuns = {
-                key,
-                t: Date.now(),
-                data: {
-                  each: res.slice(0, APPS.length),
-                  all: APPS.length > 1 ? res[APPS.length] : null,
-                },
-              };
-            })
-            .catch((e) => {
-              W.applianceRuns = {
-                key,
-                t: Date.now(),
-                error: String(e?.message || e),
-              };
-            })
-            .finally(() => (W.listeners || []).forEach((f) => f()));
-        }
-        return W.applianceRuns?.data;
+    // Appliances from the card's settings; a sensor that learns energy per run beats the typical figures.
+    const APPS = cardAppliances(el).map((a, i) => {
+      const e = a.energy_per_run ? st(a.energy_per_run) : null;
+      const typical = +a.kwh || 1;
+      let k = parseFloat(e?.state);
+      const est = !(k > 0.05 && k <= 4 * typical);
+      if (est) k = typical;
+      const hrs = (e?.attributes?.hours || [])
+        .filter((h) => h > 0.2 && h < 8)
+        .slice(-5);
+      return {
+        id: "a" + i,
+        name: a.name || "Appliance",
+        icon: a.icon || "mdi:power-plug-outline",
+        kwh: k,
+        est: est && !!a.energy_per_run,
+        h: hrs.length
+          ? hrs.reduce((s, h) => s + h, 0) / hrs.length
+          : +a.hours || 2,
       };
+    });
+    const sims = () => {
+      if (!APPS.length) return null;
+      const socNow = num(attr("sensor.solar_energy_insights_summary", "soc"));
+      const key = [
+        Math.round(socNow ?? -1),
+        ...APPS.map((a) => a.kwh.toFixed(2)),
+        val("sensor.solar_energy_insights_night_outlook"),
+      ].join("|");
+      const c = W.applianceRuns;
+      if (
+        (!c || c.key !== key || (!c.pending && Date.now() - c.t > 300e3)) &&
+        !(c && c.pending && c.key === key) &&
+        hass?.callWS
+      ) {
+        W.applianceRuns = {
+          key,
+          t: Date.now(),
+          pending: true,
+          data: c?.data,
+        };
+        const call = (list) =>
+          hass
+            .callWS({
+              type: "call_service",
+              domain: "solar_energy_insights",
+              service: "simulate",
+              service_data: {
+                extra_kwh: +list.reduce((s, a) => s + a.kwh, 0).toFixed(2),
+                extra_hours: +Math.max(...list.map((a) => a.h)).toFixed(2),
+              },
+              return_response: true,
+            })
+            .then((r) => r.response);
+        Promise.all([
+          ...APPS.map((a) => call([a])),
+          APPS.length > 1 ? call(APPS) : null,
+        ])
+          .then((res) => {
+            W.applianceRuns = {
+              key,
+              t: Date.now(),
+              data: {
+                each: res.slice(0, APPS.length),
+                all: APPS.length > 1 ? res[APPS.length] : null,
+              },
+            };
+          })
+          .catch((e) => {
+            W.applianceRuns = {
+              key,
+              t: Date.now(),
+              error: String(e?.message || e),
+            };
+          })
+          .finally(() => (W.listeners || []).forEach((f) => f()));
+      }
+      return W.applianceRuns?.data;
+    };
 
-      // Best time to run: spare sun per half hour until sunset, and for each appliance the start that
-      // takes the most from sun that would otherwise be exported, against starting now.
-      const plan = ws("plan", "solar_energy_insights/plan", 60);
-      if (!plan)
-        return (
-          head("mdi:clock-check-outline", "Best time to run") +
-          waiting("plan", "the plan")
-        );
-      const slots = (plan.day?.slots || []).map(([t, pv, load]) => ({
-        t: new Date(t).getTime(),
-        spare: pv - load,
-      }));
-      if (!slots.length)
-        return (
-          head("mdi:clock-check-outline", "Best time to run") +
-          sub("No sun left before sunset.")
-        );
-      const limit = plan.charge_limit_pct ?? 100;
-      const curve = (plan.curve || []).map(([t, v]) => [
-        new Date(t).getTime(),
-        v,
-      ]);
-      const levelAt = (t) => {
-        let v = curve.length ? curve[0][1] : 0;
-        for (const [ct, cv] of curve) {
-          if (ct <= t) v = cv;
-          else break;
+    // Best time to run: spare sun per half hour until sunset, and for each appliance the start that
+    // takes the most from sun that would otherwise be exported, against starting now.
+    const title = (right) =>
+      embedded
+        ? ((el.__status = right || ""), "")
+        : head("mdi:clock-check-outline", "Best time to run", right);
+    const plan = ws("plan", "solar_energy_insights/plan", 60);
+    if (!plan) return title() + waiting("plan", "the plan");
+    const slots = (plan.day?.slots || []).map(([t, pv, load]) => ({
+      t: new Date(t).getTime(),
+      spare: pv - load,
+    }));
+    if (!slots.length) return title() + sub("No sun left before sunset.");
+    const limit = plan.charge_limit_pct ?? 100;
+    const curve = (plan.curve || []).map(([t, v]) => [
+      new Date(t).getTime(),
+      v,
+    ]);
+    const levelAt = (t) => {
+      let v = curve.length ? curve[0][1] : 0;
+      for (const [ct, cv] of curve) {
+        if (ct <= t) v = cv;
+        else break;
+      }
+      return v;
+    };
+    // Sun to spare once the battery is full would be exported: that is the free part.
+    slots.forEach((s) => {
+      s.full = levelAt(s.t + 1) >= limit - 0.5;
+      s.free = s.full ? Math.max(s.spare, 0) : 0;
+    });
+    const nowMs = new Date(plan.at).getTime();
+    const tomorrow =
+      new Date(slots[0].t).toDateString() !== new Date(plan.at).toDateString();
+    // Before sunrise there is no "now" to compare with: the day has not started.
+    const beforeSun = nowMs < slots[0].t;
+    const share = (a, k) => {
+      const n = Math.max(1, Math.round(a.h * 2)),
+        kw = a.kwh / (n / 2);
+      let got = 0;
+      for (let j = k; j < Math.min(k + n, slots.length); j++)
+        got += Math.min(slots[j].free, kw) / 2;
+      return Math.min(got / a.kwh, 1);
+    };
+    const firstNow = Math.max(
+      0,
+      slots.findIndex((s) => s.t + 1800e3 > nowMs),
+    );
+    const plans = APPS.map((a) => {
+      let best = firstNow,
+        bestShare = -1;
+      for (let k = firstNow; k < slots.length; k++) {
+        const v = share(a, k);
+        if (v > bestShare + 1e-9) {
+          best = k;
+          bestShare = v;
         }
-        return v;
+      }
+      return {
+        a,
+        best: slots[best].t,
+        bestShare,
+        nowShare: tomorrow || beforeSun ? null : share(a, firstNow),
       };
-      // Sun to spare once the battery is full would be exported: that is the free part.
-      slots.forEach((s) => {
-        s.full = levelAt(s.t + 1) >= limit - 0.5;
-        s.free = s.full ? Math.max(s.spare, 0) : 0;
-      });
-      const nowMs = new Date(plan.at).getTime();
-      const tomorrow =
-        new Date(slots[0].t).toDateString() !==
-        new Date(plan.at).toDateString();
-      // Before sunrise there is no "now" to compare with: the day has not started.
-      const beforeSun = nowMs < slots[0].t;
-      const share = (a, k) => {
-        const n = Math.max(1, Math.round(a.h * 2)),
-          kw = a.kwh / (n / 2);
-        let got = 0;
-        for (let j = k; j < Math.min(k + n, slots.length); j++)
-          got += Math.min(slots[j].free, kw) / 2;
-        return Math.min(got / a.kwh, 1);
-      };
-      const firstNow = Math.max(
-        0,
-        slots.findIndex((s) => s.t + 1800e3 > nowMs),
-      );
-      const plans = APPS.map((a) => {
-        let best = firstNow,
-          bestShare = -1;
-        for (let k = firstNow; k < slots.length; k++) {
-          const v = share(a, k);
-          if (v > bestShare + 1e-9) {
-            best = k;
-            bestShare = v;
-          }
-        }
-        return {
-          a,
-          best: slots[best].t,
-          bestShare,
-          nowShare: tomorrow || beforeSun ? null : share(a, firstNow),
-        };
-      });
-      const maxAbs = Math.max(...slots.map((s) => Math.abs(s.spare)), 0.5);
-      const Wd = 340,
-        H = 90,
-        mid = 58,
-        bw = Wd / slots.length;
-      const win = plan.best_window
-        ? [
-            new Date(plan.best_window.start).getTime(),
-            new Date(plan.best_window.end).getTime(),
-          ]
-        : null;
-      const X = (t) => ((t - slots[0].t) / 1800e3) * bw;
-      const bars = slots
-        .map((s, k) => {
-          const h =
-            (Math.abs(s.spare) / maxAbs) *
-            (s.spare >= 0 ? mid - 6 : H - mid - 14);
-          const color = s.spare < 0 ? C.faint : s.full ? C.ok : C.heavy;
-          return `<rect x="${(k * bw + 1).toFixed(1)}" y="${(s.spare >= 0
-            ? mid - h
-            : mid
-          ).toFixed(1)}" width="${Math.max(bw - 2, 1).toFixed(
-            1,
-          )}" height="${Math.max(h, 1).toFixed(1)}" rx="1.5" fill="${color}"/>`;
-        })
-        .join("");
-      const shade = win
-        ? `<rect x="${X(win[0]).toFixed(1)}" y="0" width="${(
-            X(win[1]) - X(win[0])
-          ).toFixed(1)}" height="${mid}" fill="${C.typical}" opacity=".12"/>`
+    });
+    const maxAbs = Math.max(...slots.map((s) => Math.abs(s.spare)), 0.5);
+    const Wd = 340,
+      H = 90,
+      mid = 58,
+      bw = Wd / slots.length;
+    const win = plan.best_window
+      ? [
+          new Date(plan.best_window.start).getTime(),
+          new Date(plan.best_window.end).getTime(),
+        ]
+      : null;
+    const X = (t) => ((t - slots[0].t) / 1800e3) * bw;
+    const bars = slots
+      .map((s, k) => {
+        const h =
+          (Math.abs(s.spare) / maxAbs) *
+          (s.spare >= 0 ? mid - 6 : H - mid - 14);
+        const color = s.spare < 0 ? C.faint : s.full ? C.ok : C.heavy;
+        return `<rect x="${(k * bw + 1).toFixed(1)}" y="${(s.spare >= 0
+          ? mid - h
+          : mid
+        ).toFixed(1)}" width="${Math.max(bw - 2, 1).toFixed(
+          1,
+        )}" height="${Math.max(h, 1).toFixed(1)}" rx="1.5" fill="${color}"/>`;
+      })
+      .join("");
+    const shade = win
+      ? `<rect x="${X(win[0]).toFixed(1)}" y="0" width="${(
+          X(win[1]) - X(win[0])
+        ).toFixed(1)}" height="${mid}" fill="${C.typical}" opacity=".12"/>`
+      : "";
+    const nowX =
+      !tomorrow && nowMs > slots[0].t
+        ? `<line x1="${X(nowMs)}" y1="0" x2="${X(nowMs)}" y2="${
+            H - 12
+          }" stroke="var(--primary-text-color, #fff)" stroke-opacity=".5" stroke-dasharray="2 2"/>`
         : "";
-      const nowX =
-        !tomorrow && nowMs > slots[0].t
-          ? `<line x1="${X(nowMs)}" y1="0" x2="${X(nowMs)}" y2="${
-              H - 12
-            }" stroke="var(--primary-text-color, #fff)" stroke-opacity=".5" stroke-dasharray="2 2"/>`
-          : "";
-      const svg = `<svg viewBox="0 0 ${Wd} ${H}" style="width:100%;display:block;margin-top:4px">${shade}
+    const svg = `<svg viewBox="0 0 ${Wd} ${H}" style="width:100%;display:block;margin-top:4px">${shade}
   <line x1="0" y1="${mid}" x2="${Wd}" y2="${mid}" stroke="${
     C.track
   }"/>${bars}${nowX}
@@ -2529,15 +2544,15 @@
   <text x="${Wd}" y="${H - 1}" fill="${
     C.muted
   }" font-size="10" text-anchor="end">sunset ${hm(plan.sunset)}</text></svg>`;
-      const pct = (v) => Math.round(v * 100) + "%";
-      const anyFree = slots.some((s) => s.free > 0.2);
-      const rows = plans
-        .map(
-          (
-            p,
-          ) => `<div style="display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:8px;align-items:center;margin:8px 0;font-size:13px;color:${
-            C.text
-          }">
+    const pct = (v) => Math.round(v * 100) + "%";
+    const anyFree = slots.some((s) => s.free > 0.2);
+    const rows = plans
+      .map(
+        (
+          p,
+        ) => `<div style="display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:8px;align-items:center;margin:8px 0;font-size:13px;color:${
+          C.text
+        }">
   <ha-icon icon="${p.a.icon}" style="--mdc-icon-size:18px;color:${
     C.muted
   }"></ha-icon>
@@ -2562,35 +2577,134 @@
         )} free</div>`
       : `<div style="color:${C.muted}">any time</div>`
   }</div></div>`,
-        )
-        .join("");
-      return (
-        head(
-          "mdi:clock-check-outline",
-          "Best time to run",
-          tomorrow ? "tomorrow" : beforeSun ? "from sunrise" : "until sunset",
-        ) +
-        ((this._config || {}).chart === false
-          ? ""
-          : svg +
-            sub(
-              `<span style="color:${C.ok}">Green</span>: sun to spare with the battery full, which would be exported · <span style="color:${C.heavy}">amber</span>: it would charge the battery · shaded: the best window.`,
-            )) +
-        rows +
-        (!APPS.length
-          ? ""
-          : anyFree
-            ? APPS.length > 1
-              ? sub(
-                  "Each on its own; running them together shares the same spare sun.",
-                )
-              : ""
-            : sub(
-                "No free sun expected: whenever they run, they use energy the battery would otherwise keep for tonight.",
-              ))
-      );
-    },
+      )
+      .join("");
+    return (
+      title(
+        tomorrow ? "tomorrow" : beforeSun ? "from sunrise" : "until sunset",
+      ) +
+      ((this._config || {}).chart === false
+        ? ""
+        : svg +
+          sub(
+            `<span style="color:${C.ok}">Green</span>: sun to spare with the battery full, which would be exported · <span style="color:${C.heavy}">amber</span>: it would charge the battery · shaded: the best window.`,
+          )) +
+      rows +
+      (!APPS.length
+        ? ""
+        : anyFree
+          ? APPS.length > 1
+            ? sub(
+                "Each on its own; running them together shares the same spare sun.",
+              )
+            : ""
+          : sub(
+              "No free sun expected: whenever they run, they use energy the battery would otherwise keep for tonight.",
+            ))
+    );
+  };
+  defineCard(
+    "solar-energy-insights-best-time",
+    "Best time to run",
+    "When spare sun is coming, and when to start your appliances.",
+    bestTime,
     FORMS.bestTime,
+  );
+
+  // Appliances: best time to run and until sunrise in one card, sharing one list of
+  // appliances, with a Today / Tonight switch. It opens on today while the sun is up
+  // and on tonight after sunset; a tap holds until the day or night is over.
+  const APPLIANCE_VIEWS = [
+    ["today", "Today"],
+    ["tonight", "Tonight"],
+  ];
+  // Night once the next sunrise comes before the next sunset.
+  const dayPhase = (plan) =>
+    plan
+      ? new Date(plan.sunrise) < new Date(plan.sunset)
+        ? "tonight"
+        : "today"
+      : new Date().getHours() >= 6 && new Date().getHours() < 17
+        ? "today"
+        : "tonight";
+  // A view picked by hand holds until the day or night it was picked in is over.
+  const pickApplianceView = (view) => {
+    const W = (window.__sei = window.__sei || {});
+    W.applianceView = { view, phase: dayPhase(W.plan?.data) };
+    try {
+      window.localStorage.setItem(
+        "solarDash.applianceView",
+        JSON.stringify(W.applianceView),
+      );
+    } catch (x) {}
+    (W.listeners || []).forEach((f) => f());
+  };
+  // The Now card's tonight row lands on tonight.
+  if (window.addEventListener)
+    window.addEventListener("sei-jump", (ev) => {
+      if (ev?.detail?.key === "sunrise") pickApplianceView("tonight");
+    });
+  defineCard(
+    "solar-energy-insights-appliances",
+    "Appliances",
+    "When to start your appliances on today's sun, and what they leave of the battery tonight.",
+    function (states, hass) {
+      const el = this;
+      const cfg = el._config || {};
+      const { W, C, ws } = window.SolarDash.ui(this, hass, states);
+      const phase = dayPhase(ws("plan", "solar_energy_insights/plan", 60));
+      if (W.applianceView === undefined) {
+        try {
+          W.applianceView = JSON.parse(
+            window.localStorage.getItem("solarDash.applianceView") || "null",
+          );
+        } catch (x) {
+          W.applianceView = null;
+        }
+      }
+      if (!el.__views) {
+        el.__views = true;
+        el.addEventListener("click", (ev) => {
+          const b = ev
+            .composedPath()
+            .find(
+              (n) => n && n.getAttribute && n.getAttribute("data-sei-view"),
+            );
+          if (b) pickApplianceView(b.getAttribute("data-sei-view"));
+        });
+      }
+      const views = APPLIANCE_VIEWS.map(([k]) => k);
+      const held = W.applianceView;
+      const view =
+        held && held.phase === phase && views.includes(held.view)
+          ? held.view
+          : views.includes(cfg.view)
+            ? cfg.view
+            : phase;
+      el.__embedded = true;
+      el.__status = "";
+      const body =
+        view === "tonight"
+          ? untilSunrise.call(el, states, hass)
+          : bestTime.call(el, states, hass);
+      const mark = window.SolarDash.jumpMark
+        ? window.SolarDash.jumpMark("sunrise")
+        : "";
+      const seg = APPLIANCE_VIEWS.map(
+        ([k, label]) =>
+          `<button type="button" data-sei-view="${k}" aria-pressed="${
+            k === view
+          }" style="border:0;font:inherit;font-size:13px;padding:5px 12px;border-radius:8px;cursor:pointer;background:${
+            k === view
+              ? "var(--sei-track, var(--divider-color, #48484a))"
+              : "transparent"
+          };color:${k === view ? C.text : C.muted}">${label}</button>`,
+      ).join("");
+      return `${mark}<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+    <div role="group" aria-label="Appliances today or tonight" style="display:inline-flex;gap:2px;padding:2px;border-radius:10px;border:1px solid ${C.track}">${seg}</div>
+    <div style="font-size:13px;color:${C.muted};white-space:normal;text-align:right">${el.__status}</div></div>${body}`;
+    },
+    FORMS.appliances,
   );
 
   defineCard(

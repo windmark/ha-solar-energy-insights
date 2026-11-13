@@ -89,6 +89,8 @@ The cards ship with the integration, each with settings in the dashboard editor:
       energy_per_run: sensor.dishwasher_energy_per_run # optional, learned
 - type: custom:solar-energy-insights-best-time
   appliances: [] # the same list
+- type: custom:solar-energy-insights-appliances # both above in one, today / tonight
+  appliances: [] # the same list
 - type: custom:solar-energy-insights-forecast-trust
 - type: custom:solar-energy-insights-scenario-lab # your last year, what if
 - type: custom:solar-energy-insights-level

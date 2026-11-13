@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- An Appliances card: best time to run and until sunrise in one card, sharing one list of appliances, with a Today / Tonight switch. It opens on today while the sun is up and on tonight after sunset; a view picked by hand holds until that day or night is over. The two cards stay as they are.
+- Tapping a row of the Now card sends a `sei-jump` event with the row's target before scrolling, so a card with views can open the one the row is about; the Appliances card opens tonight for the tonight row.
+
 ### Fixed
 
 - A battery held above its reserve is recognised right after a restart or after its level was unavailable for a while. Both gave the level a new last change, so the 15 minutes started over; the wait now follows the level itself, read back from the recorder at startup.
