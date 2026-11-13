@@ -714,10 +714,12 @@
       .join(";");
   };
   // SVG presentation attributes don't take var(): theme colours go into a style.
+  // A self-closing tag keeps its slash: without it the browser nests every later
+  // shape inside this one, and SVG draws nothing nested in a rect or a line.
   const svgColours = (html) =>
     html.replace(
-      /<(rect|line|path|circle|text|polyline|polygon)\b([^>]*)>/g,
-      (tag, name, attrs) => {
+      /<(rect|line|path|circle|text|polyline|polygon)\b([^>]*?)(\/?)>/g,
+      (tag, name, attrs, close) => {
         const moved = [];
         const rest = attrs.replace(
           /\s(fill|stroke)="((?:var|color-mix)\([^"]*)"/g,
@@ -727,7 +729,7 @@
           },
         );
         return moved.length
-          ? `<${name}${rest} style="${moved.join(";")}">`
+          ? `<${name}${rest} style="${moved.join(";")}"${close}>`
           : tag;
       },
     );
