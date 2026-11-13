@@ -155,9 +155,10 @@ async def repair_energy_sums(
     )
     shift, repaired = 0.0, 0
     for r in rows.get(energy) or []:
-        if r.get("sum") is None or (prev is not None and r["start"] <= prev["start"]):
+        total = r.get("sum")
+        if total is None or (prev is not None and r["start"] <= prev["start"]):
             continue
-        here = float(r["sum"]) + shift
+        here = total + shift
         if prev is not None and here < float(prev["sum"]) - 0.001:
             t = dt_util.utc_from_timestamp(r["start"])
             same_day = (
