@@ -5,7 +5,7 @@ from __future__ import annotations
 import statistics
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -44,7 +44,7 @@ from .core.plan import Outlook, Plan
 from .dashboard import discover_strings, history_start, string_kwp
 from .entity import ApplianceEntity, InsightsEntity
 from .serialize import costs
-from .strings import backfill_energy, energy_today, power_kw
+from .strings import backfill_energy, energy_today, power_kw, repair_energy_sums
 from .summary import changed, summary_for
 
 
@@ -739,6 +739,7 @@ class StringEnergySensor(_StringSensor):
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_suggested_display_precision = 2
     _today: float | None = None
+    _day: date | None = None
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -749,11 +750,24 @@ class StringEnergySensor(_StringSensor):
         # Once, so charts on this sensor keep the string's past days.
         start = await history_start(self.hass, self.power)
         await backfill_energy(
-            self.hass, self.power, self.entity_id, f"PV{self.n} energy", start
+            self.hass,
+            self.power,
+            self.entity_id,
+            f"PV{self.n} energy",
+            start,
+            self._today or 0.0,
         )
+        await repair_energy_sums(self.hass, self.entity_id)
 
     async def _async_refresh(self, _now: datetime | None = None) -> None:
-        self._today = await energy_today(self.hass, self.power, dt_util.utcnow())
+        now = dt_util.utcnow()
+        value = await energy_today(self.hass, self.power, now)
+        # Just after the hour, the hour that ended isn't in the statistics yet;
+        # a dip would read as a meter reset and count the day twice.
+        day = dt_util.as_local(now).date()
+        if day == self._day and self._today is not None:
+            value = max(value, self._today)
+        self._today, self._day = value, day
         self.async_write_ha_state()
 
     @property
