@@ -2701,12 +2701,8 @@
           };color:${k === view ? C.text : C.muted}">${label}</button>`,
       ).join("");
       return `${mark}<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-    <div role="group" aria-label="Appliances today or tonight" style="display:inline-flex;gap:2px;padding:2px;border-radius:10px;border:1px solid ${
-      C.track
-    }">${seg}</div>
-    <div style="font-size:13px;color:${C.muted};white-space:normal;text-align:right">${
-      el.__status
-    }</div></div>${body}`;
+    <div role="group" aria-label="Appliances today or tonight" style="display:inline-flex;gap:2px;padding:2px;border-radius:10px;border:1px solid ${C.track}">${seg}</div>
+    <div style="font-size:13px;color:${C.muted};white-space:normal;text-align:right">${el.__status}</div></div>${body}`;
     },
     FORMS.appliances,
   );
