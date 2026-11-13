@@ -47,11 +47,15 @@ class Element {
   dispatchEvent() {}
 }
 globalThis.HTMLElement = Element;
+const windowListeners = {};
 globalThis.window = {
   customElements: {
     get: (t) => registry.get(t),
     define: (t, c) => registry.set(t, c),
   },
+  addEventListener: (type, f) =>
+    (windowListeners[type] = windowListeners[type] || []).push(f),
+  dispatchEvent: (ev) => (windowListeners[ev.type] || []).forEach((f) => f(ev)),
 };
 globalThis.customElements = window.customElements;
 globalThis.document = { querySelector: () => null, createElement: () => ({}) };
@@ -154,9 +158,9 @@ const TWO = {
   },
 };
 check(
-  "all four solar cards are defined",
-  ["now", "until-sunrise", "best-time", "forecast-trust"].every((k) =>
-    registry.has("solar-energy-insights-" + k),
+  "all five solar cards are defined",
+  ["now", "until-sunrise", "best-time", "appliances", "forecast-trust"].every(
+    (k) => registry.has("solar-energy-insights-" + k),
   ),
 );
 
@@ -243,7 +247,13 @@ const html = async (key, config) => {
   }
   return card.shadowRoot.innerHTML;
 };
-for (const key of ["now", "until-sunrise", "best-time", "forecast-trust"]) {
+for (const key of [
+  "now",
+  "until-sunrise",
+  "best-time",
+  "appliances",
+  "forecast-trust",
+]) {
   const Card = registry.get("solar-energy-insights-" + key);
   const stub = Card.getStubConfig();
   const plainHtml = await html(key, {});
@@ -325,6 +335,94 @@ check(
   own.includes("Dishwasher") && !own.includes("Heat pump boost"),
 );
 window.SolarDash.config().appliances = [];
+
+// Appliances: best time and until sunrise in one card with a Today / Tonight switch.
+const appliances = async (config = TWO) => {
+  const card = new (registry.get("solar-energy-insights-appliances"))();
+  card.setConfig(config);
+  for (let k = 0; k < 6; k++) {
+    card.hass = hass;
+    await settle();
+  }
+  return card;
+};
+const tap = (card, view) =>
+  card.listeners.click.forEach((f) =>
+    f({
+      composedPath: () => [
+        { getAttribute: (a) => (a === "data-sei-view" ? view : null) },
+      ],
+    }),
+  );
+const redraw = async (card) => {
+  for (let k = 0; k < 3; k++) {
+    card.hass = hass;
+    await settle();
+  }
+  return card.shadowRoot.innerHTML;
+};
+const day = await appliances();
+const dayHtml = day.shadowRoot.innerHTML;
+check(
+  "appliances: in daylight it opens on today, with the best start per appliance",
+  text(dayHtml).includes("1.0 kWh · 2.5 h") &&
+    text(dayHtml).includes("until sunset") &&
+    !text(dayHtml).includes("House only"),
+);
+check(
+  "appliances: one switch, no second title",
+  dayHtml.includes('data-sei-view="today"') &&
+    dayHtml.includes('data-sei-view="tonight"') &&
+    !text(dayHtml).includes("Best time to run") &&
+    !text(dayHtml).includes("Until sunrise"),
+);
+check(
+  "appliances: the tonight row of the Now card can land on it in either view",
+  dayHtml.includes('data-solar-jump="sunrise"'),
+);
+tap(day, "tonight");
+const nightHtml = text(await redraw(day));
+check(
+  "appliances: a tap shows tonight, the same appliances replayed through the night",
+  nightHtml.includes("House only") &&
+    nightHtml.includes("+ Dishwasher") &&
+    nightHtml.includes("+ Both") &&
+    !nightHtml.includes("1.0 kWh · 2.5 h"),
+);
+check(
+  "appliances: and the choice holds for a card drawn later the same day",
+  text((await appliances()).shadowRoot.innerHTML).includes("House only"),
+);
+tap(day, "today");
+await redraw(day);
+check(
+  "appliances: a choice by hand wins over the card's setting",
+  !text(
+    (await appliances({ ...TWO, view: "tonight" })).shadowRoot.innerHTML,
+  ).includes("House only"),
+);
+window.__sei.applianceView = null;
+check(
+  "appliances: a card set to open on tonight does",
+  text(
+    (await appliances({ ...TWO, view: "tonight" })).shadowRoot.innerHTML,
+  ).includes("House only"),
+);
+window.SolarDash.jump("sunrise");
+check(
+  "appliances: jumping to tonight from the Now card switches to tonight",
+  text(await redraw(day)).includes("House only"),
+);
+window.__sei.applianceView = { view: "today", phase: "tonight" };
+check(
+  "appliances: a choice from the night before is forgotten by day",
+  text(await redraw(day)).includes("1.0 kWh · 2.5 h"),
+);
+const untouched = text(await html("until-sunrise", TWO));
+check(
+  "the until sunrise card keeps its own title",
+  untouched.includes("Until sunrise") && !untouched.includes("Tonight Today"),
+);
 
 // The scenario lab: the year with the card's starting values.
 const labCard = new (registry.get("solar-energy-insights-scenario-lab"))();

@@ -41,6 +41,23 @@ chart: true
 appliances: [] # as above
 ```
 
+## Appliances
+
+Best time to run and until sunrise in one card, sharing one list of appliances,
+with a Today / Tonight switch. It opens on today while the sun is up and on
+tonight after sunset. A view picked by hand holds until that day or night is
+over, and the Now card's tonight row opens tonight.
+
+```yaml
+type: custom:solar-energy-insights-appliances
+view: auto # or today, tonight: where it opens
+chart: true # today: the chart of spare sun
+columns: [typical, heavy] # tonight
+footnotes: true # tonight
+appliances: [] # as above
+running: # optional, as above
+```
+
 ## Can I trust the forecast?
 
 ```yaml
