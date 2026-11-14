@@ -160,7 +160,11 @@ class Needed:
 class Window:
     start: datetime
     end: datetime
+    # Solar beyond the house in the window.
     kwh: float
+    # What of that is left once the battery has had its share: the window's
+    # part of the surplus.
+    free_kwh: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -409,6 +413,26 @@ def _best_window(i: PlanInputs, load: Rate) -> Window | None:
     return best
 
 
+def _free_in(i: PlanInputs, load: Rate, window: Window, surplus_kwh: float) -> float:
+    """What of the window's spare sun is left once the battery has had its
+    share. The battery takes the day's earliest spare sun, so what of the day's
+    spare isn't surplus comes off the start; the window's rest is its part of the
+    surplus, and the windows and the surplus add up."""
+    t = _slot(i.now if i.sun_up else i.sunrise)
+    halves: list[tuple[datetime, float]] = []
+    while t < i.sunset:
+        halves.append((t, max(i.pv.kw_at(t) - load(t), 0.0) * 0.5))
+        t += HALF_HOUR
+    battery = max(sum(s for _, s in halves) - surplus_kwh, 0.0)
+    free = 0.0
+    for t, s in halves:
+        take = min(s, battery)
+        battery -= take
+        if window.start <= t < window.end:
+            free += s - take
+    return min(free, surplus_kwh)
+
+
 def _free_until(i: PlanInputs, load: Rate) -> datetime | None:
     """When the expected solar stops beating the house by the free-power margin."""
     t = _slot(i.now) + HALF_HOUR
@@ -488,6 +512,9 @@ def plan(i: PlanInputs) -> Plan:
         i.battery.soc_pct >= i.limit_now_pct - FREE_POWER_FULL_WITHIN_PCT
         and i.export_kw >= FREE_POWER_MIN_EXPORT_KW
     )
+    window = _best_window(i, load)
+    if window is not None:
+        window = replace(window, free_kwh=_free_in(i, load, window, surplus.total_kwh))
     return Plan(
         now=i.now,
         sunrise=i.sunrise,
@@ -496,7 +523,7 @@ def plan(i: PlanInputs) -> Plan:
         surplus=surplus,
         night=night,
         needed=_needed(i, days, weights, sun),
-        best_window=_best_window(i, load),
+        best_window=window,
         free_power=free,
         free_until=_free_until(i, load) if free else None,
         charge_limit_pct=i.battery.ceiling_pct,

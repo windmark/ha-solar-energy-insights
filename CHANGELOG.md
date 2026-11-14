@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- The Now card's heavy loads and surplus rows agree. The window's spare sun counted what the battery still takes; it now shows what's left once the battery is full, the same as the surplus, as "~21 of the 23 kWh to spare".
+
 ## [0.15.0] - 2026-11-13
 
 ### Fixed
