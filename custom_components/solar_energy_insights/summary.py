@@ -87,6 +87,9 @@ def facts_for(c: InsightsCoordinator, p: Plan) -> Facts:
         window_start=p.best_window.start if p.best_window else None,
         window_end=p.best_window.end if p.best_window else None,
         window_kwh=round(p.best_window.kwh, 2) if p.best_window else None,
+        window_free=None
+        if p.best_window is None or p.best_window.free_kwh is None
+        else round(p.best_window.free_kwh, 2),
         surplus=round(p.surplus.total_kwh, 2),
         saving=money["surplus_saving"],
         exported=money["surplus_export_value"],

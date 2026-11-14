@@ -58,6 +58,8 @@ class Facts:
     window_start: datetime | None = None
     window_end: datetime | None = None
     window_kwh: float | None = None
+    # The window's part of the surplus: what's left once the battery is full.
+    window_free: float | None = None
     surplus: float | None = None
     saving: float | None = None
     exported: float | None = None
@@ -479,6 +481,23 @@ class _Words:
             "forecast",
         )
 
+    def window_spare(self) -> str:
+        """The window's spare sun in the surplus row's terms: what's left once
+        the battery is full, so the two rows add up."""
+        f = self.f
+        if f.window_free is not None and f.surplus is not None and f.surplus >= 0.3:
+            if f.window_free < 0.3:
+                return "the battery takes this sun first"
+            w, s = kwh(f.window_free), kwh(f.surplus)
+            return (
+                f"~{s} kWh to spare in it"
+                if w == s
+                else f"~{w} of the {s} kWh to spare"
+            )
+        if f.window_kwh is None:
+            return ""
+        return f"~{kwh(f.window_kwh)} kWh more sun than the house uses"
+
     def loads(self, tomorrow: bool) -> Row:
         f = self.f
         target = "forecast" if tomorrow else "today"
@@ -508,11 +527,7 @@ class _Words:
             )
         if f.window_start is not None:
             started = f.window_start <= f.now
-            spare = (
-                ""
-                if f.window_kwh is None
-                else f"~{kwh(f.window_kwh)} kWh of sun to spare"
-            )
+            spare = self.window_spare()
             act = (
                 ""
                 if not self.night_tight

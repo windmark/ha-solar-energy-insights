@@ -100,6 +100,31 @@ def test_november_afternoon_with_charging_over() -> None:
     assert row(s, "Surplus").main == "No surplus left today"
 
 
+def test_the_heavy_loads_spare_sun_is_counted_like_the_surplus() -> None:
+    """The window's spare sun is what's left once the battery is full, the same
+    as the surplus, so the two rows add up."""
+
+    def spare(**kw: Any) -> tuple[str, ...]:
+        s = summarize(
+            facts(
+                9,
+                11,
+                window_start=at(9),
+                window_end=at(16),
+                window_kwh=30.0,
+                **kw,
+            )
+        )
+        return row(s, "Heavy loads").detail
+
+    assert spare(window_free=21.4, surplus=23.0) == ("~21 of the 23 kWh to spare",)
+    assert spare(window_free=22.8, surplus=23.0) == ("~23 kWh to spare in it",)
+    assert spare(window_free=0.1, surplus=23.0) == ("the battery takes this sun first",)
+    assert spare(window_free=None, surplus=None) == (
+        "~30 kWh more sun than the house uses",
+    )
+
+
 def test_on_the_grid_after_midnight() -> None:
     s = summarize(
         facts(

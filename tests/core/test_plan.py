@@ -96,6 +96,26 @@ def test_the_best_window_is_where_the_sun_beats_the_house() -> None:
     assert window.kwh > 0
 
 
+def test_the_windows_spare_sun_is_its_part_of_the_surplus() -> None:
+    """The battery takes the morning's spare sun first; what's left of the
+    window is part of the surplus, never more than it or the window."""
+    for hour, soc in ((7, 20), (9, 30), (11, 90), (13, 100)):
+        result = plan(inputs(hour, soc))
+        window = result.best_window
+        assert window is not None
+        assert window.free_kwh is not None
+        assert 0 <= window.free_kwh <= window.kwh + 1e-9
+        assert window.free_kwh <= result.surplus.total_kwh + 1e-9
+    # An empty battery takes more of the morning than a full one.
+    low = plan(inputs(7, 15)).best_window
+    full = plan(inputs(7, 100)).best_window
+    assert low is not None
+    assert full is not None
+    assert low.free_kwh is not None
+    assert full.free_kwh is not None
+    assert low.free_kwh < full.free_kwh
+
+
 def test_a_full_battery_exporting_is_free_power() -> None:
     assert plan(inputs(13, 100, export_kw=3.0)).free_power
     assert not plan(inputs(13, 60, export_kw=3.0)).free_power
