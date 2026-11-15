@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Each string's energy today starts at local midnight. In the first hour of the day (two in summer) it took UTC's date, counted yesterday's whole day, and then held on to it until today's sun beat it, so the strings could show tens of kWh before sunrise. The curtailment check had the same slip.
+
 ## [0.16.0] - 2026-11-14
 
 ### Fixed
