@@ -46,6 +46,7 @@ from .const import (
     CONF_PRICE_ENTITY,
     CONF_ROUND_TRIP,
     CONF_SOLAR_ENERGY,
+    CONF_SOLAR_FROM,
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
     DEFAULT_FEED_IN_CT,
@@ -55,6 +56,7 @@ from .const import (
     DEFAULT_NIGHTS,
     DEFAULT_PRICE_CT,
     DEFAULT_ROUND_TRIP_PCT,
+    DEFAULT_SOLAR_FROM_KW,
 )
 from .core.array import Array
 from .core.battery import Battery, held_floor
@@ -120,6 +122,10 @@ class ReadingsMixin:
     @property
     def nights(self) -> int:
         return int(self._option(CONF_NIGHTS, DEFAULT_NIGHTS))
+
+    @property
+    def solar_from_kw(self) -> float:
+        return self._option(CONF_SOLAR_FROM, DEFAULT_SOLAR_FROM_KW)
 
     def _capacity(self) -> float | None:
         state = self._state(CONF_BATTERY_CAPACITY)

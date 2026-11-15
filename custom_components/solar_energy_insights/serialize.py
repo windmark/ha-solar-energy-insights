@@ -102,6 +102,9 @@ def plan_dict(
         },
         "free_power": plan.free_power,
         "free_until": _iso(plan.free_until),
+        "solar_from": None
+        if plan.solar_from_kw is None
+        else {"kw": plan.solar_from_kw, "at": _iso(plan.solar_from)},
     }
     if prices is not None:
         data["costs"] = costs(plan, *prices)

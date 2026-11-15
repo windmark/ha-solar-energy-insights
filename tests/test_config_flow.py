@@ -117,3 +117,20 @@ async def test_options_suggest_powerocean_counters_for_achievements(
 
     assert suggested(result, const.CONF_GRID_IMPORT_ENERGY) == imported.entity_id
     assert suggested(result, const.CONF_SOLAR_ENERGY) == solar.entity_id
+
+
+async def test_options_set_the_sun_level_the_plan_reports(home: HomeAssistant) -> None:
+    set_states(home)
+    entry = await setup_entry(home)
+    assert entry.runtime_data.solar_from_kw == const.DEFAULT_SOLAR_FROM_KW
+
+    result = await home.config_entries.options.async_init(entry.entry_id)
+    schema = result["data_schema"]
+    assert schema is not None
+    result = await home.config_entries.options.async_configure(
+        result["flow_id"], {**schema({}), const.CONF_SOLAR_FROM: 2.5}
+    )
+    await home.async_block_till_done(wait_background_tasks=True)
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.runtime_data.solar_from_kw == 2.5

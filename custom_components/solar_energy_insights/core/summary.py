@@ -18,6 +18,8 @@ JUST_FITS_KWH = 1.0
 SPENT_KWH = 0.05
 MORNING_UNTIL_HOUR = 12
 NIGHT_FROM_HOUR = 22
+# From this hour (and after midnight) the next day's row says when the sun gets going.
+SOLAR_FROM_HOUR = 18
 
 HEADLINE_MAX = 25
 CLAUSE_MAX = 45
@@ -46,6 +48,9 @@ class Facts:
     short_evenings: tuple[float, ...] = ()
     full_at: datetime | None = None
     full_cloudy: datetime | None = None
+    # When the expected sun next reaches solar_from_kw.
+    solar_from: datetime | None = None
+    solar_from_kw: float | None = None
     peak: float | None = None
     peak_cloudy: float | None = None
     sunset_pct: float | None = None
@@ -178,6 +183,21 @@ class _Words:
 
     def same_day(self, t: datetime) -> bool:
         return t.astimezone(self.f.tz).date() == self.f.now.astimezone(self.f.tz).date()
+
+    def solar_from(self) -> str:
+        """In the evening and at night: when tomorrow's sun reaches a useful level,
+        to the nearest five minutes."""
+        f = self.f
+        if (
+            f.solar_from is None
+            or f.solar_from_kw is None
+            or not (self.hour >= SOLAR_FROM_HOUR or self.after_midnight)
+        ):
+            return ""
+        t = f.solar_from.astimezone(f.tz)
+        t = (t + timedelta(minutes=2, seconds=30)).replace(second=0, microsecond=0)
+        t -= timedelta(minutes=t.minute % 5)
+        return f"{f.solar_from_kw:g} kW of sun from ~{t:%H:%M}"
 
     def cloudy_note(self) -> str:
         f = self.f
@@ -467,7 +487,7 @@ class _Words:
                 "mdi:battery-charging-high",
                 "good",
                 f"Full ~{self.hm(f.full_at)}{when}",
-                _two(self.cloudy_note()),
+                _two(self.solar_from(), self.cloudy_note()),
                 "forecast",
             )
         peak = "–" if f.peak is None else str(_round(f.peak))
@@ -477,7 +497,7 @@ class _Words:
             "mdi:battery-charging-50",
             "warn",
             f"Peaks at {peak}%{later}",
-            _two(self.cloudy_note()),
+            _two(self.solar_from(), self.cloudy_note()),
             "forecast",
         )
 

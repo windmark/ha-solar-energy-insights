@@ -127,6 +127,28 @@ class PvForecast:
                 hours[local.hour] += slot.p50 * SLOT.total_seconds() / 3600
         return hours
 
+    def first_reach(
+        self, kw: float, after: datetime, quantile: Quantile = Quantile.P50
+    ) -> datetime | None:
+        """When the forecast next climbs to *kw* after *after*: read between the
+        half hours' midpoints. While it is above already, that is the next rise,
+        once it has dropped below again (tomorrow morning)."""
+        prev_t, prev_kw = after, self.kw_at(after, quantile)
+        below = prev_kw < kw
+        for slot in self._slots:
+            mid = slot.start + SLOT / 2
+            if mid <= after:
+                continue
+            value = slot.kw(quantile)
+            if mid - prev_t > SLOT:  # a gap in the forecast reads as no sun
+                prev_t, prev_kw, below = mid - SLOT, 0.0, True
+            if below and value >= kw:
+                share = (kw - prev_kw) / (value - prev_kw) if value > prev_kw else 1.0
+                return max(prev_t + (mid - prev_t) * share, after)
+            below = value < kw
+            prev_t, prev_kw = mid, value
+        return None
+
     def scaled(self, factor: Any) -> PvForecast:
         """Return the forecast with each slot multiplied by ``factor(start)``."""
         return PvForecast(

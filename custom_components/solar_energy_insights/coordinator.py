@@ -140,6 +140,7 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
             pv=self.forecast(),
             use=self.use,
             nights=self.nights,
+            solar_from_kw=self.solar_from_kw,
             export_kw=self._export_kw(),
             extra=extra,
             standby_kw=self.standby_kw,

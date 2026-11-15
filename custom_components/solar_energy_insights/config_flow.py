@@ -61,6 +61,7 @@ from .const import (
     CONF_RUN_HOURS,
     CONF_RUN_KWH,
     CONF_SOLAR_ENERGY,
+    CONF_SOLAR_FROM,
     CONF_SOLAR_POWER,
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
@@ -74,6 +75,7 @@ from .const import (
     DEFAULT_ROUND_TRIP_PCT,
     DEFAULT_RUN_HOURS,
     DEFAULT_RUN_KWH,
+    DEFAULT_SOLAR_FROM_KW,
     DOMAIN,
     SUBENTRY_APPLIANCE,
 )
@@ -165,6 +167,9 @@ OPTIONS_SCHEMA = vol.Schema(
         ),
         vol.Optional(CONF_ARRAY_KWP): _number(0.1, 1000, 0.01, "kWp"),
         vol.Required(CONF_NIGHTS, default=DEFAULT_NIGHTS): _number(3, 60, 1, "nights"),
+        vol.Required(CONF_SOLAR_FROM, default=DEFAULT_SOLAR_FROM_KW): _number(
+            0.1, 50, 0.1, "kW"
+        ),
         vol.Required(CONF_MIN_RESERVE, default=DEFAULT_MIN_RESERVE_PCT): _number(
             0, 50, 1, "%"
         ),

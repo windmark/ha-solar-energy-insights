@@ -91,7 +91,8 @@
           "string_panels_pv2": "PV2: number of panels (optional)",
           "string_panel_w_pv2": "PV2: watts per panel (optional)",
           "string_panels_pv3": "PV3: number of panels (optional)",
-          "string_panel_w_pv3": "PV3: watts per panel (optional)"
+          "string_panel_w_pv3": "PV3: watts per panel (optional)",
+          "solar_from_kw": "Sun worth starting things on"
         },
         "data_description": {
           "nights": "How many recent nights the battery is tested against.",
@@ -121,7 +122,8 @@
           "string_panels_pv2": "How many panels are on string PV2: count them on the roof or in your installer's plan.",
           "string_panel_w_pv2": "The watts on the panels' label, for example 420. Together with the number of panels this gives string PV2's size, which the dashboard uses to compare strings fairly. Leave both empty if you don't know.",
           "string_panels_pv3": "How many panels are on string PV3: count them on the roof or in your installer's plan.",
-          "string_panel_w_pv3": "The watts on the panels' label, for example 420. Together with the number of panels this gives string PV3's size, which the dashboard uses to compare strings fairly. Leave both empty if you don't know."
+          "string_panel_w_pv3": "The watts on the panels' label, for example 420. Together with the number of panels this gives string PV3's size, which the dashboard uses to compare strings fairly. Leave both empty if you don't know.",
+          "solar_from_kw": "The solar power the Solar now card and the power chart give the time of, such as \"1 kW of sun from ~09:35\"."
         }
       }
     }
