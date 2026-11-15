@@ -3441,9 +3441,12 @@
       HID = SD.HID,
       E = c.entities || {};
     if (!HID.solar.length || !HID.house.length) return null;
+    // A string's energy from its power: the hourly mean is the hour's kWh, and the
+    // power history is complete. Its energy counter is the fallback without one.
     const str = (n) => {
       const s = (c.strings || []).find((x) => x.n === n);
       return [
+        ...(s && s.power ? [s.power] : []),
         (s && s.energy) ||
           "sensor.solar_energy_insights_pv" + n + "_energy_today",
       ];
@@ -3466,6 +3469,18 @@
     };
   }
   const ready = () => !!ids();
+  // The string power sensors, whose statistics are means (W) rather than changes
+  function powerIds() {
+    const c = cfg();
+    return new Set(
+      ((c && c.strings) || []).map((s) => s.power).filter(Boolean),
+    );
+  }
+  // kWh in each statistic row: a power mean over the period, or a counter's change
+  const meanKwh = (rows, hours) =>
+    rows
+      .filter((x) => x.mean !== null && x.mean !== undefined && x.mean >= 0)
+      .map((x) => ({ start: x.start, change: (x.mean / 1000) * hours }));
   const historyStart = () => {
     const t = window.SolarDash && window.SolarDash.START;
     // Unknown (no house counter set): two full years back keeps the year view bounded
@@ -3495,6 +3510,7 @@
     const rows = {},
       hours = {};
     const clean = window.SolarDash && window.SolarDash.plausible;
+    const power = powerIds();
     for (const k of Object.keys(I)) {
       const id = I[k].find((x) => r && r[x] && r[x].length);
       if (!id) continue;
@@ -3512,7 +3528,11 @@
           o = (rows[d] = rows[d] || {});
         if (o[k] === undefined) o[k] = 0;
       });
-      const kept = clean ? clean(r[id], 1) : r[id].filter((x) => x.change >= 0);
+      const kept = power.has(id)
+        ? meanKwh(r[id], 1)
+        : clean
+          ? clean(r[id], 1)
+          : r[id].filter((x) => x.change >= 0);
       kept.forEach((x) => {
         const t = new Date(startMs(x)),
           d = iso(t);
@@ -3551,7 +3571,8 @@
         end_time: e.toISOString(),
         statistic_ids: [...new Set(Object.values(I).flat())],
         period: "hour",
-        types: ["change", "max"],
+        types: ["change", "max", "mean"],
+        units: { power: "W" },
       }),
       30000,
     )
@@ -3592,13 +3613,15 @@
         end_time: new Date().toISOString(),
         statistic_ids: [...new Set(Object.values(I).flat())],
         period: "5minute",
-        types: ["change", "max"],
+        types: ["change", "max", "mean"],
+        units: { power: "W" },
       }),
       30000,
     )
       .then((r) => {
         const row = {},
-          clean = window.SolarDash && window.SolarDash.plausible;
+          clean = window.SolarDash && window.SolarDash.plausible,
+          power = powerIds();
         Object.keys(I).forEach((k) => {
           const id = I[k].find((x) => r && r[x] && r[x].length);
           if (!id) return;
@@ -3610,9 +3633,11 @@
             return;
           }
           row[k] = 0;
-          (clean
-            ? clean(r[id], 1 / 12)
-            : r[id].filter((x) => x.change >= 0)
+          (power.has(id)
+            ? meanKwh(r[id], 1 / 12)
+            : clean
+              ? clean(r[id], 1 / 12)
+              : r[id].filter((x) => x.change >= 0)
           ).forEach((x) => {
             row[k] += x.change;
           });
