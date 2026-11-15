@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.17.0] - 2026-11-15
+
 ### Added
 
 - A moments card, `custom:solar-energy-insights-moments`, shows what was just achieved with a line on why: from when it happened until a day later, each on its own clock, and hidden when there is nothing new. The achievements answer carries the last two days' `moments`, kept across restarts, and each achievement event now has an `explain` line too.
