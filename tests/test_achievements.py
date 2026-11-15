@@ -124,7 +124,7 @@ async def test_a_new_record_is_announced_when_its_day_closes(
     events: list[Event] = []
     home.bus.async_listen(const.EVENT_ACHIEVEMENT, events.append)
     set_states(home)
-    await setup_entry(home, ON)
+    entry = await setup_entry(home, ON)
 
     # Today becomes the sunniest day there has been, and then closes.
     await record_house(home, [DAY], evening_load)
@@ -139,6 +139,11 @@ async def test_a_new_record_is_announced_when_its_day_closes(
     records = [e.data for e in events if e.data["kind"] == "record"]
     assert any(r["record"] == "best_day" for r in records)
     assert all(e.data["title"] and e.data["message"] for e in events)
+    assert all(e.data["explain"] for e in events)
+    # Kept for the dashboard, with when it happened.
+    shown = entry.runtime_data.achievements.view["moments"]
+    assert sorted(m["title"] for m in shown) == sorted(e.data["title"] for e in events)
+    assert all(m["at"] for m in shown)
 
 
 async def test_a_quest_is_set_in_the_evening(

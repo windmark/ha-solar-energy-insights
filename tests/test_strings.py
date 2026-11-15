@@ -250,6 +250,28 @@ async def test_todays_energy_never_dips_until_the_day_turns(
     assert seen == [8.0, 8.0, 9.0, 1.0]
 
 
+async def test_a_new_day_starts_at_local_midnight_not_utc(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """In the first local hour UTC still has yesterday's date: today's energy
+    must not count yesterday's sun, nor hold on to it for the rest of the day."""
+    strings = powerocean_strings(home, (1,))
+    await record_power(home, strings[1], [DAY - timedelta(days=1)], 2.0)
+    freezer.move_to(local(DAY, 0, 30))
+    set_states(home)
+    watts(home, strings[1], 0)
+
+    await setup_entry(home)
+    await home.async_block_till_done()
+    energy = f"{PREFIX}pv1_energy_today"
+    assert float(state_of(home, energy)) == pytest.approx(0.0)
+
+    freezer.move_to(local(DAY, 7, 30))
+    async_fire_time_changed(home)
+    await home.async_block_till_done()
+    assert float(state_of(home, energy)) == pytest.approx(0.0)
+
+
 async def test_this_mornings_forecast_is_kept_day_by_day(home: HomeAssistant) -> None:
     set_states(home)
     entry = await setup_entry(home)

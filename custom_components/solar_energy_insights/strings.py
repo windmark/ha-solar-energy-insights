@@ -60,7 +60,9 @@ async def _means(
 async def energy_today(hass: HomeAssistant, power: str, now: datetime) -> float:
     """kWh the string has made today: whole hours from the hourly mean power,
     the hour in progress from the five-minute means."""
-    midnight = dt_util.start_of_local_day(now)
+    # start_of_local_day takes a datetime's own date: a UTC one would give
+    # yesterday's midnight in the first local hours, and yesterday's total.
+    midnight = dt_util.start_of_local_day(dt_util.as_local(now))
     hour = now.replace(minute=0, second=0, microsecond=0)
     whole = await _means(hass, power, midnight, hour, "hour")
     part = await _means(hass, power, hour, now, "5minute")

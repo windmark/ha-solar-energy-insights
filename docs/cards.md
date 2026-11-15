@@ -93,6 +93,18 @@ sections: [within_reach, any_time, later, complete]
 
 `custom:solar-energy-insights-streaks` and `-records` have no settings.
 
+```yaml
+type: custom:solar-energy-insights-moments
+hours: 24 # how long each one shows
+max: 3 # then "+ 2 more"
+navigation_path: solar-achievements # optional: tap opens it
+```
+
+What was just achieved (a level, a badge tier, a record, a quest met, a month's
+recap), each with a line on why, from when it happened until `hours` later.
+Several at once, or one after another, each keep their own time. With nothing
+new the card hides. Put it at the top of a view.
+
 ## Colours
 
 The cards follow your theme. See [Card colours](reference.md#card-colours) to

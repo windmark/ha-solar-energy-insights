@@ -284,7 +284,7 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
         rows = await get_instance(self.hass).async_add_executor_job(
             statistics_during_period,
             self.hass,
-            dt_util.start_of_local_day(now),
+            dt_util.start_of_local_day(dt_util.as_local(now)),
             now,
             {grid, solar},
             "5minute",
