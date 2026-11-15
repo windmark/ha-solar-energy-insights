@@ -93,6 +93,7 @@ The cards ship with the integration, each with settings in the dashboard editor:
   appliances: [] # the same list
 - type: custom:solar-energy-insights-forecast-trust
 - type: custom:solar-energy-insights-scenario-lab # your last year, what if
+- type: custom:solar-energy-insights-moments # what was just achieved, for a day
 - type: custom:solar-energy-insights-level
 - type: custom:solar-energy-insights-streaks
 - type: custom:solar-energy-insights-records

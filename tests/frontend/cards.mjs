@@ -240,4 +240,87 @@ check(
     !onlyDone.includes("Any time") &&
     !onlyDone.includes("MWh club"),
 );
+// Moments: each shown from when it happened until a day later; hidden otherwise.
+const HOUR = 3600e3;
+const moment = (title, hoursAgo, extra = {}) => ({
+  kind: "badge",
+  tier: "bronze",
+  title,
+  message: title + ".",
+  explain: "Why: " + title,
+  icon: "mdi:medal",
+  at: new Date(Date.now() - hoursAgo * HOUR).toISOString(),
+  ...extra,
+});
+const momentsOf = async (list, config = {}) => {
+  delete window.__sei.ach; // a fresh answer, as after five minutes
+  const card = new (registry.get("solar-energy-insights-moments"))();
+  card.setConfig(config);
+  card.hass = {
+    ...hass,
+    callWS: async (q) =>
+      q.type === "solar_energy_insights/achievements"
+        ? { ...data, ...(list ? { moments: list } : {}) }
+        : {},
+  };
+  await settle();
+  await settle();
+  await settle();
+  return card;
+};
+check(
+  "the moments card is defined and listed",
+  window.customCards.some((c) => c.type === "solar-energy-insights-moments"),
+);
+let mom = await momentsOf(null);
+check("an integration without moments shows no banner", mom.hidden === true);
+mom = await momentsOf([moment("Old news", 30)]);
+check(
+  "a moment older than a day is gone",
+  mom.hidden === true && mom.shadowRoot.innerHTML === "",
+);
+mom = await momentsOf([moment("Perfect day: bronze", 2)]);
+const one = text(mom.shadowRoot.innerHTML);
+check(
+  "a new moment shows with its explanation",
+  mom.hidden === false &&
+    one.includes("New achievement") &&
+    one.includes("Perfect day: bronze") &&
+    one.includes("Why: Perfect day: bronze") &&
+    one.includes("2 h ago"),
+);
+mom = await momentsOf([
+  moment("Earned yesterday", 23),
+  moment("Earned the day before", 25),
+  moment("Level 8: Photon", 0.5, { kind: "level" }),
+]);
+const staggered = text(mom.shadowRoot.innerHTML);
+check(
+  "staggered moments each keep their own day, newest first",
+  staggered.includes("2 new achievements") &&
+    !staggered.includes("Earned the day before") &&
+    staggered.indexOf("Level 8") < staggered.indexOf("Earned yesterday"),
+);
+mom = await momentsOf(
+  [1, 2, 3, 4, 5].map((k) => moment("Moment " + k, k)),
+  { navigation_path: "solar-achievements" },
+);
+const many = text(mom.shadowRoot.innerHTML);
+check(
+  "many at once: the newest three and how many more",
+  many.includes("5 new achievements") &&
+    many.includes("Moment 3") &&
+    !many.includes("Moment 4") &&
+    many.includes("+ 2 more · tap for all achievements"),
+);
+check(
+  "the editor's defaults look like no settings",
+  (await momentsOf([moment("Same", 1)], {})).shadowRoot.innerHTML ===
+    (
+      await momentsOf(
+        [moment("Same", 1)],
+        registry.get("solar-energy-insights-moments").getStubConfig(),
+      )
+    ).shadowRoot.innerHTML,
+);
 console.log("ok");

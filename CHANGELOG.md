@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- A moments card, `custom:solar-energy-insights-moments`, shows what was just achieved with a line on why: from when it happened until a day later, each on its own clock, and hidden when there is nothing new. The achievements answer carries the last two days' `moments`, kept across restarts, and each achievement event now has an `explain` line too.
+
 ### Fixed
 
 - Each string's energy today starts at local midnight. In the first hour of the day (two in summer) it took UTC's date, counted yesterday's whole day, and then held on to it until today's sun beat it, so the strings could show tens of kWh before sunrise. The curtailment check had the same slip.

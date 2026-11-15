@@ -29,6 +29,7 @@ from .const import (
     REBUILD_DAYS,
     SHORT_TERM_DAYS,
 )
+from .core.achievements import moments
 from .core.achievements import quests as quest_rules
 from .core.achievements.facts import (
     DayFacts,
@@ -368,82 +369,44 @@ class Achievements:
         if before is None:
             # The first replay of history: everything is already earned.
             return
-        fire = self.c.hass.bus.async_fire
+        since = t.scores[0][0] if t.scores else None
+        found: list[dict[str, Any]] = []
         if state["level"] > before.get("level", 0):
-            fire(
-                EVENT_ACHIEVEMENT,
-                {
-                    "kind": "level",
-                    "title": f"Level {t.level.level}: {t.level.name}",
-                    "message": f"Solar level {t.level.level} reached: {t.level.name}.",
-                    "icon": "mdi:star-shooting",
-                },
+            found.append(moments.level(t.level))
+        found += [
+            moments.badge(b)
+            for b in t.badges
+            if b.tier > before.get("tiers", {}).get(b.badge.id, 0)
+        ]
+        found += [
+            moments.record(r, since)
+            for r in t.records
+            if before.get("records", {}).get(r.id) != r.day.isoformat()
+        ]
+        found += [
+            moments.quest(q)
+            for q in t.quests
+            if q.result and q.id not in before.get("quests", [])
+        ]
+        found += [
+            moments.recap(
+                m,
+                f"{m.kept_kwh * self.c.price:.2f} {self.c.hass.config.currency}"
+                if m.kept_kwh is not None
+                else None,
             )
-        for b in t.badges:
-            if b.tier > before.get("tiers", {}).get(b.badge.id, 0):
-                tier = ("bronze", "silver", "gold")[b.tier - 1]
-                fire(
-                    EVENT_ACHIEVEMENT,
-                    {
-                        "kind": "badge",
-                        "badge": b.badge.id,
-                        "tier": tier,
-                        "title": f"{b.badge.name}: {tier}",
-                        "message": (
-                            f"New badge, {b.badge.name} ({tier}): "
-                            f"{b.badge.description}."
-                        ),
-                        "icon": b.badge.icon,
-                    },
-                )
-        for r in t.records:
-            if before.get("records", {}).get(r.id) != r.day.isoformat():
-                fire(
-                    EVENT_ACHIEVEMENT,
-                    {
-                        "kind": "record",
-                        "record": r.id,
-                        "title": f"New record: {r.name}",
-                        "message": f"New record, {r.name}: {r.value:g} {r.unit}.",
-                        "icon": r.icon,
-                    },
-                )
-        for q in t.quests:
-            if q.result and q.id not in before.get("quests", []):
-                fire(
-                    EVENT_ACHIEVEMENT,
-                    {
-                        "kind": "quest",
-                        "quest": q.id,
-                        "title": f"Quest done: {q.title}",
-                        "message": f"Quest done, {q.title}: +{q.reward} XP.",
-                        "icon": "mdi:flag-checkered",
-                    },
-                )
-        closed = [m for m in t.months[:-1] if m.month not in before.get("months", [])]
-        for m in closed:
-            fire(
-                EVENT_ACHIEVEMENT,
-                {
-                    "kind": "recap",
-                    "month": m.month,
-                    "title": f"{m.month} in review",
-                    "message": (
-                        f"{m.month}: average score {m.score:g}, "
-                        f"{m.nights_lasted} of {m.nights} "
-                        f"nights without the grid"
-                        + (
-                            f", {m.kept_kwh:g} kWh of sun kept at home, worth "
-                            f"{m.kept_kwh * self.c.price:.2f} "
-                            f"{self.c.hass.config.currency}"
-                            if m.kept_kwh is not None
-                            else ""
-                        )
-                        + "."
-                    ),
-                    "icon": "mdi:calendar-star",
-                },
-            )
+            for m in t.months[:-1]
+            if m.month not in before.get("months", [])
+        ]
+        if not found:
+            return
+        for moment in found:
+            self.c.hass.bus.async_fire(EVENT_ACHIEVEMENT, moment)
+        # Kept, so a dashboard can show each one for a day after it happened.
+        now = dt_util.utcnow()
+        memory.moments = moments.recent(
+            [*moments.stamp(found, now), *memory.moments], now
+        )
 
     def as_dict(self) -> dict[str, Any] | None:
         if self.trophies is None:
@@ -462,4 +425,5 @@ class Achievements:
         ]
         view["last_week"] = last_week(history, today, self.c.price, earned)
         view["yesterday"] = best_since(history, today - timedelta(days=1))
+        view["moments"] = moments.recent(self.memory.moments, dt_util.utcnow())
         return view

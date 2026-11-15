@@ -37,6 +37,8 @@ class Memory:
     facts: dict[str, dict[str, Any]] = field(default_factory=dict)
     quests: dict[str, dict[str, Any]] = field(default_factory=dict)
     announced: dict[str, Any] | None = None
+    # What was announced in the last two days, with when, for the dashboard.
+    moments: list[dict[str, Any]] = field(default_factory=list)
     facts_version: int = 0
 
     def prune(self, today: date) -> None:
@@ -53,6 +55,7 @@ class Memory:
             "facts": self.facts,
             "quests": self.quests,
             "announced": self.announced,
+            "moments": self.moments,
             "facts_version": self.facts_version,
             "battery": self.battery,
             "evening": self.evening,
@@ -72,6 +75,7 @@ class Memory:
             facts=dict(data.get("facts") or {}),
             quests=dict(data.get("quests") or {}),
             announced=data.get("announced"),
+            moments=list(data.get("moments") or []),
             facts_version=int(data.get("facts_version") or 0),
             battery={k: float(v) for k, v in (data.get("battery") or {}).items()},
             evening=dict(data.get("evening") or {}),

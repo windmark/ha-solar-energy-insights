@@ -81,7 +81,7 @@ Facts are kept in the integration's store, about 1 kB a day.
 
 **Quests.** Each evening from 20:00, one quest for the next day; on Mondays, one for the week. Targets come from your own days with a similar forecast, set so about three in five would have met them. A borderline night ahead comes first: "Get to sunrise without the grid". Quests pay 25–100 XP by difficulty; missing one costs nothing.
 
-**Recaps and moments.** Earning a tier, breaking a record, levelling up, completing a quest and closing a month fire `solar_energy_insights_achievement` with a title and a ready-made message.
+**Recaps and moments.** Earning a tier, breaking a record, levelling up, completing a quest and closing a month fire `solar_energy_insights_achievement` with a title, a ready-made message and a line explaining it. The last two days of them are kept as moments, which the moments card shows for a day.
 
 ## Badge catalogue
 
@@ -130,12 +130,12 @@ flowchart TD
 - `core/achievements/`: plain Python, no Home Assistant. `facts.py`, `profile.py`, `game.py` (score, levels, ranks, streaks, records), `badges.py`, `quests.py`, `trophies.py`.
 - `achievements.py`: reads the recorder, keeps the facts and quests in the store, computes the room off the event loop, and announces what is new.
 
-| Exposed                                        | What                                                                                                                  |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Sensors                                        | Solar score today (live), level, rank, the four streaks, the quest                                                    |
-| Event `solar_energy_insights_achievement`      | `kind` (level, badge, record, quest, recap), `title`, `message`, `icon`                                               |
-| WebSocket `solar_energy_insights/achievements` | The whole room: today, level, rank, streaks, records, badges with rarity and riddles, quests, monthly recaps, profile |
-| Diagnostics                                    | Days of facts, quests, and the room                                                                                   |
+| Exposed                                        | What                                                                                                                                              |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sensors                                        | Solar score today (live), level, rank, the four streaks, the quest                                                                                |
+| Event `solar_energy_insights_achievement`      | `kind` (level, badge, record, quest, recap), `title`, `message`, `explain`, `icon`                                                                |
+| WebSocket `solar_energy_insights/achievements` | The whole room: today, level, rank, streaks, records, badges with rarity and riddles, quests, monthly recaps, profile, the last two days' moments |
+| Diagnostics                                    | Days of facts, quests, and the room                                                                                                               |
 
 ## As built
 

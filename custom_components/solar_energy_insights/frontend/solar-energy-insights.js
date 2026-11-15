@@ -940,6 +940,24 @@
       },
       stub: { quest: true, recap: true },
     },
+    moments: {
+      schema: [
+        {
+          name: "hours",
+          selector: {
+            number: { min: 1, max: 48, step: 1, unit_of_measurement: "h" },
+          },
+        },
+        { name: "max", selector: { number: { min: 1, max: 10, step: 1 } } },
+        { name: "navigation_path", selector: { navigation: {} } },
+      ],
+      labels: {
+        hours: "Show each for",
+        max: "At most, before “+ more”",
+        navigation_path: "Tap opens",
+      },
+      stub: { hours: 24, max: 3 },
+    },
     badges: {
       schema: [{ name: "sections", selector: choose(SECTIONS) }],
       labels: { sections: "Sections" },
@@ -1018,6 +1036,23 @@
           body = `<div style="font-size:12px;color:var(--sei-bad, var(--sei-bad-auto, #ff8a80));white-space:normal">${String(
             (e && e.message) || e,
           )}</div>`;
+        }
+        // A card with nothing to show (null) hides, and the dashboard closes its gap.
+        const hide = body === null;
+        if (hide !== !!this.hidden) {
+          this.hidden = hide;
+          if (this.dispatchEvent && typeof Event === "function")
+            this.dispatchEvent(
+              new Event("card-visibility-changed", {
+                bubbles: true,
+                composed: true,
+              }),
+            );
+        }
+        if (hide) {
+          if (this._drawn !== null) this.shadowRoot.innerHTML = "";
+          this._drawn = null;
+          return;
         }
         body = svgColours(body);
         if (body === this._drawn) return;
@@ -1509,6 +1544,114 @@
         .join("");
       return rows || sub("No records yet.");
     },
+  );
+
+  defineCard(
+    "solar-energy-insights-moments",
+    "Solar moments",
+    "What was just achieved, with why: shown from when it happens until a day later, hidden otherwise.",
+    function (states, hass) {
+      const el = this;
+      const { C, ws } = window.SolarDash.ui(this, hass, states);
+      const cfg = this._config || {};
+      const hours = Number(cfg.hours) > 0 ? Number(cfg.hours) : 24;
+      const most = Number(cfg.max) > 0 ? Math.floor(Number(cfg.max)) : 3;
+      const a = ws("ach", "solar_energy_insights/achievements", 300);
+      // Nothing yet, achievements off, or an older integration: no banner at all.
+      if (!a || !Array.isArray(a.moments)) return null;
+      const now = Date.now();
+      const shown = a.moments
+        .map((m) => ({ m, t: new Date(m.at).getTime() }))
+        .filter(
+          ({ t }) => !isNaN(t) && t <= now + 300e3 && now - t < hours * 3600e3,
+        )
+        .sort((x, y) => y.t - x.t);
+      // Redraw when the oldest shown runs out, even if nothing else changes.
+      clearTimeout(el.__momT);
+      if (shown.length) {
+        const ends = Math.min(...shown.map(({ t }) => t + hours * 3600e3));
+        el.__momT = setTimeout(
+          () => el.requestUpdate(),
+          Math.min(Math.max(ends - now + 1000, 1000), 3600e3),
+        );
+        // Outside a browser (the tests), the timer mustn't keep the process alive.
+        if (el.__momT && el.__momT.unref) el.__momT.unref();
+      }
+      if (!shown.length) return null;
+
+      if (cfg.navigation_path && !el.__momTap) {
+        el.__momTap = true;
+        el.addEventListener("click", () => {
+          const path = (el._config || {}).navigation_path;
+          if (!path || !window.history) return;
+          window.history.pushState(null, "", path);
+          window.dispatchEvent(
+            new CustomEvent("location-changed", { detail: { replace: false } }),
+          );
+        });
+      }
+      const TIER = { bronze: "#cd7f32", silver: "#c0c0c8", gold: "#f5b83d" };
+      const colour = (m) =>
+        m.kind === "badge"
+          ? TIER[m.tier] || "#f5b83d"
+          : m.kind === "quest"
+            ? C.ok
+            : m.kind === "recap"
+              ? C.typical
+              : "#f5b83d";
+      const ago = (t) => {
+        const min = Math.max(0, Math.round((now - t) / 60e3));
+        if (min < 2) return "just now";
+        if (min < 60) return `${min} min ago`;
+        return `${Math.round(min / 60)} h ago`;
+      };
+      const esc = (s) =>
+        String(s ?? "").replace(
+          /[&<>"]/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
+        );
+      const rows = shown
+        .slice(0, most)
+        .map(
+          (
+            { m, t },
+            i,
+          ) => `<div style="display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:start;${
+            i
+              ? `margin-top:12px;padding-top:12px;border-top:1px solid ${C.track}`
+              : ""
+          }">
+    <div style="width:30px;height:30px;border-radius:15px;background:${colour(
+      m,
+    )}26;display:flex;align-items:center;justify-content:center"><ha-icon icon="${esc(
+      m.icon || "mdi:trophy-outline",
+    )}" style="--mdc-icon-size:18px;color:${colour(m)}"></ha-icon></div>
+    <div style="min-width:0"><div style="font-size:14px;color:${C.text};font-weight:500;white-space:normal">${esc(
+      m.title,
+    )}</div>
+      <div style="font-size:12px;color:${C.muted};white-space:normal;line-height:1.4;margin-top:2px">${esc(
+        m.explain || m.message,
+      )}</div></div>
+    <div style="font-size:11px;color:${C.faint};white-space:nowrap;margin-top:2px">${ago(
+      t,
+    )}</div></div>`,
+        )
+        .join("");
+      const more = shown.length - Math.min(shown.length, most);
+      const title =
+        shown.length === 1
+          ? "New achievement"
+          : `${shown.length} new achievements`;
+      return `<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#f5b83d;margin-bottom:12px">
+    <ha-icon icon="mdi:trophy" style="--mdc-icon-size:18px"></ha-icon>${title}</div>${rows}${
+      more
+        ? `<div style="font-size:12px;color:${C.muted};margin-top:12px">+ ${more} more${
+            cfg.navigation_path ? " · tap for all achievements" : ""
+          }</div>`
+        : ""
+    }`;
+    },
+    FORMS.moments,
   );
 
   defineCard(
