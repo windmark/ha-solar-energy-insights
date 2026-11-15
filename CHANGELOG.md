@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.20.0] - 2026-11-15
+
 ### Added
 
 - A `string_worth` answer replays the recorded year with and without one string: what it made, the grid's import and export, self-sufficiency and grid-free nights each way, and what it was worth. It applies the feed-in cap and gives the grid meters' totals over the same hours, to check the replay against. Hours before the string readings start are left out rather than guessed.
