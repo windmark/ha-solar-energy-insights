@@ -226,6 +226,7 @@ async def test_the_options_take_the_comparisons_and_keep_them(
 
     form = await home.config_entries.options.async_init(entry.entry_id)
     schema = form["data_schema"]
+    assert schema is not None
     assert "comparisons" in {str(k) for k in schema.schema}
     refused = await home.config_entries.options.async_configure(
         form["flow_id"],
