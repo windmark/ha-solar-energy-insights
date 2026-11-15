@@ -949,7 +949,7 @@
           },
         },
         { name: "max", selector: { number: { min: 1, max: 10, step: 1 } } },
-        { name: "navigation_path", selector: { navigation: {} } },
+        { name: "navigation_path", selector: { text: {} } },
       ],
       labels: {
         hours: "Show each for",
@@ -1626,15 +1626,17 @@
     )}26;display:flex;align-items:center;justify-content:center"><ha-icon icon="${esc(
       m.icon || "mdi:trophy-outline",
     )}" style="--mdc-icon-size:18px;color:${colour(m)}"></ha-icon></div>
-    <div style="min-width:0"><div style="font-size:14px;color:${C.text};font-weight:500;white-space:normal">${esc(
-      m.title,
-    )}</div>
-      <div style="font-size:12px;color:${C.muted};white-space:normal;line-height:1.4;margin-top:2px">${esc(
+    <div style="min-width:0"><div style="font-size:14px;color:${
+      C.text
+    };font-weight:500;white-space:normal">${esc(m.title)}</div>
+      <div style="font-size:12px;color:${
+        C.muted
+      };white-space:normal;line-height:1.4;margin-top:2px">${esc(
         m.explain || m.message,
       )}</div></div>
-    <div style="font-size:11px;color:${C.faint};white-space:nowrap;margin-top:2px">${ago(
-      t,
-    )}</div></div>`,
+    <div style="font-size:11px;color:${
+      C.faint
+    };white-space:nowrap;margin-top:2px">${ago(t)}</div></div>`,
         )
         .join("");
       const more = shown.length - Math.min(shown.length, most);
@@ -1645,7 +1647,9 @@
       return `<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#f5b83d;margin-bottom:12px">
     <ha-icon icon="mdi:trophy" style="--mdc-icon-size:18px"></ha-icon>${title}</div>${rows}${
       more
-        ? `<div style="font-size:12px;color:${C.muted};margin-top:12px">+ ${more} more${
+        ? `<div style="font-size:12px;color:${
+            C.muted
+          };margin-top:12px">+ ${more} more${
             cfg.navigation_path ? " · tap for all achievements" : ""
           }</div>`
         : ""
