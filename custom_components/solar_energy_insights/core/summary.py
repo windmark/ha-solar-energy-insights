@@ -50,7 +50,7 @@ class Facts:
     full_cloudy: datetime | None = None
     # When the expected sun next reaches solar_from_kw.
     solar_from: datetime | None = None
-    solar_from_kw: float = 1.0
+    solar_from_kw: float | None = None
     peak: float | None = None
     peak_cloudy: float | None = None
     sunset_pct: float | None = None
@@ -188,8 +188,10 @@ class _Words:
         """In the evening and at night: when tomorrow's sun reaches a useful level,
         to the nearest five minutes."""
         f = self.f
-        if f.solar_from is None or not (
-            self.hour >= SOLAR_FROM_HOUR or self.after_midnight
+        if (
+            f.solar_from is None
+            or f.solar_from_kw is None
+            or not (self.hour >= SOLAR_FROM_HOUR or self.after_midnight)
         ):
             return ""
         t = f.solar_from.astimezone(f.tz)

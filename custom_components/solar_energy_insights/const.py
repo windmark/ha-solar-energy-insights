@@ -54,6 +54,9 @@ NIGHT_ANSWER_HOUR: Final = 21
 SHORT_TERM_DAYS: Final = 9
 
 DEFAULT_NIGHTS: Final = 14
+# When the expected sun counts as "going": the level the dashboard reports the time of.
+CONF_SOLAR_FROM: Final = "solar_from_kw"
+DEFAULT_SOLAR_FROM_KW: Final = 1.0
 # Inverters discharge no lower than this by themselves, whatever reserve is set.
 DEFAULT_MIN_RESERVE_PCT: Final = 5.0
 DEFAULT_MAX_POWER_KW: Final = 5.0

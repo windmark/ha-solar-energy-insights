@@ -209,6 +209,8 @@ async def dashboard_config(c: InsightsCoordinator) -> dict[str, Any]:
         },
         # For cards without appliances of their own.
         "appliances": card_appliances(entry),
+        # The solar power the plan's solar_from is the time of.
+        "solar_from_kw": c.solar_from_kw,
     }
 
 

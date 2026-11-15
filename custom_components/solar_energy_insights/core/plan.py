@@ -21,8 +21,6 @@ from .nights import HourlyUse, PastDay, past_days, recent_use, typical
 FREE_POWER_FULL_WITHIN_PCT = 3.0
 FREE_POWER_MIN_EXPORT_KW = 1.5
 WINDOW_MIN_SPARE_KW = 1.0
-# "Solar from": when the expected sun next reaches this much, worth starting things on.
-SOLAR_FROM_KW = 1.0
 HEAVY_SHARE = 0.8
 HALF_HOUR = timedelta(minutes=30)
 CHARGE_STEP_PCT = 0.5
@@ -51,6 +49,8 @@ class PlanInputs:
     charge_limit_now_pct: float | None = None
     # The most the grid takes; above it the inverter curtails. None: uncapped.
     export_cap_kw: float | None = None
+    # The solar power whose next arrival the plan reports (solar_from). None: not asked.
+    solar_from_kw: float | None = None
 
     @property
     def sun_up(self) -> bool:
@@ -200,8 +200,9 @@ class Plan:
     charge_limit_now_pct: float
     curve: tuple[tuple[datetime, float], ...] = field(repr=False)
     day: Day | None = field(default=None, repr=False, compare=False)
-    # When the expected sun next reaches SOLAR_FROM_KW; None if it doesn't.
+    # When the expected sun next reaches solar_from_kw; None: it doesn't, or not asked.
     solar_from: datetime | None = None
+    solar_from_kw: float | None = None
 
     @property
     def sun_up(self) -> bool:
@@ -534,5 +535,8 @@ def plan(i: PlanInputs) -> Plan:
         charge_limit_now_pct=i.limit_now_pct,
         curve=expected.points,
         day=_day(i, load, expected, cloudy),
-        solar_from=i.pv.first_reach(SOLAR_FROM_KW, i.now),
+        solar_from=None
+        if i.solar_from_kw is None
+        else i.pv.first_reach(i.solar_from_kw, i.now),
+        solar_from_kw=i.solar_from_kw,
     )

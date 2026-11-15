@@ -4,7 +4,7 @@
 
 ### Added
 
-- From 18:00 and through the night, the Solar now card's row for the coming day says when the sun reaches 1 kW ("1 kW of sun from ~09:35"), from the same corrected forecast as the rest of the plan. The plan answer carries it as `solar_from`, for dashboards to mark it.
+- From 18:00 and through the night, the Solar now card's row for the coming day says when the sun reaches a level you choose in the options ("Sun worth starting things on", 1 kW by default): "1 kW of sun from ~09:35". It comes from the same corrected forecast as the rest of the plan. The plan answer carries it as `solar_from` with its `kw`, and the dashboard settings carry `solar_from_kw`, so charts can mark the same time.
 
 ## [0.17.0] - 2026-11-15
 

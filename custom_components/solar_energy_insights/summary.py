@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.util import dt as dt_util
 
 from .core.changes import Change
-from .core.plan import SOLAR_FROM_KW
 from .core.summary import Facts, Summary, summarize
 from .serialize import costs
 
@@ -69,7 +68,7 @@ def facts_for(c: InsightsCoordinator, p: Plan) -> Facts:
         full_at=charge.full_at,
         full_cloudy=charge.full_at_cloudy,
         solar_from=p.solar_from,
-        solar_from_kw=SOLAR_FROM_KW,
+        solar_from_kw=p.solar_from_kw,
         peak=round(charge.peak_pct),
         peak_cloudy=round(charge.peak_pct_cloudy),
         sunset_pct=None if charge.sunset_pct is None else round(charge.sunset_pct),

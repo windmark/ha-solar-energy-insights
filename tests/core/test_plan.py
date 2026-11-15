@@ -199,3 +199,18 @@ def test_the_nights_budget_is_what_the_battery_holds_above_its_reserve() -> None
     assert night.evening_budget_kwh == pytest.approx(
         night.budget_kwh - late[len(late) // 2], abs=0.15
     )
+
+
+def test_the_plan_gives_the_time_the_sun_reaches_the_level_asked() -> None:
+    evening = plan(inputs(21, 50, solar_from_kw=1.0))
+    higher = plan(inputs(21, 50, solar_from_kw=3.0))
+
+    assert evening.solar_from is not None
+    assert evening.solar_from.date() == NEXT
+    assert higher.solar_from is not None
+    assert higher.solar_from > evening.solar_from
+    assert higher.solar_from_kw == 3.0
+
+
+def test_without_a_level_the_plan_gives_no_time() -> None:
+    assert plan(inputs(21, 50)).solar_from is None
