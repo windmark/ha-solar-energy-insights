@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.19.0] - 2026-11-15
+
 ### Fixed
 
 - The history's energy per string now comes from each string's power, whose statistics are complete, rather than from the per-string energy sensors. Their stored history from before 0.17 carried the previous day into the morning, so past days' split by string was wrong.
