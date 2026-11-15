@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- From 18:00 and through the night, the Solar now card's row for the coming day says when the sun reaches 1 kW ("1 kW of sun from ~09:35"), from the same corrected forecast as the rest of the plan. The plan answer carries it as `solar_from`, for dashboards to mark it.
+
 ## [0.17.0] - 2026-11-15
 
 ### Added

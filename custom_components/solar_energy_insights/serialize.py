@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from .core.backtest import Calibration
-from .core.plan import NightOutcome, Plan
+from .core.plan import SOLAR_FROM_KW, NightOutcome, Plan
 
 
 def _iso(t: datetime | None) -> str | None:
@@ -102,6 +102,7 @@ def plan_dict(
         },
         "free_power": plan.free_power,
         "free_until": _iso(plan.free_until),
+        "solar_from": {"kw": SOLAR_FROM_KW, "at": _iso(plan.solar_from)},
     }
     if prices is not None:
         data["costs"] = costs(plan, *prices)

@@ -347,3 +347,17 @@ def test_no_row_contradicts_itself_or_the_others() -> None:
         if s.phase == "day" and battery.main == "No more charging today":
             assert row(s, "Heavy loads").main != "No spare sun today", name
         assert len(s.home_main) <= HEADLINE_MAX, name
+
+
+def test_in_the_evening_tomorrows_row_says_when_the_sun_gets_going() -> None:
+    sun = at(9, 37, DAY + timedelta(days=1))
+
+    evening = summarize(
+        facts(20, full_at=at(11, 30, DAY + timedelta(days=1)), solar_from=sun)
+    )
+    night = summarize(facts(2, solar_from=sun))
+    before_six = summarize(facts(17, 30, solar_from=sun))
+
+    assert row(evening, "Tomorrow").detail[0] == "1 kW of sun from ~09:35"
+    assert row(night, "Today").detail[0] == "1 kW of sun from ~09:35"
+    assert not any("kW of sun" in d for r in before_six.rows for d in r.detail)
