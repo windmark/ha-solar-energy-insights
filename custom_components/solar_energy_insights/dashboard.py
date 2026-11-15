@@ -40,6 +40,13 @@ STRING_PANELS = "string_panels_pv{}"
 STRING_PANEL_W = "string_panel_w_pv{}"
 STRING_KWP = "string_kwp_pv{}"
 STRING_ROOF = "string_roof_pv{}"
+# The user's own choices of which strings to hold against which, in one section
+# of the options: nothing about them is guessed from the strings' readings.
+COMPARISONS = "comparisons"
+COMPARE_STRING = "compare_string"
+COMPARE_AGAINST = "compare_against"
+COMPARE_NAME = "compare_name"
+MATCHED_STRINGS = "matched_strings"
 WORDS = (
     "north",
     "north-east",
@@ -84,6 +91,38 @@ def string_kwp(options: Mapping[str, Any], n: int) -> float | None:
 def string_roof_key(n: int) -> str:
     """The option holding which Solcast site (roof) string *n* is on."""
     return STRING_ROOF.format(n)
+
+
+def _numbers(values: Any, known: list[int]) -> list[int]:
+    out = []
+    for v in values or []:
+        try:
+            n = int(v)
+        except TypeError, ValueError:
+            continue
+        if n in known and n not in out:
+            out.append(n)
+    return sorted(out)
+
+
+def comparisons(options: Mapping[str, Any], known: list[int]) -> dict[str, Any]:
+    """The strings the user singled out and matched, limited to strings that
+    exist: a string held against the others, and strings that should make alike."""
+    chosen = options.get(COMPARISONS) or {}
+    single = _numbers([chosen.get(COMPARE_STRING)], known)
+    single_out = None
+    if single:
+        n = single[0]
+        against = [m for m in _numbers(chosen.get(COMPARE_AGAINST), known) if m != n]
+        against = against or [m for m in known if m != n]
+        if against:
+            single_out = {
+                "string": n,
+                "against": against,
+                "name": str(chosen.get(COMPARE_NAME) or "").strip() or f"PV{n}",
+            }
+    matched = _numbers(chosen.get(MATCHED_STRINGS), known)
+    return {"single": single_out, "matched": matched if len(matched) >= 2 else []}
 
 
 def facing(compass: float) -> str:
@@ -202,6 +241,7 @@ async def dashboard_config(c: InsightsCoordinator) -> dict[str, Any]:
         "prefix": _prefix([e for e in entities.values() if e]),
         "history_start": start.isoformat() if start else None,
         "strings": strings,
+        "comparisons": comparisons(entry.options, [s["n"] for s in strings]),
         "roofs": list(by_name.values()),
         "forecasts": {
             day: [[slot[0], slot[1]] for slot in slots]

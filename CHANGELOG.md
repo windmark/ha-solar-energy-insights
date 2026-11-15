@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- A Comparisons section in the options: single out a string, choose what it is compared against and give it a name, and choose which strings should produce alike. The dashboard settings carry these choices, so the cards no longer guess or assume the wiring.
+
 ## [0.19.0] - 2026-11-15
 
 ### Fixed

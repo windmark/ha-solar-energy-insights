@@ -16,6 +16,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_ICON, CONF_NAME
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
     BooleanSelector,
@@ -80,6 +81,11 @@ from .const import (
     SUBENTRY_APPLIANCE,
 )
 from .dashboard import (
+    COMPARE_AGAINST,
+    COMPARE_NAME,
+    COMPARE_STRING,
+    COMPARISONS,
+    MATCHED_STRINGS,
     discover_strings,
     roofs,
     string_panel_w_key,
@@ -350,8 +356,14 @@ class InsightsOptionsFlow(OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            chosen = user_input.get(COMPARISONS) or {}
+            single = chosen.get(COMPARE_STRING)
+            if single and single in (chosen.get(COMPARE_AGAINST) or []):
+                errors["base"] = "compared_with_itself"
+            else:
+                return self.async_create_entry(data=user_input)
         strings = discover_strings(self.hass, self.config_entry)
         roof_choices = [
             SelectOptionDict(
@@ -377,9 +389,42 @@ class InsightsOptionsFlow(OptionsFlow):
                         options=roof_choices, mode=SelectSelectorMode.DROPDOWN
                     )
                 )
+        if len(strings) >= 2:
+            pick = [
+                SelectOptionDict(value=str(st["n"]), label=f"PV{st['n']}")
+                for st in strings
+            ]
+            fields[vol.Optional(COMPARISONS)] = section(
+                vol.Schema(
+                    {
+                        vol.Optional(COMPARE_STRING): SelectSelector(
+                            SelectSelectorConfig(
+                                options=pick, mode=SelectSelectorMode.DROPDOWN
+                            )
+                        ),
+                        vol.Optional(COMPARE_AGAINST): SelectSelector(
+                            SelectSelectorConfig(
+                                options=pick,
+                                multiple=True,
+                                mode=SelectSelectorMode.LIST,
+                            )
+                        ),
+                        vol.Optional(COMPARE_NAME): TextSelector(),
+                        vol.Optional(MATCHED_STRINGS): SelectSelector(
+                            SelectSelectorConfig(
+                                options=pick,
+                                multiple=True,
+                                mode=SelectSelectorMode.LIST,
+                            )
+                        ),
+                    }
+                ),
+                {"collapsed": False},
+            )
         schema = OPTIONS_SCHEMA.extend(fields)
         return self.async_show_form(
             step_id="init",
+            errors=errors,
             data_schema=self.add_suggested_values_to_schema(
                 schema,
                 {
