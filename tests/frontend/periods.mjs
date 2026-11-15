@@ -34,7 +34,15 @@ const CONFIG = {
   },
   prefix: "sensor.po_",
   history_start: START,
-  strings: [{ n: 1, energy: "sensor.solar_energy_insights_pv1_energy_today" }],
+  strings: [
+    { n: 1, energy: "sensor.solar_energy_insights_pv1_energy_today" },
+    // With a power sensor: its energy comes from the power, not the counter
+    {
+      n: 2,
+      energy: "sensor.solar_energy_insights_pv2_energy_today",
+      power: "sensor.po_pv_string_2_power",
+    },
+  ],
 };
 let configAsked = 0;
 const asked = [];
@@ -80,6 +88,12 @@ const hass = {
           ];
         if (id.endsWith("solar_power"))
           out[id] = [{ start: at, change: null, max: 5000 }];
+        // 1.2 kW for two five-minute slots: 0.2 kWh
+        if (id.endsWith("string_2_power"))
+          out[id] = [
+            { start: at, mean: 1200, max: null },
+            { start: at + 3e5, mean: 1200, max: null },
+          ];
       }
       return out;
     }
@@ -102,6 +116,17 @@ const hass = {
               : null;
         if (id.endsWith("solar_power"))
           rows.push({ start: t.getTime(), change: null, max: 6000 });
+        // 250 W around the clock: 6 kWh a day; its counter says 99
+        else if (id.endsWith("string_2_power"))
+          rows.push({
+            start: t.getTime(),
+            mean: q.period === "hour" ? 250 : 250,
+          });
+        else if (id.includes("pv2_energy"))
+          rows.push({
+            start: t.getTime(),
+            change: q.period === "hour" ? 99 / 24 : 99,
+          });
         else if (v !== null)
           rows.push({
             start: t.getTime(),
@@ -183,6 +208,17 @@ check(
     near(V.tot.e, 21),
 );
 check("its peak in kW", V.tot.pk === 6);
+check("a string's energy from its power, not its counter", near(V.tot.p2, 42));
+check(
+  "power asked as hourly means in W",
+  asked.some(
+    (q) =>
+      q.period === "hour" &&
+      q.types.includes("mean") &&
+      q.units &&
+      q.units.power === "W",
+  ),
+);
 const jumpWeek = SP.range("Week", JUMP_DAY);
 show("Week", jumpWeek.start);
 SP.view(hass, hass.states, null);
@@ -208,6 +244,7 @@ SP.view(hass, hass.states, null);
 await settle();
 const T = SP.view(hass, hass.states, null);
 check("today from the five-minute statistics", T.rows[TODAY].y === 4.5);
+check("a string today from its five-minute power", near(T.rows[TODAY].p2, 0.2));
 check("not the lifetime counter", T.tot.y < 100);
 check("today's peak from live power", T.rows[TODAY].pk === 7);
 
