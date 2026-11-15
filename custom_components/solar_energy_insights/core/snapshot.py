@@ -51,6 +51,7 @@ def to_snapshot(i: PlanInputs, evenings: Sequence[Evening] = ()) -> dict[str, An
         "export_kw": i.export_kw,
         "charge_limit_now_pct": i.charge_limit_now_pct,
         "export_cap_kw": i.export_cap_kw,
+        "solar_from_kw": i.solar_from_kw,
         "nights": i.nights,
         "standby_kw": i.standby_kw,
         "heavy_share": i.heavy_share,
@@ -104,6 +105,10 @@ def from_snapshot(data: Mapping[str, Any]) -> PlanInputs:
         export_cap_kw=None
         if s.get("export_cap_kw") is None
         else float(s["export_cap_kw"]),
+        # Absent in files saved before the sun level was an option.
+        solar_from_kw=None
+        if s.get("solar_from_kw") is None
+        else float(s["solar_from_kw"]),
     )
 
 

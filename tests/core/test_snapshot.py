@@ -32,10 +32,18 @@ def sample() -> list:
                 inputs(season, now, peak_kw=peak, use=use, soc=35)
                 for now in moments(season)[::3]
             )
-    # With a feed-in cap, so what would be clipped replays too.
+    # With a feed-in cap, so what would be clipped replays too, and a sun level.
     use = history(SUMMER.day, HOUSES["flat"])
     out.extend(
-        inputs(SUMMER, now, peak_kw=12.0, use=use, soc=60, export_cap_kw=9.1)
+        inputs(
+            SUMMER,
+            now,
+            peak_kw=12.0,
+            use=use,
+            soc=60,
+            export_cap_kw=9.1,
+            solar_from_kw=1.5,
+        )
         for now in moments(SUMMER)[::4]
     )
     return out
