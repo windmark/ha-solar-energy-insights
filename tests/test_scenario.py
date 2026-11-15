@@ -7,17 +7,23 @@ from datetime import date
 from typing import Any
 
 import pytest
-from homeassistant.components.recorder.models import StatisticData, StatisticMeanType
+from homeassistant.components.recorder.models import (
+    StatisticData,
+    StatisticMeanType,
+    StatisticMetaData,
+)
 from homeassistant.components.recorder.statistics import async_import_statistics
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from pytest_homeassistant_custom_component.components.recorder.common import (
     async_wait_recording_done,
 )
+from pytest_homeassistant_custom_component.typing import WebSocketGenerator
 
 from custom_components.solar_energy_insights import const
 from tests.common import local, recent, record_energy, record_house, set_states
 from tests.common import setup_entry as setup
+from tests.test_dashboard import powerocean_strings
 
 SOLAR = "sensor.solar_energy"
 OUTDOOR = "sensor.outdoor_temperature"
@@ -137,3 +143,73 @@ async def test_too_little_history_is_refused(home: HomeAssistant) -> None:
         await scenario(home, extra_battery_kwh=5)
 
     assert err.value.translation_key == "too_little_history"
+
+
+async def record_strings(home: HomeAssistant, strings: dict[int, str]) -> None:
+    """Each hour's solar split over the strings: the north one (3) a fifth."""
+    share = {1: 0.4, 2: 0.4, 3: 0.2}
+    for n, entity_id in strings.items():
+        rows = [
+            StatisticData(
+                start=local(day, hour),
+                mean=(kw := sun(day, hour) * share[n]),
+                min=kw,
+                max=kw,
+            )
+            for day in DAYS
+            for hour in range(24)
+        ]
+        async_import_statistics(
+            home,
+            StatisticMetaData(
+                has_mean=True,
+                has_sum=False,
+                mean_type=StatisticMeanType.ARITHMETIC,
+                name=None,
+                source="recorder",
+                statistic_id=entity_id,
+                unit_class="power",
+                unit_of_measurement="kW",
+            ),
+            rows,
+        )
+    await async_wait_recording_done(home)
+
+
+async def string_worth(
+    home: HomeAssistant, hass_ws_client: WebSocketGenerator, string: int
+) -> dict[str, Any]:
+    client = await hass_ws_client(home)
+    await client.send_json_auto_id(
+        {"type": f"{const.DOMAIN}/string_worth", "string": string}
+    )
+    return await client.receive_json()
+
+
+async def test_a_string_is_worth_what_the_grid_would_have_given_without_it(
+    home: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    await record_strings(home, powerocean_strings(home, (1, 2, 3)))
+    await setup_entry(home)
+
+    response = await string_worth(home, hass_ws_client, 3)
+
+    assert response["success"], response
+    result = response["result"]
+    made = sum(sun(day, hour) for day in DAYS for hour in range(24)) * 0.2
+    assert result["made_kwh"] == pytest.approx(made, rel=0.02)
+    assert result["without"]["import_kwh"] > result["with"]["import_kwh"]
+    assert result["without"]["solar_kwh"] < result["with"]["solar_kwh"]
+    assert 0 < result["value"] <= result["made_kwh"] * result["price"]
+    assert result["check"]["hours"] >= 29 * 24
+
+
+async def test_without_string_readings_there_is_no_answer(
+    home: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    await setup_entry(home)
+
+    response = await string_worth(home, hass_ws_client, 3)
+
+    assert not response["success"]
+    assert response["error"]["code"] == "too_little_history"

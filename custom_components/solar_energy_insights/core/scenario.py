@@ -1,4 +1,4 @@
-"""Your last year again, with a bigger battery or a heat pump.
+"""Your last year again, with a bigger battery, a heat pump or one string fewer.
 
 The recorded hours of solar and house use are replayed through the battery,
 once as the house is and once with the change: more capacity, or the heat a
@@ -9,6 +9,10 @@ The heat pump is a simple model: the heat the house loses below its heating
 limit (heat loss in W/K times indoor less outdoor), plus hot water spread over
 the day, each divided by a coefficient of performance that falls as it gets
 colder. It answers "about how much", not the installer's sizing.
+
+Without a string, each hour's solar loses that string's share of it: the
+strings' power is measured before the inverter, the solar after, so the share
+carries the string over without its losses.
 """
 
 from __future__ import annotations
@@ -45,6 +49,17 @@ class Hour:
     solar_kwh: float
     house_kwh: float
     outdoor_c: float | None = None
+    # Each string's energy in the hour, from its power: ((n, kWh), …).
+    strings: tuple[tuple[int, float], ...] = ()
+    # What the grid meters counted, to check the replay against.
+    metered_import_kwh: float | None = None
+    metered_export_kwh: float | None = None
+
+    def string_share(self, n: int) -> float:
+        """String *n*'s part of the hour's solar, 0 without string readings."""
+        total = sum(max(kwh, 0.0) for _, kwh in self.strings)
+        own = sum(max(kwh, 0.0) for m, kwh in self.strings if m == n)
+        return own / total if total > 0 else 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +85,7 @@ class HeatPump:
 class Scenario:
     extra_battery_kwh: float = 0.0
     heat_pump: HeatPump | None = None
+    without_string: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,13 +163,25 @@ def _temperatures(hours: Sequence[Hour]) -> list[float]:
 
 
 def replay(
-    hours: Sequence[Hour], battery: Battery, heat_pump: HeatPump | None = None
+    hours: Sequence[Hour],
+    battery: Battery,
+    heat_pump: HeatPump | None = None,
+    *,
+    without_string: int | None = None,
+    export_cap_kw: float | None = None,
 ) -> Outcome:
-    """Step the battery through the recorded hours, with a heat pump's load."""
+    """Step the battery through the recorded hours, with a heat pump's load,
+    without a string's solar, and with the grid taking no more than the cap."""
     count = len(hours)
     if not count:
         return Outcome(0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0)
-    sun = np.array([max(h.solar_kwh, 0.0) for h in hours])
+    sun = np.array(
+        [
+            max(h.solar_kwh, 0.0)
+            * (1 - (h.string_share(without_string) if without_string else 0.0))
+            for h in hours
+        ]
+    )
     house = np.array([max(h.house_kwh, 0.0) for h in hours])
     pump = (
         np.array([heat_pump.kwh(t) for t in _temperatures(hours)])
@@ -170,6 +198,9 @@ def replay(
     assert runs.levels_pct is not None
     level = runs.levels_pct[0] * battery.capacity_kwh / 100
     grid, export = _flows(battery, sun, load, level)
+    if export_cap_kw is not None:
+        # Hourly steps: above the cap the inverter holds the sun back.
+        export = np.minimum(export, max(export_cap_kw, 0.0))
     nights, lasted = _nights(sun, grid)
     return Outcome(
         hours=count,
@@ -224,13 +255,70 @@ def compare(
     scenario: Scenario,
     price: float,
     feed_in: float,
+    export_cap_kw: float | None = None,
 ) -> Comparison:
     """The house as it is against the house with *scenario*, both starting
     empty: a bigger battery must not start with more to give."""
     start = replace(battery, soc_pct=battery.floor_pct)
-    now = replay(hours, start)
+    now = replay(hours, start, export_cap_kw=export_cap_kw)
     bigger = replace(
         start, capacity_kwh=start.capacity_kwh + max(scenario.extra_battery_kwh, 0.0)
     )
-    changed = replay(hours, bigger, scenario.heat_pump)
+    changed = replay(
+        hours,
+        bigger,
+        scenario.heat_pump,
+        without_string=scenario.without_string,
+        export_cap_kw=export_cap_kw,
+    )
     return Comparison(now, changed, price, feed_in)
+
+
+@dataclass(frozen=True, slots=True)
+class StringWorth:
+    """What one string added over the hours with string readings: its solar,
+    and the replay with and without it, beside what the meters counted."""
+
+    string: int
+    made_kwh: float
+    comparison: Comparison
+    metered_hours: int
+    metered_import_kwh: float
+    metered_export_kwh: float
+
+    @property
+    def value(self) -> float:
+        """Money the string saved over these hours: the bill without it less
+        the bill with it."""
+        c = self.comparison
+        return c.changed.cost(c.price, c.feed_in) - c.now.cost(c.price, c.feed_in)
+
+
+def string_worth(
+    hours: Sequence[Hour],
+    battery: Battery,
+    string: int,
+    price: float,
+    feed_in: float,
+    export_cap_kw: float | None = None,
+) -> StringWorth:
+    """The year replayed with and without *string*, over the hours that have
+    string readings: before them its part is unknown."""
+    known = [h for h in hours if h.strings]
+    comparison = compare(
+        known,
+        battery,
+        Scenario(without_string=string),
+        price,
+        feed_in,
+        export_cap_kw,
+    )
+    metered = [h for h in known if h.metered_import_kwh is not None]
+    return StringWorth(
+        string=string,
+        made_kwh=sum(max(h.solar_kwh, 0.0) * h.string_share(string) for h in known),
+        comparison=comparison,
+        metered_hours=len(metered),
+        metered_import_kwh=sum(h.metered_import_kwh or 0.0 for h in metered),
+        metered_export_kwh=sum(h.metered_export_kwh or 0.0 for h in metered),
+    )
