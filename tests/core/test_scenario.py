@@ -1,8 +1,9 @@
-"""The last year again, with a bigger battery or a heat pump."""
+"""The last year again, with a bigger battery, a heat pump or one string fewer."""
 
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
@@ -17,6 +18,7 @@ from custom_components.solar_energy_insights.core.scenario import (
     Scenario,
     compare,
     replay,
+    string_worth,
 )
 
 START = datetime(2025, 11, 1, tzinfo=UTC)
@@ -161,3 +163,72 @@ def test_no_hours_no_answer() -> None:
 
     assert result.now.hours == 0
     assert result.saving_per_year == 0.0
+
+
+def with_strings(hours: list[Hour], north_morning: float = 0.5) -> list[Hour]:
+    """Three strings: two south ones even through the day, and a north one
+    that makes a bigger share early and late than at noon."""
+    out = []
+    for h in hours:
+        local = h.start.hour
+        edge = 1.0 if local < 10 or local >= 15 else 0.0
+        north = 0.15 + north_morning * edge
+        south = (1 - north) / 2
+        sun = h.solar_kwh
+        out.append(
+            replace(
+                h,
+                strings=((1, sun * south), (2, sun * south), (3, sun * north))
+                if sun > 0
+                else ((1, 0.0), (2, 0.0), (3, 0.0)),
+                metered_import_kwh=0.2,
+                metered_export_kwh=0.1,
+            )
+        )
+    return out
+
+
+def test_without_a_string_the_house_buys_more_and_sells_less() -> None:
+    hours = with_strings(year(90))
+
+    worth = string_worth(hours, BATTERY, 3, PRICE, FEED_IN)
+    c = worth.comparison
+
+    assert worth.made_kwh == pytest.approx(c.now.solar_kwh - c.changed.solar_kwh)
+    assert c.changed.import_kwh > c.now.import_kwh
+    assert c.changed.export_kwh <= c.now.export_kwh
+    assert worth.value > 0
+    # Never worth more than all it made at the price of buying it.
+    assert worth.value <= worth.made_kwh * PRICE + 1e-6
+
+
+def test_a_string_that_makes_nothing_is_worth_nothing() -> None:
+    hours = [
+        replace(h, strings=((1, h.solar_kwh), (2, 0.0), (3, 0.0))) for h in year(30)
+    ]
+
+    worth = string_worth(hours, BATTERY, 3, PRICE, FEED_IN)
+
+    assert worth.made_kwh == 0
+    assert worth.value == pytest.approx(0.0, abs=1e-9)
+
+
+def test_hours_without_string_readings_are_left_out() -> None:
+    known = with_strings(year(20))
+    before = year(10)
+
+    worth = string_worth(before + known, BATTERY, 3, PRICE, FEED_IN)
+
+    assert worth.comparison.now.hours == len(known)
+    assert worth.metered_hours == len(known)
+    assert worth.metered_import_kwh == pytest.approx(0.2 * len(known))
+
+
+def test_the_grid_takes_no_more_than_the_cap() -> None:
+    hours = year()[200 * 24 : 260 * 24]  # summer, when there is plenty to sell
+
+    free = replay(hours, BATTERY)
+    capped = replay(hours, BATTERY, export_cap_kw=1.0)
+
+    assert capped.export_kwh < free.export_kwh
+    assert capped.import_kwh == pytest.approx(free.import_kwh)

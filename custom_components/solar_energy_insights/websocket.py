@@ -8,11 +8,14 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from .const import DOMAIN
+from .core.scenario import string_worth
 from .dashboard import dashboard_config
+from .scenario_lab import string_worth_dict
 from .serialize import backtest_dict, plan_dict
-from .services import coordinator_for
+from .services import MIN_SCENARIO_DAYS, coordinator_for
 
 
 @callback
@@ -21,6 +24,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_backtest)
     websocket_api.async_register_command(hass, ws_achievements)
     websocket_api.async_register_command(hass, ws_config)
+    websocket_api.async_register_command(hass, ws_string_worth)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/plan"})
@@ -122,3 +126,54 @@ async def ws_config(
         )
         return
     connection.send_result(msg["id"], await dashboard_config(coordinator))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/string_worth",
+        vol.Required("string"): vol.All(int, vol.Range(min=1, max=3)),
+    }
+)
+@websocket_api.async_response
+async def ws_string_worth(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """The recorded year replayed with and without one string: what it made,
+    what the grid would have given and taken without it, and the meters to
+    check the replay against."""
+    try:
+        coordinator = coordinator_for(hass)
+    except ServiceValidationError:
+        connection.send_error(
+            msg["id"], "not_loaded", "Solar Energy Insights is not loaded"
+        )
+        return
+    lab = coordinator.scenario_lab
+    if lab.solar is None:
+        connection.send_error(
+            msg["id"], "needs_solar_counter", "Set the solar energy counter first"
+        )
+        return
+    try:
+        battery = coordinator.battery(as_reported=True)
+    except UpdateFailed as err:
+        connection.send_error(msg["id"], "not_ready", str(err))
+        return
+    hours = [h for h in await lab.async_hours() if h.strings]
+    if len(hours) < MIN_SCENARIO_DAYS * 24:
+        connection.send_error(
+            msg["id"],
+            "too_little_history",
+            "Needs a week of string readings",
+        )
+        return
+    result = await hass.async_add_executor_job(
+        string_worth,
+        hours,
+        battery,
+        msg["string"],
+        coordinator.price,
+        coordinator.feed_in,
+        coordinator.export_cap_kw(),
+    )
+    connection.send_result(msg["id"], string_worth_dict(result))
