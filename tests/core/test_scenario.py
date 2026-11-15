@@ -225,7 +225,7 @@ def test_hours_without_string_readings_are_left_out() -> None:
 
 
 def test_the_grid_takes_no_more_than_the_cap() -> None:
-    hours = year(60)
+    hours = year()[200 * 24 : 260 * 24]  # summer, when there is plenty to sell
 
     free = replay(hours, BATTERY)
     capped = replay(hours, BATTERY, export_cap_kw=1.0)
