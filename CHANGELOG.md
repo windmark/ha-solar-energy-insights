@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- History cards could show Loading for a long time. Their months were all requested at once, and the later ones timed out while waiting for the recorder, then were requested again. Now two months are requested at a time, newest first, and each timeout starts when its request is sent.
+
+### Changed
+
+- Months that are over are kept in the browser, so opening the dashboard again doesn't read them from the recorder again.
+
 ## [0.19.0] - 2026-11-15
 
 ### Fixed
