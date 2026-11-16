@@ -47,6 +47,7 @@ from .const import (
     CONF_ROUND_TRIP,
     CONF_SOLAR_ENERGY,
     CONF_SOLAR_FROM,
+    CONF_SOLCAST_SITES,
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
     DEFAULT_FEED_IN_CT,
@@ -444,7 +445,11 @@ class ReadingsMixin:
     def array(self) -> Array:
         """The array as Solcast's sites describe it, or its size set by hand."""
         kwp = self.config_entry.options.get(CONF_ARRAY_KWP)
-        return array_of(self.hass, float(kwp) if kwp else None)
+        return array_of(
+            self.hass,
+            self.config_entry.options.get(CONF_SOLCAST_SITES) or [],
+            float(kwp) if kwp else None,
+        )
 
     def forecast(self) -> PvForecast:
         """Solcast, with this roof's correction once it has earned its place."""

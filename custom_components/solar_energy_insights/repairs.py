@@ -11,8 +11,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 
 from .const import CONF_BATTERY_RESERVE, DOMAIN
+from .discovery import POWEROCEAN
 
-POWEROCEAN = "ef_powerocean_tcpmodbus"
 ISSUE = "better_reserve"
 
 

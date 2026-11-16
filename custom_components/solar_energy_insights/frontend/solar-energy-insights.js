@@ -3437,8 +3437,7 @@
     const SD = window.SolarDash,
       c = cfg();
     if (!SD || !c) return null;
-    const PFX = SD.PFX,
-      HID = SD.HID,
+    const HID = SD.HID,
       E = c.entities || {};
     if (!HID.solar.length || !HID.house.length) return null;
     // A string's energy from its power: the hourly mean is the hour's kWh, and the
@@ -3459,13 +3458,9 @@
       p1: str(1),
       p2: str(2),
       p3: str(3),
-      bc: PFX
-        ? [PFX + "battery_charged_today", PFX + "battery_charged_total"]
-        : [],
-      bd: PFX
-        ? [PFX + "battery_discharged_today", PFX + "battery_discharged_total"]
-        : [],
-      pk: E.solar_power ? [E.solar_power] : PFX ? [PFX + "solar_power"] : [],
+      bc: E.battery_charged ? [E.battery_charged] : [],
+      bd: E.battery_discharged ? [E.battery_discharged] : [],
+      pk: E.solar_power ? [E.solar_power] : [],
     };
   }
   const ready = () => !!ids();
@@ -4031,9 +4026,9 @@
     if (d > t) {
       const k = diffD(t, d);
       if (k > 6) return null;
+      const E = (cfg() || {}).entities || {};
       const v = num(
-        "sensor.solcast_pv_forecast_forecast_" +
-          (k === 1 ? "tomorrow" : "day_" + (k + 1)),
+        k === 1 ? E.solcast_tomorrow : (E.solcast_days || [])[k - 2],
       );
       return v === null ? null : { v, src: "solcast" };
     }
@@ -4043,7 +4038,7 @@
         const s = sumA(A.today.moh);
         if (s) return { v: s, src: "06" };
       }
-      const v = num("sensor.solcast_pv_forecast_forecast_today");
+      const v = num(((cfg() || {}).entities || {}).solcast_today);
       return v === null ? null : { v, src: "solcast" };
     }
     const e = (A.history || []).find((x) => x.d === d);
