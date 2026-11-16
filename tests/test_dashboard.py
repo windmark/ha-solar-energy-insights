@@ -13,7 +13,6 @@ from pytest_homeassistant_custom_component.typing import WebSocketGenerator
 
 from custom_components.solar_energy_insights import const
 from custom_components.solar_energy_insights.dashboard import (
-    POWEROCEAN,
     SCRIPT,
     URL_BASE,
     async_register_frontend,
@@ -23,6 +22,7 @@ from custom_components.solar_energy_insights.dashboard import (
     string_panel_w_key,
     string_panels_key,
 )
+from custom_components.solar_energy_insights.discovery import POWEROCEAN
 from tests.common import ENTITIES, recent, record_house, set_states, setup_entry
 from tests.test_answers import evening_load
 from tests.test_config_flow import suggested

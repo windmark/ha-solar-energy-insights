@@ -240,7 +240,14 @@ async def dashboard_config(c: InsightsCoordinator) -> dict[str, Any]:
     ]
     return {
         "entities": entities,
-        "prefix": _prefix([e for e in entities.values() if e]),
+        # Kept for dashboards written before every sensor was in the settings.
+        "prefix": _prefix(
+            [
+                e
+                for k in ("solar", "house", "import", "export", "soc", "solar_power")
+                if isinstance(e := entities.get(k), str) and e
+            ]
+        ),
         "history_start": start.isoformat() if start else None,
         "strings": strings,
         "comparisons": comparisons(entry.options, [s["n"] for s in strings]),

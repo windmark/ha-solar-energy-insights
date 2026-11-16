@@ -13,14 +13,13 @@ from .const import CONF_DISCOVERED, DOMAIN
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
 from .dashboard import (
     COMPARISONS,
-    STRINGS,
     async_register_frontend,
     string_kwp_key,
     string_panel_w_key,
     string_panels_key,
     string_roof_key,
 )
-from .discovery import string_power_key, suggestions
+from .discovery import STRINGS, string_power_key, suggestions
 from .memory import MemoryStore
 from .repairs import check_reserve
 from .services import async_setup_services
