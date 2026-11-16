@@ -124,8 +124,29 @@
           "string_panels_pv3": "How many panels are on string PV3: count them on the roof or in your installer's plan.",
           "string_panel_w_pv3": "The watts on the panels' label, for example 420. Together with the number of panels this gives string PV3's size, which the dashboard uses to compare strings fairly. Leave both empty if you don't know.",
           "solar_from_kw": "The solar power the Solar now card and the power chart give the time of, such as \"1 kW of sun from ~09:35\"."
+        },
+        "sections": {
+          "comparisons": {
+            "name": "Comparisons",
+            "description": "Which strings the dashboard holds against which. Nothing here is guessed: leave a field empty and its tiles ask for it.",
+            "data": {
+              "compare_string": "Single out a string",
+              "compare_against": "Compare it against",
+              "compare_name": "Its name",
+              "matched_strings": "Strings that should produce alike"
+            },
+            "data_description": {
+              "compare_string": "The string the Roofs tiles look at on its own: what it is worth, when it helps, and how it does on dull and sunny days.",
+              "compare_against": "The strings it is held against. Empty means all the others.",
+              "compare_name": "Used in the tiles' titles, e.g. North roof. Empty means the string's name.",
+              "matched_strings": "Strings that should make about the same per kWp, e.g. on the same roof. The Strings in step tile compares them with each other."
+            }
+          }
         }
       }
+    },
+    "error": {
+      "compared_with_itself": "A string can't be compared against itself: take it out of \"Compare it against\"."
     }
   },
   "config_subentries": {

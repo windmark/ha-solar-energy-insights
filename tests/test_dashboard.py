@@ -17,6 +17,7 @@ from custom_components.solar_energy_insights.dashboard import (
     SCRIPT,
     URL_BASE,
     async_register_frontend,
+    comparisons,
     string_kwp,
     string_kwp_key,
     string_panel_w_key,
@@ -185,3 +186,65 @@ def test_a_size_from_panels_or_the_older_kwp_option() -> None:
     assert string_kwp({string_panels_key(1): 12, string_panel_w_key(1): 420}, 1) == 5.04
     assert string_kwp({string_kwp_key(1): 5.06}, 1) == 5.06  # set before, still counts
     assert string_kwp({string_panels_key(1): 12}, 1) is None  # half a size is no size
+
+
+def test_a_singled_out_string_is_held_against_the_others_unless_told() -> None:
+    chosen = {"comparisons": {"compare_string": "3", "matched_strings": ["1", "2"]}}
+
+    got = comparisons(chosen, [1, 2, 3])
+
+    assert got == {
+        "single": {"string": 3, "against": [1, 2], "name": "PV3"},
+        "matched": [1, 2],
+    }
+
+
+def test_comparisons_keep_only_strings_that_exist() -> None:
+    chosen = {
+        "comparisons": {
+            "compare_string": "3",
+            "compare_against": ["1", "3"],
+            "compare_name": " North roof ",
+            "matched_strings": ["1", "3"],
+        }
+    }
+
+    got = comparisons(chosen, [1, 3])
+
+    assert got["single"] == {"string": 3, "against": [1], "name": "North roof"}
+    # One string alone has nothing to be alike with.
+    assert comparisons(chosen, [1])["single"] is None
+    assert comparisons({}, [1, 2, 3]) == {"single": None, "matched": []}
+
+
+async def test_the_options_take_the_comparisons_and_keep_them(
+    home: HomeAssistant,
+) -> None:
+    powerocean_strings(home, (1, 2, 3))
+    set_states(home)
+    entry = await setup_entry(home, {})
+
+    form = await home.config_entries.options.async_init(entry.entry_id)
+    schema = form["data_schema"]
+    assert schema is not None
+    assert "comparisons" in {str(k) for k in schema.schema}
+    refused = await home.config_entries.options.async_configure(
+        form["flow_id"],
+        {
+            **{k: v for k, v in schema({}).items() if k != "comparisons"},
+            "comparisons": {"compare_string": "3", "compare_against": ["3"]},
+        },
+    )
+    assert refused["errors"] == {"base": "compared_with_itself"}
+
+    done = await home.config_entries.options.async_configure(
+        refused["flow_id"],
+        {
+            **{k: v for k, v in schema({}).items() if k != "comparisons"},
+            "comparisons": {"compare_string": "3", "matched_strings": ["1", "2"]},
+        },
+    )
+    await home.async_block_till_done()
+
+    assert done["type"] == "create_entry"
+    assert entry.options["comparisons"]["compare_string"] == "3"
