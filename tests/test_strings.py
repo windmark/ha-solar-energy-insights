@@ -418,7 +418,9 @@ async def test_the_strings_add_up_to_the_solar_counter(
 
 
 async def test_history_is_rebuilt_once_the_counter_is_set(
-    home: HomeAssistant, freezer: FrozenDateTimeFactory
+    home: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    hass_storage: dict[str, Any],
 ) -> None:
     strings = powerocean_strings(home, (1, 3))
     past = [DAY - timedelta(days=k) for k in (2, 1)]
@@ -438,4 +440,13 @@ async def test_history_is_rebuilt_once_the_counter_is_set(
     await home.async_block_till_done(wait_background_tasks=True)
     await async_wait_recording_done(home)
 
+    built = hass_storage[f"solar_energy_insights.{entry.entry_id}.pv1_energy"]
+    assert built["data"]["basis"]["solar"] == SOLAR
+    hours = await hourly(home, f"{PREFIX}pv1_energy_today", local(past[0], 0))
+    assert [round(r["state"], 2) for r in hours if r.get("state")][:4] == [
+        2.7,
+        5.4,
+        8.1,
+        10.8,
+    ]
     assert await days_of(home, f"{PREFIX}pv1_energy_today", past[0]) == [10.8, 10.8]
