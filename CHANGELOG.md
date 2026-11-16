@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.22.0] - 2026-11-16
+
 ### Changed
 
 - Every sensor taken from another integration is now an option you can see and change: each string's power, the battery's charged and discharged counters, Solcast's rooftop sites, its "last polled" sensor and its forecasts from day 3 on. Discovery only fills them in, once, on the first start after the update and in the options form; a field you clear stays clear. Nothing reads another integration's sensors by a name worked out in code any more.
