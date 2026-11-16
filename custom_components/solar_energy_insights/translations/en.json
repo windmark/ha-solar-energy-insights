@@ -92,7 +92,15 @@
           "string_panel_w_pv2": "PV2: watts per panel (optional)",
           "string_panels_pv3": "PV3: number of panels (optional)",
           "string_panel_w_pv3": "PV3: watts per panel (optional)",
-          "solar_from_kw": "Sun worth starting things on"
+          "solar_from_kw": "Sun worth starting things on",
+          "battery_charged_energy": "Battery charged energy",
+          "battery_discharged_energy": "Battery discharged energy",
+          "solcast_sites": "Solcast rooftop sites",
+          "solcast_polled": "Solcast last polled",
+          "solcast_days": "Solcast forecast, day 3 onwards",
+          "string_power_pv1": "PV1 power",
+          "string_power_pv2": "PV2 power",
+          "string_power_pv3": "PV3 power"
         },
         "data_description": {
           "nights": "How many recent nights the battery is tested against.",
@@ -123,7 +131,15 @@
           "string_panel_w_pv2": "The watts on the panels' label, for example 420. Together with the number of panels this gives string PV2's size, which the dashboard uses to compare strings fairly. Leave both empty if you don't know.",
           "string_panels_pv3": "How many panels are on string PV3: count them on the roof or in your installer's plan.",
           "string_panel_w_pv3": "The watts on the panels' label, for example 420. Together with the number of panels this gives string PV3's size, which the dashboard uses to compare strings fairly. Leave both empty if you don't know.",
-          "solar_from_kw": "The solar power the Solar now card and the power chart give the time of, such as \"1 kW of sun from ~09:35\"."
+          "solar_from_kw": "The solar power the Solar now card and the power chart give the time of, such as \"1 kW of sun from ~09:35\".",
+          "battery_charged_energy": "A counter of energy into the battery, for its history.",
+          "battery_discharged_energy": "A counter of energy out of the battery, for its history.",
+          "solcast_sites": "Solcast's rooftop site sensors: the array's roofs, directions and size.",
+          "solcast_polled": "When Solcast last fetched its forecast, so a forecast is judged by when it was made.",
+          "solcast_days": "Solcast's forecasts for the day after tomorrow and later, in order: day 3 first.",
+          "string_power_pv1": "String 1's power, for its share of the solar. Leave empty if there is no string 1.",
+          "string_power_pv2": "String 2's power, for its share of the solar. Leave empty if there is no string 2.",
+          "string_power_pv3": "String 3's power, for its share of the solar. Leave empty if there is no string 3."
         },
         "sections": {
           "comparisons": {

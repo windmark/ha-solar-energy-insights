@@ -34,6 +34,15 @@ DEFAULT_LOOKBACK_MIN: Final = 30
 CONF_GRID_IMPORT_ENERGY: Final = "grid_import_energy"
 CONF_GRID_EXPORT_ENERGY: Final = "grid_export_energy"
 CONF_SOLAR_POWER: Final = "solar_power"
+CONF_BATTERY_CHARGED_ENERGY: Final = "battery_charged_energy"
+CONF_BATTERY_DISCHARGED_ENERGY: Final = "battery_discharged_energy"
+# Solcast's rooftop site sensors, its "API last polled" sensor, and its
+# forecasts for the days after tomorrow, in order.
+CONF_SOLCAST_SITES: Final = "solcast_sites"
+CONF_SOLCAST_POLLED: Final = "solcast_polled"
+CONF_SOLCAST_DAYS: Final = "solcast_days"
+# Which options were filled from discovery once; a field cleared later stays clear.
+CONF_DISCOVERED: Final = "discovered"
 # For a heat pump in the scenario lab: the hour's outdoor temperature.
 CONF_OUTDOOR_TEMPERATURE: Final = "outdoor_temperature"
 # The most the grid takes: export above it is curtailed.

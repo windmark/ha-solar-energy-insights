@@ -17,7 +17,6 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_ICON, CONF_NAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import section
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
@@ -38,6 +37,8 @@ from .const import (
     CONF_ACHIEVEMENTS,
     CONF_ARRAY_KWP,
     CONF_BATTERY_CAPACITY,
+    CONF_BATTERY_CHARGED_ENERGY,
+    CONF_BATTERY_DISCHARGED_ENERGY,
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
     CONF_CHARGE_LIMIT,
@@ -64,6 +65,9 @@ from .const import (
     CONF_SOLAR_ENERGY,
     CONF_SOLAR_FROM,
     CONF_SOLAR_POWER,
+    CONF_SOLCAST_DAYS,
+    CONF_SOLCAST_POLLED,
+    CONF_SOLCAST_SITES,
     CONF_SOLCAST_TODAY,
     CONF_SOLCAST_TOMORROW,
     DEFAULT_FEED_IN_CT,
@@ -86,14 +90,13 @@ from .dashboard import (
     COMPARE_STRING,
     COMPARISONS,
     MATCHED_STRINGS,
-    discover_strings,
     roofs,
     string_panel_w_key,
     string_panels_key,
     string_roof_key,
 )
+from .discovery import STRINGS, powerocean, string_power_key, suggestions
 
-POWEROCEAN = "ef_powerocean_tcpmodbus"
 # PowerOcean unique ids end in _<key>; preferred first.
 POWEROCEAN_KEYS: dict[str, tuple[str, ...]] = {
     CONF_BATTERY_SOC: ("battery_soc",),
@@ -168,6 +171,15 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Optional(CONF_GRID_IMPORT_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Optional(CONF_GRID_EXPORT_ENERGY): _sensor(SensorDeviceClass.ENERGY),
         vol.Optional(CONF_SOLAR_POWER): _sensor(SensorDeviceClass.POWER),
+        vol.Optional(CONF_BATTERY_CHARGED_ENERGY): _sensor(SensorDeviceClass.ENERGY),
+        vol.Optional(CONF_BATTERY_DISCHARGED_ENERGY): _sensor(SensorDeviceClass.ENERGY),
+        vol.Optional(CONF_SOLCAST_SITES): EntitySelector(
+            EntitySelectorConfig(domain="sensor", multiple=True)
+        ),
+        vol.Optional(CONF_SOLCAST_POLLED): _sensor(),
+        vol.Optional(CONF_SOLCAST_DAYS): EntitySelector(
+            EntitySelectorConfig(domain="sensor", multiple=True)
+        ),
         vol.Optional(CONF_FEED_IN_CAP): EntitySelector(
             EntitySelectorConfig(domain=["sensor", "number", "input_number"])
         ),
@@ -193,56 +205,15 @@ OPTIONS_SCHEMA = vol.Schema(
 )
 
 
-POWEROCEAN_OPTION_KEYS: dict[str, tuple[str, ...]] = {
-    CONF_SOLAR_ENERGY: ("solar_total",),
-    CONF_GRID_IMPORT_ENERGY: ("grid_import_total",),
-    CONF_GRID_EXPORT_ENERGY: ("grid_export_total",),
-    CONF_SOLAR_POWER: ("solar_power",),
-    # The cap in force, which is where the inverter curtails.
-    CONF_FEED_IN_CAP: ("feed_in_power_max",),
-}
-
-
-def _array_size(hass: HomeAssistant) -> dict[str, float]:
+def _array_size(hass: HomeAssistant, sites: list[str]) -> dict[str, float]:
     """The array's DC size from Solcast's rooftop sites."""
-    kwp = array_of(hass).kwp
+    kwp = array_of(hass, sites).kwp
     return {CONF_ARRAY_KWP: round(kwp, 2)} if kwp else {}
-
-
-def _powerocean(
-    hass: HomeAssistant, keys: dict[str, tuple[str, ...]]
-) -> dict[str, str]:
-    """Entities of EF-PowerOcean-TcpModbus for these fields, by unique id."""
-    found: dict[str, str] = {}
-    for entry in er.async_get(hass).entities.values():
-        if entry.platform != POWEROCEAN or entry.domain not in ("sensor", "number"):
-            continue
-        for options in keys.values():
-            for key in options:
-                if entry.unique_id.endswith(f"_{key}"):
-                    found[key] = entry.entity_id
-    return {
-        field: next(found[key] for key in options if key in found)
-        for field, options in keys.items()
-        if any(key in found for key in options)
-    }
 
 
 def suggested_entities(hass: HomeAssistant) -> dict[str, Any]:
     """Prefill from EF-PowerOcean-TcpModbus and Solcast where they are installed."""
-    found: dict[str, str] = {}
-    for entry in er.async_get(hass).entities.values():
-        if entry.platform != POWEROCEAN or entry.domain not in ("sensor", "number"):
-            continue
-        for keys in POWEROCEAN_KEYS.values():
-            for key in keys:
-                if entry.unique_id.endswith(f"_{key}"):
-                    found[key] = entry.entity_id
-    out: dict[str, Any] = {
-        field: next(found[key] for key in keys if key in found)
-        for field, keys in POWEROCEAN_KEYS.items()
-        if any(key in found for key in keys)
-    }
+    out: dict[str, Any] = powerocean(hass, POWEROCEAN_KEYS)
     out.update({field: e for field, e in SOLCAST_IDS.items() if hass.states.get(e)})
     return out
 
@@ -364,7 +335,11 @@ class InsightsOptionsFlow(OptionsFlow):
                 errors["base"] = "compared_with_itself"
             else:
                 return self.async_create_entry(data=user_input)
-        strings = discover_strings(self.hass, self.config_entry)
+        entry = self.config_entry
+        found = suggestions(self.hass, entry)
+        shown = {**found, **entry.options}
+        sites = shown.get(CONF_SOLCAST_SITES) or []
+        strings = [n for n in STRINGS if shown.get(string_power_key(n))]
         roof_choices = [
             SelectOptionDict(
                 value=r["name"],
@@ -373,27 +348,23 @@ class InsightsOptionsFlow(OptionsFlow):
                     f"{r['tilt']:.0f}° tilt, {r['kwp']:g} kWp)"
                 ),
             )
-            for r in roofs(self.hass)
+            for r in roofs(self.hass, sites)
         ]
-        fields: dict[Any, Any] = {}
-        for st in strings:
-            fields[vol.Optional(string_panels_key(st["n"]))] = _number(
-                1, 200, 1, "panels"
-            )
-            fields[vol.Optional(string_panel_w_key(st["n"]))] = _number(
-                50, 1000, 1, "W"
-            )
+        fields: dict[Any, Any] = {
+            vol.Optional(string_power_key(n)): _sensor(SensorDeviceClass.POWER)
+            for n in STRINGS
+        }
+        for n in strings:
+            fields[vol.Optional(string_panels_key(n))] = _number(1, 200, 1, "panels")
+            fields[vol.Optional(string_panel_w_key(n))] = _number(50, 1000, 1, "W")
             if roof_choices:
-                fields[vol.Optional(string_roof_key(st["n"]))] = SelectSelector(
+                fields[vol.Optional(string_roof_key(n))] = SelectSelector(
                     SelectSelectorConfig(
                         options=roof_choices, mode=SelectSelectorMode.DROPDOWN
                     )
                 )
         if len(strings) >= 2:
-            pick = [
-                SelectOptionDict(value=str(st["n"]), label=f"PV{st['n']}")
-                for st in strings
-            ]
+            pick = [SelectOptionDict(value=str(n), label=f"PV{n}") for n in strings]
             fields[vol.Optional(COMPARISONS)] = section(
                 vol.Schema(
                     {
@@ -427,10 +398,6 @@ class InsightsOptionsFlow(OptionsFlow):
             errors=errors,
             data_schema=self.add_suggested_values_to_schema(
                 schema,
-                {
-                    **_powerocean(self.hass, POWEROCEAN_OPTION_KEYS),
-                    **_array_size(self.hass),
-                    **self.config_entry.options,
-                },
+                {**found, **_array_size(self.hass, sites), **entry.options},
             ),
         )

@@ -9,17 +9,17 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .config_flow import OPTIONS_SCHEMA
-from .const import DOMAIN
+from .const import CONF_DISCOVERED, DOMAIN
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
 from .dashboard import (
     COMPARISONS,
-    STRINGS,
     async_register_frontend,
     string_kwp_key,
     string_panel_w_key,
     string_panels_key,
     string_roof_key,
 )
+from .discovery import STRINGS, string_power_key, suggestions
 from .memory import MemoryStore
 from .repairs import check_reserve
 from .services import async_setup_services
@@ -38,6 +38,7 @@ async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: InsightsConfigEntry) -> bool:
     _drop_old_options(hass, entry)
+    _fill_discovered(hass, entry)
     coordinator = InsightsCoordinator(hass, entry)
     await coordinator.memory.async_load()
     await coordinator.async_remember_from_recorder()
@@ -58,7 +59,8 @@ def _drop_old_options(hass: HomeAssistant, entry: InsightsConfigEntry) -> None:
     they do not linger in the entry and in diagnostics."""
     known = (
         {str(key) for key in OPTIONS_SCHEMA.schema}
-        | {COMPARISONS}
+        | {COMPARISONS, CONF_DISCOVERED}
+        | {string_power_key(n) for n in STRINGS}
         | {
             key(n)
             for n in STRINGS
@@ -73,6 +75,28 @@ def _drop_old_options(hass: HomeAssistant, entry: InsightsConfigEntry) -> None:
     kept = {k: v for k, v in entry.options.items() if k in known}
     if kept != dict(entry.options):
         hass.config_entries.async_update_entry(entry, options=kept)
+
+
+def _fill_discovered(hass: HomeAssistant, entry: InsightsConfigEntry) -> None:
+    """Options other integrations can fill are filled from them once, and saved
+    as options the user sees and can change. One cleared later stays cleared."""
+    done = set(entry.options.get(CONF_DISCOVERED) or [])
+    found = suggestions(hass, entry)
+    new = {
+        k: v
+        for k, v in found.items()
+        if k not in done and entry.options.get(k) in (None, "", [])
+    }
+    if not new and done >= set(found):
+        return
+    hass.config_entries.async_update_entry(
+        entry,
+        options={
+            **entry.options,
+            **new,
+            CONF_DISCOVERED: sorted(done | set(found)),
+        },
+    )
 
 
 async def _async_reload(hass: HomeAssistant, entry: InsightsConfigEntry) -> None:

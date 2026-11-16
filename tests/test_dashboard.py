@@ -13,7 +13,6 @@ from pytest_homeassistant_custom_component.typing import WebSocketGenerator
 
 from custom_components.solar_energy_insights import const
 from custom_components.solar_energy_insights.dashboard import (
-    POWEROCEAN,
     SCRIPT,
     URL_BASE,
     async_register_frontend,
@@ -23,6 +22,7 @@ from custom_components.solar_energy_insights.dashboard import (
     string_panel_w_key,
     string_panels_key,
 )
+from custom_components.solar_energy_insights.discovery import POWEROCEAN
 from tests.common import ENTITIES, recent, record_house, set_states, setup_entry
 from tests.test_answers import evening_load
 from tests.test_config_flow import suggested
@@ -248,3 +248,64 @@ async def test_the_options_take_the_comparisons_and_keep_them(
 
     assert done["type"] == "create_entry"
     assert entry.options["comparisons"]["compare_string"] == "3"
+
+
+async def test_discovered_strings_are_saved_as_options_once(
+    home: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    strings = powerocean_strings(home, (1, 2))
+    set_states(home)
+    entry = await setup_entry(home)
+
+    assert entry.options["string_power_pv1"] == strings[1]
+    assert entry.options["string_power_pv2"] == strings[2]
+
+    # Cleared by the user: not filled again on the next start.
+    home.config_entries.async_update_entry(
+        entry,
+        options={k: v for k, v in entry.options.items() if k != "string_power_pv2"},
+    )
+    await home.async_block_till_done(wait_background_tasks=True)
+    await home.config_entries.async_reload(entry.entry_id)
+    await home.async_block_till_done(wait_background_tasks=True)
+
+    assert "string_power_pv2" not in entry.options
+    found = [s["n"] for s in (await config_of(home, hass_ws_client))["strings"]]
+    assert found == [1]
+
+
+async def test_strings_are_the_sensors_chosen_whatever_integration_they_are_from(
+    home: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    set_states(home)
+    await setup_entry(
+        home,
+        {"string_power_pv2": "sensor.my_west_roof_power", "discovered": []},
+    )
+
+    cfg = await config_of(home, hass_ws_client)
+
+    assert [(s["n"], s["power"]) for s in cfg["strings"]] == [
+        (2, "sensor.my_west_roof_power")
+    ]
+
+
+async def test_the_dashboard_gets_the_chosen_battery_and_solcast_sensors(
+    home: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    set_states(home)
+    await setup_entry(
+        home,
+        {
+            "battery_charged_energy": "sensor.into_battery",
+            "battery_discharged_energy": "sensor.out_of_battery",
+            "solcast_days": ["sensor.day_three", "sensor.day_four"],
+        },
+    )
+
+    entities = (await config_of(home, hass_ws_client))["entities"]
+
+    assert entities["battery_charged"] == "sensor.into_battery"
+    assert entities["battery_discharged"] == "sensor.out_of_battery"
+    assert entities["solcast_days"] == ["sensor.day_three", "sensor.day_four"]
+    assert entities["solcast_today"] == ENTITIES[const.CONF_SOLCAST_TODAY]

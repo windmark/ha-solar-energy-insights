@@ -11,11 +11,10 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_SOLAR_ENERGY
+from .const import CONF_SOLAR_ENERGY, CONF_SOLCAST_POLLED
 from .core.array import clear_day_kwh
 from .core.checkpoints import CHECKPOINTS, Judged, Snapshot, judge, scores
 
@@ -25,19 +24,13 @@ if TYPE_CHECKING:
     from .coordinator import InsightsCoordinator
 
 _LOGGER = logging.getLogger(__name__)
-SOLCAST = "solcast_solar"
 KEEP_DAYS = 400
 
 
-def solcast_polled_at(hass: HomeAssistant) -> datetime | None:
+def solcast_polled_at(hass: HomeAssistant, entity_id: str | None) -> datetime | None:
     """When Solcast last refreshed its forecast ("API Last Polled")."""
-    for entry in er.async_get(hass).entities.values():
-        if entry.platform == SOLCAST and entry.unique_id.endswith(
-            ("last_updated", "lastupdated")
-        ):
-            state = hass.states.get(entry.entity_id)
-            return dt_util.parse_datetime(state.state) if state else None
-    return None
+    state = hass.states.get(entity_id) if entity_id else None
+    return dt_util.parse_datetime(state.state) if state else None
 
 
 class Checkpoints:
@@ -83,7 +76,15 @@ class Checkpoints:
         )
         if not slots:
             return
-        snap = Snapshot(name, day, now, solcast_polled_at(self.c.hass), slots)
+        snap = Snapshot(
+            name,
+            day,
+            now,
+            solcast_polled_at(
+                self.c.hass, self.c.config_entry.options.get(CONF_SOLCAST_POLLED)
+            ),
+            slots,
+        )
         self.store[f"{day.isoformat()}|{name}"] = snap.as_dict()
         self.c.memory.async_save_later()
         # Show it now, not at the next plan.

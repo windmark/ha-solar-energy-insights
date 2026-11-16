@@ -12,11 +12,12 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.statistics import statistics_during_period
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from .appliance import card_appliances
 from .const import (
+    CONF_BATTERY_CHARGED_ENERGY,
+    CONF_BATTERY_DISCHARGED_ENERGY,
     CONF_BATTERY_SOC,
     CONF_GRID_EXPORT_ENERGY,
     CONF_GRID_IMPORT_ENERGY,
@@ -24,16 +25,19 @@ from .const import (
     CONF_HOUSE_ENERGY,
     CONF_SOLAR_ENERGY,
     CONF_SOLAR_POWER,
+    CONF_SOLCAST_DAYS,
+    CONF_SOLCAST_SITES,
+    CONF_SOLCAST_TODAY,
+    CONF_SOLCAST_TOMORROW,
     DOMAIN,
 )
+from .discovery import STRINGS, string_power_key
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
 
     from .coordinator import InsightsCoordinator
 
-POWEROCEAN = "ef_powerocean_tcpmodbus"
-STRINGS = (1, 2, 3)
 # Panels and watts per panel: whole numbers anyone can read off a panel, and no
 # decimals, which some phone keypads can't enter. The kWp option is older.
 STRING_PANELS = "string_panels_pv{}"
@@ -130,8 +134,8 @@ def facing(compass: float) -> str:
     return WORDS[round(compass / 45) % 8]
 
 
-def roofs(hass: HomeAssistant) -> list[dict[str, Any]]:
-    """The roofs Solcast knows: each site's name, direction, tilt and size."""
+def roofs(hass: HomeAssistant, sites: list[str]) -> list[dict[str, Any]]:
+    """The roofs of these Solcast sites: each one's name, direction, tilt and size."""
     from .array import array_of
 
     return [
@@ -142,28 +146,18 @@ def roofs(hass: HomeAssistant) -> list[dict[str, Any]]:
             "kwp": p.kwp,
             "facing": facing(p.compass_deg),
         }
-        for k, p in enumerate(array_of(hass).planes)
+        for k, p in enumerate(array_of(hass, sites).planes)
     ]
 
 
-def discover_strings(hass: HomeAssistant, entry: ConfigEntry) -> list[dict[str, Any]]:
-    """PowerOcean's per-string power sensors, on the same installation as the
-    configured battery: [{"n": 1, "name": "PV1", "power": entity_id}, …]."""
-    registry = er.async_get(hass)
-    battery = registry.async_get(str(entry.data.get(CONF_BATTERY_SOC, "")))
-    if battery is None or battery.platform != POWEROCEAN:
-        return []
-    found = []
-    for n in STRINGS:
-        for candidate in registry.entities.values():
-            if (
-                candidate.platform == POWEROCEAN
-                and candidate.config_entry_id == battery.config_entry_id
-                and candidate.unique_id.endswith(f"_pv{n}_power")
-            ):
-                found.append({"n": n, "name": f"PV{n}", "power": candidate.entity_id})
-                break
-    return found
+def configured_strings(entry: ConfigEntry) -> list[dict[str, Any]]:
+    """The strings whose power sensor is set in the options:
+    [{"n": 1, "name": "PV1", "power": entity_id}, …]."""
+    return [
+        {"n": n, "name": f"PV{n}", "power": power}
+        for n in STRINGS
+        if (power := entry.options.get(string_power_key(n)))
+    ]
 
 
 def _prefix(entity_ids: list[str]) -> str:
@@ -218,13 +212,21 @@ async def dashboard_config(c: InsightsCoordinator) -> dict[str, Any]:
         "soc": setting.get(CONF_BATTERY_SOC),
         "solar_power": setting.get(CONF_SOLAR_POWER),
         "grid_power": setting.get(CONF_GRID_POWER),
+        "battery_charged": setting.get(CONF_BATTERY_CHARGED_ENERGY),
+        "battery_discharged": setting.get(CONF_BATTERY_DISCHARGED_ENERGY),
+        "solcast_today": setting.get(CONF_SOLCAST_TODAY),
+        "solcast_tomorrow": setting.get(CONF_SOLCAST_TOMORROW),
+        # Day 3 onwards, in order.
+        "solcast_days": list(setting.get(CONF_SOLCAST_DAYS) or []),
     }
     start = (
         await history_start(c.hass, str(entities["house"]))
         if entities["house"]
         else None
     )
-    by_name = {r["name"]: r for r in roofs(c.hass)}
+    by_name = {
+        r["name"]: r for r in roofs(c.hass, setting.get(CONF_SOLCAST_SITES) or [])
+    }
     strings = [
         {
             **s,
@@ -234,11 +236,18 @@ async def dashboard_config(c: InsightsCoordinator) -> dict[str, Any]:
             "power_per_kwp": f"sensor.{DOMAIN}_pv{s['n']}_power_per_kwp",
             "yield": f"sensor.{DOMAIN}_pv{s['n']}_yield_today",
         }
-        for s in discover_strings(c.hass, entry)
+        for s in configured_strings(entry)
     ]
     return {
         "entities": entities,
-        "prefix": _prefix([e for e in entities.values() if e]),
+        # Kept for dashboards written before every sensor was in the settings.
+        "prefix": _prefix(
+            [
+                e
+                for k in ("solar", "house", "import", "export", "soc", "solar_power")
+                if isinstance(e := entities.get(k), str) and e
+            ]
+        ),
         "history_start": start.isoformat() if start else None,
         "strings": strings,
         "comparisons": comparisons(entry.options, [s["n"] for s in strings]),

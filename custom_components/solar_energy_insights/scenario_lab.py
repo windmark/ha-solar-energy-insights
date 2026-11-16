@@ -139,7 +139,7 @@ class ScenarioLab:
         if solar is None:
             return []
         if self._read_at is None or now - self._read_at >= REREAD_AFTER:
-            from .dashboard import discover_strings
+            from .dashboard import configured_strings
 
             entry = self.coordinator.config_entry
             self._hours = await recorded_hours(
@@ -148,10 +148,7 @@ class ScenarioLab:
                 solar,
                 self.temperature,
                 now,
-                strings={
-                    s["n"]: s["power"]
-                    for s in discover_strings(self.coordinator.hass, entry)
-                },
+                strings={s["n"]: s["power"] for s in configured_strings(entry)},
                 grid_import=entry.options.get(CONF_GRID_IMPORT_ENERGY),
                 grid_export=entry.options.get(CONF_GRID_EXPORT_ENERGY),
             )

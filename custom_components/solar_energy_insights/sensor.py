@@ -41,7 +41,7 @@ from .core.history import (
 )
 from .core.nights import days_covered
 from .core.plan import Outlook, Plan
-from .dashboard import discover_strings, history_start, string_kwp
+from .dashboard import configured_strings, history_start, string_kwp
 from .entity import ApplianceEntity, InsightsEntity
 from .serialize import costs
 from .strings import backfill_energy, energy_today, power_kw, repair_energy_sums
@@ -397,7 +397,7 @@ async def async_setup_entry(
                 BatterySizingSensor(coordinator, BATTERY_SIZING),
             ]
         )
-    for found in discover_strings(coordinator.hass, entry):
+    for found in configured_strings(entry):
         n, power = found["n"], found["power"]
         async_add_entities(
             [
