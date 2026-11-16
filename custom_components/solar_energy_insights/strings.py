@@ -164,6 +164,10 @@ async def backfill_energy(
         out.append(StatisticData(start=t, state=round(today, 3), sum=round(total, 3)))
     if not out:
         return 0
+    if last.get(energy):
+        # The recorder keeps hours it already has when they are imported again:
+        # clear them first, and write the history afresh.
+        recorder.async_clear_statistics([energy])
     async_import_statistics(
         hass,
         StatisticMetaData(

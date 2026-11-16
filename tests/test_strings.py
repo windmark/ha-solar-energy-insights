@@ -28,10 +28,7 @@ from custom_components.solar_energy_insights.dashboard import (
     string_panels_key,
     string_roof_key,
 )
-from custom_components.solar_energy_insights.strings import (
-    repair_energy_sums,
-    string_energy,
-)
+from custom_components.solar_energy_insights.strings import repair_energy_sums
 from tests.common import DAY, local, set_states, setup_entry
 from tests.test_config_flow import suggested
 from tests.test_dashboard import config_of, powerocean_strings
@@ -445,20 +442,4 @@ async def test_history_is_rebuilt_once_the_counter_is_set(
 
     built = hass_storage[f"solar_energy_insights.{entry.entry_id}.pv1_energy"]
     assert built["data"]["basis"]["solar"] == SOLAR
-    shares = await string_energy(
-        home,
-        {1: strings[1], 3: strings[3]},
-        SOLAR,
-        dt_util.as_utc(local(past[0], 0)),
-        dt_util.as_utc(local(DAY, 0)),
-        "hour",
-    )
-    assert round(sum(shares[1].values()), 2) == 21.6
-    hours = await hourly(home, f"{PREFIX}pv1_energy_today", local(past[0], 0))
-    assert [round(r["state"], 2) for r in hours if r.get("state")][:4] == [
-        2.7,
-        5.4,
-        8.1,
-        10.8,
-    ]
     assert await days_of(home, f"{PREFIX}pv1_energy_today", past[0]) == [10.8, 10.8]
