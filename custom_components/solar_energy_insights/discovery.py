@@ -89,11 +89,12 @@ def string_power(hass: HomeAssistant, battery: str | None) -> dict[str, str]:
 
 
 def solcast_sites(hass: HomeAssistant) -> list[str]:
-    return sorted(
+    """Solcast's rooftop sites, in the order Solcast added them."""
+    return [
         e.entity_id
         for e in _entries(hass, SOLCAST)
         if e.unique_id.startswith(ROOFTOP_PREFIX)
-    )
+    ]
 
 
 def solcast_polled(hass: HomeAssistant) -> str | None:
