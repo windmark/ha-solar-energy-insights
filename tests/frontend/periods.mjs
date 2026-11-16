@@ -208,7 +208,9 @@ check(
     near(V.tot.e, 21),
 );
 check("its peak in kW", V.tot.pk === 6);
-check("a string's energy from its power, not its counter", near(V.tot.p2, 42));
+// PV1 10 kWh a day, PV2 6 from its power: the counter's 10 shared 10 : 6
+check("the strings add up to the solar counter", near(V.tot.p1 + V.tot.p2, 70));
+check("a string's share from its power", near(V.tot.p2, (70 * 6) / 16));
 check(
   "power asked as hourly means in W",
   asked.some(

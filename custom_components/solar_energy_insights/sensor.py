@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import statistics
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -21,11 +22,12 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 
 from .appliance import appliances
-from .const import CONF_FEED_IN_CAP, DOMAIN
+from .const import CONF_FEED_IN_CAP, CONF_SOLAR_ENERGY, DOMAIN
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
 from .core.achievements.facts import MAX_SPIKE_SHARE, MIN_SPIKE_HOURS, DayFacts
 from .core.history import (
@@ -397,11 +399,13 @@ async def async_setup_entry(
                 BatterySizingSensor(coordinator, BATTERY_SIZING),
             ]
         )
-    for found in configured_strings(entry):
+    strings = configured_strings(entry)
+    powers = {s["n"]: s["power"] for s in strings}
+    for found in strings:
         n, power = found["n"], found["power"]
         async_add_entities(
             [
-                StringEnergySensor(coordinator, n, power),
+                StringEnergySensor(coordinator, n, power, powers),
                 StringPowerPerKwpSensor(coordinator, n, power),
                 StringYieldSensor(coordinator, n, power),
             ]
@@ -743,17 +747,50 @@ class StringEnergySensor(_StringSensor):
     _day: date | None = None
     _checked: dict[str, Any] | None = None
 
+    def __init__(
+        self,
+        coordinator: InsightsCoordinator,
+        n: int,
+        power: str,
+        powers: Mapping[int, str],
+    ) -> None:
+        super().__init__(coordinator, n, power)
+        # Every string's power: a string's energy is its share of the counter.
+        self.powers = dict(powers)
+
+    @property
+    def solar(self) -> str | None:
+        return self.coordinator.config_entry.options.get(CONF_SOLAR_ENERGY)
+
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         self.async_on_remove(
             async_track_time_interval(self.hass, self._async_refresh, ENERGY_REFRESH)
         )
         await self._async_refresh()
-        # Once, so charts on this sensor keep the string's past days.
+        # Once, so charts on this sensor keep the string's past days; again
+        # whenever the counter they are shares of changes.
         start = await history_start(self.hass, self.power)
-        await backfill_energy(
-            self.hass, self.power, self.entity_id, f"PV{self.n} energy", start
+        store: Store[dict[str, Any]] = Store(
+            self.hass,
+            1,
+            f"{DOMAIN}.{self.coordinator.config_entry.entry_id}.pv{self.n}_energy",
         )
+        built = await store.async_load() or {}
+        basis = {"solar": self.solar, "strings": sorted(self.powers.items())}
+        basis = json.loads(json.dumps(basis))
+        await backfill_energy(
+            self.hass,
+            self.n,
+            self.powers,
+            self.solar,
+            self.entity_id,
+            f"PV{self.n} energy",
+            start,
+            rebuild=built.get("basis") != basis,
+        )
+        if start is not None:
+            await store.async_save({"basis": basis})
         # The recorder starts its own running total at zero after a backfill;
         # check for that drop now and every hour, from the last hour checked.
         self.async_on_remove(
@@ -768,7 +805,7 @@ class StringEnergySensor(_StringSensor):
 
     async def _async_refresh(self, _now: datetime | None = None) -> None:
         now = dt_util.utcnow()
-        value = await energy_today(self.hass, self.power, now)
+        value = await energy_today(self.hass, self.n, self.powers, self.solar, now)
         # Just after the hour, the hour that ended isn't in the statistics yet;
         # a dip would read as a meter reset and count the day twice.
         day = dt_util.as_local(now).date()
