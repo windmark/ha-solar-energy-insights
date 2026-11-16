@@ -3546,6 +3546,77 @@
     return { rows, hours };
   }
 
+  /* The recorder answers a few requests at a time. Sent all at once, a long
+     history's months waited in line, and their timeouts ran out while they
+     waited, so they were asked again and again. So: two at a time, the newest
+     month first, and the timeout counted from when a request is sent. */
+  const AT_ONCE = 2;
+  const line = { busy: 0, waiting: [] };
+  function inLine(mk, run) {
+    return new Promise((resolve, reject) => {
+      line.waiting.push({ mk, run, resolve, reject });
+      next();
+    });
+  }
+  function next() {
+    while (line.busy < AT_ONCE && line.waiting.length) {
+      let k = 0;
+      line.waiting.forEach((w, i) => {
+        if (w.mk > line.waiting[k].mk) k = i;
+      });
+      const w = line.waiting.splice(k, 1)[0];
+      line.busy++;
+      w.run()
+        .then(w.resolve, w.reject)
+        .finally(() => {
+          line.busy--;
+          next();
+        });
+    }
+  }
+
+  /* Months that are over don't change: they are kept in the browser (IndexedDB),
+     so opening the dashboard again doesn't read them from the recorder again. A
+     month is kept per set of sensors; STORE_VER changes when parseHours does. */
+  const STORE_VER = 1;
+  const kept = (() => {
+    let db = null;
+    const open = () =>
+      db ||
+      (db = new Promise((done) => {
+        try {
+          const r = indexedDB.open("solar-energy-insights", 1);
+          r.onupgradeneeded = () => r.result.createObjectStore("months");
+          r.onsuccess = () => done(r.result);
+          r.onerror = r.onblocked = () => done(null);
+        } catch (e) {
+          done(null);
+        }
+      }));
+    const ask = (mode, f) =>
+      typeof indexedDB === "undefined"
+        ? Promise.resolve(null)
+        : open().then(
+            (d) =>
+              d &&
+              new Promise((done) => {
+                try {
+                  const q = f(
+                    d.transaction("months", mode).objectStore("months"),
+                  );
+                  q.onsuccess = () => done(q.result || null);
+                  q.onerror = () => done(null);
+                } catch (e) {
+                  done(null);
+                }
+              }),
+          );
+    return {
+      get: (mk) => ask("readonly", (st) => st.get(mk)),
+      put: (mk, v) => ask("readwrite", (st) => st.put(v, mk)),
+    };
+  })();
+
   /** Month-chunk loader: hourly statistics for one month, kept as day rows and
       hour arrays. The current month is refreshed every TTL. */
   function ensure(hass, mk) {
@@ -3564,33 +3635,57 @@
       box[mk] = { rows: {}, hours: {}, t: now };
       return Promise.resolve(box[mk]);
     }
-    const p = timeout(
-      hass.callWS({
-        type: "recorder/statistics_during_period",
-        start_time: s.toISOString(),
-        end_time: e.toISOString(),
-        statistic_ids: [...new Set(Object.values(I).flat())],
-        period: "hour",
-        types: ["change", "max", "mean"],
-        units: { power: "W" },
-      }),
-      30000,
-    )
-      .then((r) => {
-        box[mk] = { ...parseHours(r, I), t: Date.now() };
-        wake();
-        return box[mk];
-      })
-      .catch(() => {
-        box[mk] = {
-          rows: c && c.rows,
-          hours: c && c.hours,
-          t: Date.now(),
-          err: true,
-        };
-        wake();
-        return c && c.rows ? box[mk] : null;
-      });
+    const sensors = JSON.stringify([I, [...powerIds()].sort()]);
+    const read = () =>
+      inLine(mk, () =>
+        timeout(
+          hass.callWS({
+            type: "recorder/statistics_during_period",
+            start_time: s.toISOString(),
+            end_time: e.toISOString(),
+            statistic_ids: [...new Set(Object.values(I).flat())],
+            period: "hour",
+            types: ["change", "max", "mean"],
+            units: { power: "W" },
+          }),
+          30000,
+        ),
+      )
+        .then((r) => {
+          box[mk] = { ...parseHours(r, I), t: Date.now() };
+          if (!cur)
+            kept.put(mk, {
+              v: STORE_VER,
+              sensors,
+              at: box[mk].t,
+              rows: box[mk].rows,
+              hours: box[mk].hours,
+            });
+          wake();
+          return box[mk];
+        })
+        .catch(() => {
+          const was = box[mk] || c;
+          box[mk] = {
+            rows: was && was.rows,
+            hours: was && was.hours,
+            t: Date.now(),
+            err: true,
+          };
+          wake();
+          return was && was.rows ? box[mk] : null;
+        });
+    // A month kept from an earlier visit shows at once. Read before the month
+    // was over (plus the recorder's lag), it is read again behind it.
+    const p = (
+      cur || (c && c.rows) ? Promise.resolve(null) : kept.get(mk)
+    ).then((k) => {
+      if (!(k && k.v === STORE_VER && k.sensors === sensors)) return read();
+      box[mk] = { rows: k.rows, hours: k.hours, t: k.at };
+      if (k.at < e.getTime() + 2 * 3600e3) box[mk].p = read();
+      wake();
+      return box[mk];
+    });
     box[mk] = { rows: c && c.rows, hours: c && c.hours, t: c ? c.t : 0, p };
     return p;
   }
