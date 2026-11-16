@@ -3538,6 +3538,30 @@
         a[t.getHours()] = (a[t.getHours()] || 0) + x.change; // the 25-hour DST day adds up
       });
     }
+    // Each string's energy is its share of the solar counter: in an hour with the
+    // counter's reading and every string's, the counted kWh shared by power.
+    // Power is measured before the inverter, so on its own it never meets the
+    // counter; the strings then add up to it, as the integration's sensors do.
+    const strs = ["p1", "p2", "p3"].filter(
+      (k) => I[k] && I[k].some((x) => r && r[x] && r[x].length),
+    );
+    Object.keys(hours).forEach((d) => {
+      const hd = hours[d],
+        have = strs.filter((k) => hd[k]);
+      if (!hd.y || !have.length || have.length < strs.length) return;
+      for (let i = 0; i < hd.y.length; i++) {
+        const own = have.map((k) => hd[k][i]);
+        if (hd.y[i] === null || own.some((v) => v === null)) continue;
+        const sum = own.reduce((a, v) => a + Math.max(v, 0), 0);
+        if (sum <= 0) continue;
+        have.forEach((k) => {
+          hd[k][i] = (Math.max(hd[k][i], 0) / sum) * Math.max(hd.y[i], 0);
+        });
+      }
+      have.forEach((k) => {
+        rows[d][k] = hd[k].reduce((a, v) => a + (v || 0), 0);
+      });
+    });
     return { rows, hours };
   }
 
@@ -3573,7 +3597,7 @@
   /* Months that are over don't change: they are kept in the browser (IndexedDB),
      so opening the dashboard again doesn't read them from the recorder again. A
      month is kept per set of sensors; STORE_VER changes when parseHours does. */
-  const STORE_VER = 1;
+  const STORE_VER = 2;
   const kept = (() => {
     let db = null;
     const open = () =>
