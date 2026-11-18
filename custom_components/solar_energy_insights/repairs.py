@@ -16,7 +16,7 @@ from .appliance_discovery import Found, found_appliances, issue_id
 from .const import (
     CONF_APPLIANCE_ENERGY,
     CONF_BATTERY_RESERVE,
-    CONF_ENERGY_PER_RUN,
+    CONF_REJECTED_APPLIANCES,
     DOMAIN,
     SUBENTRY_APPLIANCE,
 )
@@ -147,7 +147,34 @@ class ApplianceFoundFlow(RepairsFlow):
     async def async_step_init(
         self, _user_input: dict[str, Any] | None = None
     ) -> RepairsFlowResult:
-        return await self.async_step_confirm()
+        entry, found = self._found()
+        if entry is None or found is None:
+            return self.async_abort(reason="gone")
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["reject", "submit"],
+            description_placeholders={"name": found.name, "energy": found.energy},
+        )
+
+    async def async_step_reject(
+        self, _user_input: dict[str, Any] | None = None
+    ) -> RepairsFlowResult:
+        """Not this one: remembered, so it is not suggested again."""
+        entry = self.hass.config_entries.async_get_entry(self.entry_id)
+        if entry is not None:
+            rejected = list(entry.options.get(CONF_REJECTED_APPLIANCES) or [])
+            if self.energy not in rejected:
+                rejected.append(self.energy)
+            self.hass.config_entries.async_update_entry(
+                entry, options={**entry.options, CONF_REJECTED_APPLIANCES: rejected}
+            )
+            check_appliances(self.hass, entry)
+        return self.async_create_entry(data={})
+
+    async def async_step_submit(
+        self, _user_input: dict[str, Any] | None = None
+    ) -> RepairsFlowResult:
+        return await self.async_step_confirm({})
 
     async def async_step_confirm(
         self, user_input: dict[str, Any] | None = None
@@ -164,12 +191,6 @@ class ApplianceFoundFlow(RepairsFlow):
                     data={
                         **subentry.data,
                         CONF_APPLIANCE_ENERGY: found.energy,
-                        **(
-                            {CONF_ENERGY_PER_RUN: found.energy_per_run}
-                            if found.energy_per_run
-                            and not subentry.data.get(CONF_ENERGY_PER_RUN)
-                            else {}
-                        ),
                     },
                 )
             else:

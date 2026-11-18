@@ -2241,16 +2241,23 @@
       const hrs = (e?.attributes?.hours || [])
         .filter((h) => h > 0.2 && h < 8)
         .slice(-5);
+      // The integration's appliances come with their run learned from their
+      // energy counter; "learned" false is still the typical figures.
+      const fromIntegration = a.learned !== undefined;
       return {
         id: "a" + i,
         energy: a.energy || null,
         name: a.name || "Appliance",
         icon: a.icon || "mdi:power-plug-outline",
-        kwh: k,
-        est: est && !!a.energy_per_run,
-        h: hrs.length
-          ? hrs.reduce((s, h) => s + h, 0) / hrs.length
-          : +a.hours || 2,
+        kwh: fromIntegration ? +a.kwh || typical : k,
+        est: fromIntegration
+          ? !a.learned && !!a.energy
+          : est && !!a.energy_per_run,
+        h: fromIntegration
+          ? +a.hours || 2
+          : hrs.length
+            ? hrs.reduce((s, h) => s + h, 0) / hrs.length
+            : +a.hours || 2,
       };
     });
     const sims = () => {
@@ -2408,7 +2415,9 @@
       APPS.map(
         (a) => `${a.name} ${a.kwh.toFixed(1)} kWh over ${a.h.toFixed(1)} h`,
       ).join(" · ") +
-        (est.length ? ` (${est.join(" and ")} estimated until first run)` : ""),
+        (est.length
+          ? ` (${est.join(" and ")} estimated until its counter records a run)`
+          : ""),
       washerOn
         ? `${
             RUN.name || "An appliance"
@@ -2514,16 +2523,23 @@
       const hrs = (e?.attributes?.hours || [])
         .filter((h) => h > 0.2 && h < 8)
         .slice(-5);
+      // The integration's appliances come with their run learned from their
+      // energy counter; "learned" false is still the typical figures.
+      const fromIntegration = a.learned !== undefined;
       return {
         id: "a" + i,
         energy: a.energy || null,
         name: a.name || "Appliance",
         icon: a.icon || "mdi:power-plug-outline",
-        kwh: k,
-        est: est && !!a.energy_per_run,
-        h: hrs.length
-          ? hrs.reduce((s, h) => s + h, 0) / hrs.length
-          : +a.hours || 2,
+        kwh: fromIntegration ? +a.kwh || typical : k,
+        est: fromIntegration
+          ? !a.learned && !!a.energy
+          : est && !!a.energy_per_run,
+        h: fromIntegration
+          ? +a.hours || 2
+          : hrs.length
+            ? hrs.reduce((s, h) => s + h, 0) / hrs.length
+            : +a.hours || 2,
       };
     });
     const sims = () => {

@@ -9,7 +9,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .config_flow import OPTIONS_SCHEMA
-from .const import CONF_DISCOVERED, DOMAIN
+from .const import CONF_DISCOVERED, CONF_REJECTED_APPLIANCES, DOMAIN
 from .coordinator import InsightsConfigEntry, InsightsCoordinator
 from .dashboard import (
     COMPARISONS,
@@ -60,7 +60,7 @@ def _drop_old_options(hass: HomeAssistant, entry: InsightsConfigEntry) -> None:
     they do not linger in the entry and in diagnostics."""
     known = (
         {str(key) for key in OPTIONS_SCHEMA.schema}
-        | {COMPARISONS, CONF_DISCOVERED}
+        | {COMPARISONS, CONF_DISCOVERED, CONF_REJECTED_APPLIANCES}
         | {string_power_key(n) for n in STRINGS}
         | {
             key(n)

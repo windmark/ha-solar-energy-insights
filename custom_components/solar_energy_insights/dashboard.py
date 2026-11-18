@@ -257,7 +257,7 @@ async def dashboard_config(c: InsightsCoordinator) -> dict[str, Any]:
             for day, slots in sorted(c.memory.memory.forecasts.items())
         },
         # For cards without appliances of their own.
-        "appliances": card_appliances(entry),
+        "appliances": card_appliances(entry, c.appliance_runs),
         # The solar power the plan's solar_from is the time of.
         "solar_from_kw": c.solar_from_kw,
     }

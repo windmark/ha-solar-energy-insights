@@ -11,7 +11,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .appliance import DEFAULT_ICON, appliance_run
-from .const import DOMAIN
+from .const import CONF_APPLIANCE_ENERGY, DOMAIN
 from .coordinator import InsightsCoordinator
 from .core.appliances import Run, Start, best_start
 from .core.plan import Plan
@@ -70,7 +70,11 @@ class ApplianceEntity(InsightsEntity):
 
     @property
     def run(self) -> Run:
-        return appliance_run(self.hass, self.subentry.data)
+        counter = self.subentry.data.get(CONF_APPLIANCE_ENERGY)
+        return appliance_run(
+            self.subentry.data,
+            self.coordinator.appliance_runs.get(counter) if counter else None,
+        )
 
     @property
     def start(self) -> Start | None:
