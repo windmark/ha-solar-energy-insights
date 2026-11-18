@@ -20,14 +20,14 @@ trust the forecast.
 
 <table>
 <tr>
-<td><img src="docs/images/now.png" width="260" alt="The day at a glance"></td>
-<td><img src="docs/images/until-sunrise.png" width="260" alt="Until sunrise"></td>
-<td><img src="docs/images/best-time.png" width="260" alt="Best time to run heavy loads"></td>
+<td><img src="docs/images/now.png" width="260" alt="Solar now: the day at a glance"></td>
+<td><img src="docs/images/until-sunrise.png" width="260" alt="Until sunrise: will the battery last"></td>
+<td><img src="docs/images/appliances.png" width="260" alt="Appliances: when to start them"></td>
 </tr>
 <tr>
 <td><img src="docs/images/forecast-trust.png" width="260" alt="Can I trust the forecast?"></td>
-<td><img src="docs/images/level.png" width="260" alt="Level, quest and last week"></td>
-<td><img src="docs/images/badges.png" width="260" alt="Badges"></td>
+<td><img src="docs/images/scenario-lab.png" width="260" alt="Scenario lab: a bigger battery or a heat pump"></td>
+<td><img src="docs/images/level.png" width="260" alt="Solar level, quest and last week"></td>
 </tr>
 </table>
 
@@ -38,7 +38,10 @@ trust the forecast.
 - **Today.** When the battery will be full, and the best window for heavy loads.
 - **The forecast.** Freezes Solcast at 18:00, 21:00, 06:00 and 12:00 and scores
   each against what came, so you know how far to trust it when you decide.
-- **Strings.** Energy and yield per kWp for each PowerOcean string.
+- **Strings.** Energy and yield per kWp for each string, adding up to the
+  solar counter.
+- **Appliances.** When to start the dishwasher on spare sun, and what it leaves
+  of the battery tonight, learned from its energy counter.
 - **Achievements** (optional). Levels, streaks, records and badges.
 
 It learns from your own history, and only keeps what a backtest shows predicts
@@ -76,41 +79,30 @@ Requires Home Assistant 2026.9, the recorder, Solcast PV Forecast and
 
 ## Cards
 
-The cards ship with the integration, each with settings in the dashboard editor:
+The cards ship with the integration. Open a dashboard, choose
+**Edit dashboard › Add card** and search for **Solar**: each card previews with
+your own data and has its settings in the visual editor.
 
-```yaml
-- type: custom:solar-energy-insights-now
-- type: custom:solar-energy-insights-until-sunrise
-  appliances: # optional: what you might start tonight
-    - name: Dishwasher
-      icon: mdi:dishwasher
-      kwh: 1.0 # typical per run
-      hours: 2.5
-      energy_per_run: sensor.dishwasher_energy_per_run # optional, learned
-- type: custom:solar-energy-insights-best-time
-  appliances: [] # the same list
-- type: custom:solar-energy-insights-appliances # both above in one, today / tonight
-  appliances: [] # the same list
-- type: custom:solar-energy-insights-forecast-trust
-- type: custom:solar-energy-insights-scenario-lab # your last year, what if
-- type: custom:solar-energy-insights-moments # what was just achieved, for a day
-- type: custom:solar-energy-insights-level
-- type: custom:solar-energy-insights-streaks
-- type: custom:solar-energy-insights-records
-- type: custom:solar-energy-insights-badges
-```
+| Card                                           | Answers                                                   |
+| ---------------------------------------------- | --------------------------------------------------------- |
+| Solar now                                      | How does today look, from the battery to tonight?         |
+| Until sunrise                                  | Will the battery last the night, and with the dishwasher? |
+| Best time to run                               | When should I start my appliances today?                  |
+| Appliances                                     | Both of the above in one card                             |
+| Can I trust the forecast?                      | How far off is Solcast, usually?                          |
+| Scenario lab                                   | Would a bigger battery or a heat pump pay?                |
+| Solar moments, level, streaks, records, badges | Achievements, if turned on                                |
 
-Appliances can also be added under the integration (**Add appliance** on its
-page): each gets a "Best start" sensor and a "Good time to start" binary sensor
-for automations, and cards without appliances of their own show them. The
-blueprint `start_appliance.yaml` starts one when it is a good time.
+[Every card, its settings and its YAML](docs/cards.md).
 
-For your own cards, `sensor.solar_energy_insights_summary` has each tile's
-headline and details as attributes.
+Add your appliances under the integration (**Add appliance** on its page), with
+their energy counters: the cards show them, and each gets sensors for
+automations. For cards of your own, `sensor.solar_energy_insights_summary` has
+each row's headline and details as attributes.
 
 ## More
 
-- [Card settings, colours and building your own](docs/cards.md)
+- [The cards: what each shows, its settings and YAML](docs/cards.md)
 - [Entities, options and actions](docs/reference.md)
 - [How achievements work](docs/achievements.md)
 
