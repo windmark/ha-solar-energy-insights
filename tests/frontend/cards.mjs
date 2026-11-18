@@ -323,4 +323,34 @@ check(
       )
     ).shadowRoot.innerHTML,
 );
+// The card picker and the editor draw a preview: an example there, not nothing.
+{
+  delete window.__sei.ach;
+  const card = new (registry.get("solar-energy-insights-moments"))();
+  card.preview = true;
+  card.setConfig({});
+  card.hass = {
+    ...hass,
+    callWS: async (q) =>
+      q.type === "solar_energy_insights/achievements"
+        ? { ...data, moments: [] }
+        : {},
+  };
+  await settle();
+  await settle();
+  await settle();
+  card.hass = card.hass;
+  await settle();
+  check(
+    "the moments card previews an example rather than nothing",
+    !card.hidden &&
+      text(card.shadowRoot.innerHTML).includes("Night owl, silver"),
+  );
+}
+check(
+  "every card can be previewed in the card picker",
+  window.customCards
+    .filter((c) => c.type.startsWith("solar-energy-insights-"))
+    .every((c) => c.preview === true),
+);
 console.log("ok");

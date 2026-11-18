@@ -1074,7 +1074,8 @@
       type: tag,
       name,
       description,
-      preview: false,
+      // The card picker draws each card with your own data.
+      preview: true,
     });
   };
 
@@ -1557,15 +1558,41 @@
       const hours = Number(cfg.hours) > 0 ? Number(cfg.hours) : 24;
       const most = Number(cfg.max) > 0 ? Math.floor(Number(cfg.max)) : 3;
       const a = ws("ach", "solar_energy_insights/achievements", 300);
-      // Nothing yet, achievements off, or an older integration: no banner at all.
-      if (!a || !Array.isArray(a.moments)) return null;
       const now = Date.now();
-      const shown = a.moments
-        .map((m) => ({ m, t: new Date(m.at).getTime() }))
-        .filter(
-          ({ t }) => !isNaN(t) && t <= now + 300e3 && now - t < hours * 3600e3,
-        )
-        .sort((x, y) => y.t - x.t);
+      // In the card picker and the editor's preview, an example: hidden, the
+      // card would show nothing there.
+      const example = [
+        {
+          kind: "level",
+          title: "Level 12: Corona",
+          explain:
+            "Enough XP from your days, quests and badges for the next level.",
+          icon: "mdi:star-four-points",
+          at: new Date(now - 40 * 60e3).toISOString(),
+        },
+        {
+          kind: "badge",
+          tier: "silver",
+          title: "Night owl, silver",
+          explain: "A grid-free night after one of your dullest days.",
+          icon: "mdi:owl",
+          at: new Date(now - 5 * 3600e3).toISOString(),
+        },
+      ];
+      const preview = this.preview === true;
+      // Nothing yet, achievements off, or an older integration: no banner at all.
+      if (!preview && (!a || !Array.isArray(a.moments))) return null;
+      const recent = (list) =>
+        list
+          .map((m) => ({ m, t: new Date(m.at).getTime() }))
+          .filter(
+            ({ t }) =>
+              !isNaN(t) && t <= now + 300e3 && now - t < hours * 3600e3,
+          );
+      const own = a && Array.isArray(a.moments) ? recent(a.moments) : [];
+      const shown = (preview && !own.length ? recent(example) : own).sort(
+        (x, y) => y.t - x.t,
+      );
       // Redraw when the oldest shown runs out, even if nothing else changes.
       clearTimeout(el.__momT);
       if (shown.length) {
