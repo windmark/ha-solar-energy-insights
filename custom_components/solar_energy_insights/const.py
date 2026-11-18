@@ -96,5 +96,7 @@ CONF_ENERGY_PER_RUN: Final = "energy_per_run"
 # The appliance's own energy counter: its past runs, to take out of the nights
 # it is added to.
 CONF_APPLIANCE_ENERGY: Final = "energy"
+# Appliance counters the user turned down: never suggested again.
+CONF_REJECTED_APPLIANCES: Final = "rejected_appliances"
 DEFAULT_RUN_KWH: Final = 1.0
 DEFAULT_RUN_HOURS: Final = 2.0

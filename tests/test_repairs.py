@@ -134,18 +134,23 @@ PLUG = "sensor.dishwasher_plug_energy"
 ISSUE = "appliance_found_sensor_dishwasher_plug_energy"
 
 
-def plug(home: HomeAssistant, object_id: str = "dishwasher_plug_energy") -> str:
-    """A smart plug's all-time energy counter, on a device named for the dishwasher."""
-    plug_entry = MockConfigEntry(domain="shelly")
+def plug(
+    home: HomeAssistant,
+    object_id: str = "dishwasher_plug_energy",
+    device_name: str = "Dishwasher plug",
+    platform: str = "shelly",
+) -> str:
+    """An all-time energy counter, on a device named for an appliance."""
+    plug_entry = MockConfigEntry(domain=platform)
     plug_entry.add_to_hass(home)
     device = dr.async_get(home).async_get_or_create(
         config_entry_id=plug_entry.entry_id,
-        identifiers={("shelly", object_id)},
-        name="Dishwasher plug",
+        identifiers={(platform, object_id)},
+        name=device_name,
     )
     entity = er.async_get(home).async_get_or_create(
         "sensor",
-        "shelly",
+        platform,
         object_id,
         config_entry=plug_entry,
         device_id=device.id,
@@ -167,8 +172,9 @@ async def fix(home: HomeAssistant, issue_id: str) -> None:
     assert isinstance(flow, ApplianceFoundFlow)
     flow.hass = home
     shown = await flow.async_step_init()
-    assert shown["type"] == "form"
-    await flow.async_step_confirm({})
+    assert shown["type"] == "menu"
+    assert shown["menu_options"] == ["reject", "submit"]
+    await flow.async_step_submit()
     await home.async_block_till_done(wait_background_tasks=True)
 
 
@@ -231,4 +237,59 @@ async def test_daily_meters_and_unrelated_counters_are_not_appliances(
         if domain == const.DOMAIN and i.startswith("appliance_found")
     ]
     assert issues == []
+    assert entry.subentries == {}
+
+
+def appliance_issues(home: HomeAssistant) -> list[str]:
+    return sorted(
+        i
+        for (domain, i) in ir.async_get(home).issues
+        if domain == const.DOMAIN and i.startswith("appliance_found")
+    )
+
+
+async def test_one_appliance_seen_through_two_integrations_is_one_suggestion(
+    home: HomeAssistant,
+) -> None:
+    set_states(home)
+    plug(home, "dryer_plug_energy", "Dryer plug")
+    plug(home, "washroom_dryer_energy_total", "Washroom dryer", "ha_washdata")
+    plug(home, "washroom_dryer_energy_estimate", "Washroom dryer", "ha_washdata")
+
+    await setup_entry(home)
+
+    # The socket's own meter, not the learned or estimated ones.
+    assert appliance_issues(home) == ["appliance_found_sensor_dryer_plug_energy"]
+
+
+async def test_an_appliance_with_a_counter_gets_no_more_suggestions(
+    home: HomeAssistant,
+) -> None:
+    set_states(home)
+    plug(home, "dryer_plug_energy", "Dryer plug")
+    plug(home, "washroom_dryer_energy_total", "Washroom dryer", "ha_washdata")
+    entry = await setup_entry(home)
+
+    await fix(home, "appliance_found_sensor_dryer_plug_energy")
+
+    assert [s.title for s in entry.subentries.values()] == ["Dryer"]
+    assert appliance_issues(home) == []
+
+
+async def test_a_rejected_suggestion_does_not_come_back(home: HomeAssistant) -> None:
+    set_states(home)
+    plug(home)
+    entry = await setup_entry(home)
+    issue = ir.async_get(home).async_get_issue(const.DOMAIN, ISSUE)
+    assert issue is not None
+    flow = await async_create_fix_flow(home, ISSUE, issue.data)
+    flow.hass = home
+
+    await flow.async_step_reject()
+    await home.async_block_till_done(wait_background_tasks=True)
+    await home.config_entries.async_reload(entry.entry_id)
+    await home.async_block_till_done(wait_background_tasks=True)
+
+    assert entry.options["rejected_appliances"] == [PLUG]
+    assert appliance_issues(home) == []
     assert entry.subentries == {}

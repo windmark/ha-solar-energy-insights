@@ -606,6 +606,14 @@
       "title": "{name} found: {energy}",
       "fix_flow": {
         "step": {
+          "init": {
+            "title": "Add the {name}",
+            "description": "{energy} looks like your {name}'s energy counter. Add it as an appliance? The tonight card can then show what running it would leave, without counting its past runs twice. You can change its figures afterwards under the integration's appliances.",
+            "menu_options": {
+              "reject": "Reject",
+              "submit": "Submit"
+            }
+          },
           "confirm": {
             "title": "Add the {name}",
             "description": "{energy} looks like a {name}'s energy counter. Add it as an appliance? The tonight card can then show what running it would leave, without counting its past runs twice. You can change its figures afterwards under the integration's appliances."
@@ -620,6 +628,14 @@
       "title": "An energy counter for your {name}: {energy}",
       "fix_flow": {
         "step": {
+          "init": {
+            "title": "Give the {name} its counter",
+            "description": "{energy} looks like your {name}'s energy counter. Use it? Its past runs then come out of the nights a run is added to, so tonight's run is not counted twice.",
+            "menu_options": {
+              "reject": "Reject",
+              "submit": "Submit"
+            }
+          },
           "confirm": {
             "title": "Give the {name} its counter",
             "description": "{energy} looks like your {name}'s energy counter. Use it? Its past runs then come out of the nights a run is added to, so tonight's run is not counted twice."

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- Appliance suggestions: one per appliance, even when it shows up through several devices or integrations, with the socket's own meter preferred. Estimated or learned counters are no longer suggested, and an appliance that already has a counter gets no more suggestions.
+
+### Changed
+
+- An appliance suggestion now asks Reject or Submit. A rejected one is remembered and not suggested again.
+
 ## [0.23.0] - 2026-11-18
 
 ### Added
