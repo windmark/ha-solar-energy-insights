@@ -207,3 +207,32 @@ async def test_a_run_added_to_the_night_is_not_counted_twice(
     # The history's runs out: most of the kWh each night held is back, less
     # what the battery loses on the way.
     assert 0.5 < once - twice < 1.2
+
+
+async def test_the_form_starts_from_an_appliance_counter_found(
+    home: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    from tests.test_repairs import plug
+
+    freezer.move_to(local(DAY, 12))
+    set_states(home)
+    counter = plug(home)
+    entry = await setup_entry(home)
+
+    pick = await home.config_entries.subentries.async_init(
+        (entry.entry_id, const.SUBENTRY_APPLIANCE), context={"source": SOURCE_USER}
+    )
+    assert pick["step_id"] == "pick"
+    details = await home.config_entries.subentries.async_configure(
+        pick["flow_id"], {"appliance": counter}
+    )
+    assert details["step_id"] == "details"
+    schema = details["data_schema"]
+    assert schema is not None
+    suggested = {
+        str(k): k.description["suggested_value"]
+        for k in schema.schema
+        if k.description and "suggested_value" in k.description
+    }
+    assert suggested["name"] == "Dishwasher"
+    assert suggested["energy"] == counter

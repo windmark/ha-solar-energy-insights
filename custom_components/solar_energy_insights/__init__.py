@@ -21,7 +21,7 @@ from .dashboard import (
 )
 from .discovery import STRINGS, string_power_key, suggestions
 from .memory import MemoryStore
-from .repairs import check_reserve
+from .repairs import check_appliances, check_reserve
 from .services import async_setup_services
 from .websocket import async_setup_websocket
 
@@ -51,6 +51,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: InsightsConfigEntry) -> 
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     check_reserve(hass, entry)
+    check_appliances(hass, entry)
     return True
 
 

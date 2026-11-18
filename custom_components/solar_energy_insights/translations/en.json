@@ -172,7 +172,26 @@
       },
       "entry_type": "Appliance",
       "step": {
-        "user": {
+        "reconfigure": {
+          "title": "Change the appliance",
+          "description": "What a run takes.",
+          "data": {
+            "name": "Name",
+            "icon": "Icon (optional)",
+            "kwh": "Typical energy per run",
+            "hours": "Typical duration",
+            "energy_per_run": "Energy per run (optional)",
+            "energy": "Energy counter (optional)"
+          },
+          "data_description": {
+            "name": "As it should appear, for example Dishwasher.",
+            "kwh": "What a usual run takes, for example 1 kWh for a dishwasher in eco mode.",
+            "hours": "How long a usual run lasts.",
+            "energy_per_run": "A sensor that learns the energy of the last run, in kWh, with the durations of the last runs as its hours attribute. A believable value beats the typical figures.",
+            "energy": "The appliance's own energy counter, such as its plug's. Its past runs are taken out of the nights a run is added to, so a run tonight is not counted on top of the ones your history already has."
+          }
+        },
+        "details": {
           "title": "Add an appliance",
           "description": "An appliance to start in the sun. It gets a sensor that says when to start it so it takes the most from sun that would otherwise be exported, and one that is on while now is a good time.",
           "data": {
@@ -191,23 +210,11 @@
             "energy": "The appliance's own energy counter, such as its plug's. Its past runs are taken out of the nights a run is added to, so a run tonight is not counted on top of the ones your history already has."
           }
         },
-        "reconfigure": {
-          "title": "Change the appliance",
-          "description": "What a run takes.",
+        "pick": {
+          "title": "Add an appliance",
+          "description": "These energy counters look like appliances. Pick one to fill in the form, or something else to start empty.",
           "data": {
-            "name": "Name",
-            "icon": "Icon (optional)",
-            "kwh": "Typical energy per run",
-            "hours": "Typical duration",
-            "energy_per_run": "Energy per run (optional)",
-            "energy": "Energy counter (optional)"
-          },
-          "data_description": {
-            "name": "As it should appear, for example Dishwasher.",
-            "kwh": "What a usual run takes, for example 1 kWh for a dishwasher in eco mode.",
-            "hours": "How long a usual run lasts.",
-            "energy_per_run": "A sensor that learns the energy of the last run, in kWh, with the durations of the last runs as its hours attribute. A believable value beats the typical figures.",
-            "energy": "The appliance's own energy counter, such as its plug's. Its past runs are taken out of the nights a run is added to, so a run tonight is not counted on top of the ones your history already has."
+            "appliance": "Appliance"
           }
         }
       },
@@ -592,6 +599,34 @@
             "title": "Use the effective reserve",
             "description": "The reserve now comes from {current}, PowerOcean's plain limit, which can read 0 % while the EcoFlow app keeps a higher backup reserve. {better} is the higher of the two: with it, the plan never counts on energy the battery will not give. Switch to it?"
           }
+        }
+      }
+    },
+    "appliance_found": {
+      "title": "{name} found: {energy}",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Add the {name}",
+            "description": "{energy} looks like a {name}'s energy counter. Add it as an appliance? The tonight card can then show what running it would leave, without counting its past runs twice. You can change its figures afterwards under the integration's appliances."
+          }
+        },
+        "abort": {
+          "gone": "That counter is no longer there, or already in use."
+        }
+      }
+    },
+    "appliance_counter": {
+      "title": "An energy counter for your {name}: {energy}",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Give the {name} its counter",
+            "description": "{energy} looks like your {name}'s energy counter. Use it? Its past runs then come out of the nights a run is added to, so tonight's run is not counted twice."
+          }
+        },
+        "abort": {
+          "gone": "That counter is no longer there, or already in use."
         }
       }
     }
