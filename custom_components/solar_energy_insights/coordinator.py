@@ -7,6 +7,7 @@ restart: the house's hourly use over the last nights, re-read once an hour.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -31,6 +32,7 @@ from homeassistant.util import dt as dt_util
 
 from .achievements import Achievements
 from .answers import AnswersMixin
+from .appliance import appliance_energies
 from .const import (
     BACKTEST_EVENINGS,
     CONF_BATTERY_CAPACITY,
@@ -67,6 +69,7 @@ from .core.live import FullScore, NightScore
 from .core.nights import (
     HourlyUse,
     hourly_use,
+    without,
 )
 from .core.plan import HEAVY_SHARE, Plan, PlanInputs, plan
 from .core.snapshot import to_snapshot
@@ -94,6 +97,8 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
             ),
         )
         self.use: HourlyUse = {}
+        # Each appliance counter's hourly use, by entity id.
+        self.appliance_use: dict[str, HourlyUse] = {}
         self._use_until: datetime | None = None
         self.calibration: Calibration | None = None
         self.evenings: list[Evening] = []
@@ -126,9 +131,15 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
         self.curtailed: Curtailed | None = None
 
     def inputs(
-        self, extra: Rate | None = None, now: datetime | None = None
+        self,
+        extra: Rate | None = None,
+        now: datetime | None = None,
+        without_runs: Iterable[str] = (),
     ) -> PlanInputs:
+        """The plan's inputs; *without_runs* takes those appliance counters'
+        past use out of the house's, for a night with one of their runs added."""
         now = now or dt_util.utcnow()
+        taken = [self.appliance_use[e] for e in without_runs if e in self.appliance_use]
         battery = self.battery()
         return PlanInputs(
             now=now,
@@ -138,7 +149,7 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
             battery=battery,
             charge_limit_now_pct=self.charge_limit_now(battery.floor_pct),
             pv=self.forecast(),
-            use=self.use,
+            use=without(self.use, *taken) if taken else self.use,
             nights=self.nights,
             solar_from_kw=self.solar_from_kw,
             export_kw=self._export_kw(),
@@ -179,12 +190,13 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
         house = self.config_entry.data[CONF_HOUSE_ENERGY]
         soc = self.config_entry.data[CONF_BATTERY_SOC]
         start = hour - timedelta(days=self.nights + BACKTEST_EVENINGS + 2)
+        energies = set(appliance_energies(self.config_entry))
         rows = await get_instance(self.hass).async_add_executor_job(
             statistics_during_period,
             self.hass,
             start,
             hour,
-            {house, soc},
+            {house, soc} | energies,
             "hour",
             {"energy": UnitOfEnergy.KILO_WATT_HOUR},
             {"change", "state", "min", "mean", "max"},
@@ -196,6 +208,17 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
             if (change := row.get("change")) is not None
         }
         self.use = hourly_use(changes, self.tz)
+        self.appliance_use = {
+            entity_id: hourly_use(
+                {
+                    dt_util.utc_from_timestamp(row["start"]): change
+                    for row in rows.get(entity_id, [])
+                    if (change := row.get("change")) is not None
+                },
+                self.tz,
+            )
+            for entity_id in energies
+        }
         soc_hours = {
             dt_util.utc_from_timestamp(row["start"]): (row.get("min"), row.get("mean"))
             for row in rows.get(soc, [])

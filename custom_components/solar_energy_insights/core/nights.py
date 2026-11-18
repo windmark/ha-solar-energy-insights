@@ -61,6 +61,17 @@ def hourly_use(
     return use
 
 
+def without(use: HourlyUse, *others: HourlyUse) -> dict[tuple[date, int], float]:
+    """The house's use less what these appliances used, hour by hour, never
+    below nothing: the nights as they would have been without their runs."""
+    out = dict(use)
+    for other in others:
+        for key, kwh in other.items():
+            if key in out:
+                out[key] = max(out[key] - max(kwh, 0.0), 0.0)
+    return out
+
+
 @dataclass(frozen=True, slots=True)
 class PastDay:
     """One past day's use, laid over the hours ahead."""

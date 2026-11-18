@@ -32,9 +32,11 @@ from homeassistant.helpers.selector import (
     TextSelector,
 )
 
+from .appliance_discovery import found_appliances
 from .array import array_of
 from .const import (
     CONF_ACHIEVEMENTS,
+    CONF_APPLIANCE_ENERGY,
     CONF_ARRAY_KWP,
     CONF_BATTERY_CAPACITY,
     CONF_BATTERY_CHARGED_ENERGY,
@@ -290,19 +292,73 @@ APPLIANCE_SCHEMA = vol.Schema(
             0.5, 8, 0.5, "h"
         ),
         vol.Optional(CONF_ENERGY_PER_RUN): _sensor(),
+        vol.Optional(CONF_APPLIANCE_ENERGY): _sensor(SensorDeviceClass.ENERGY),
     }
 )
+
+
+MANUAL = "manual"
 
 
 class ApplianceFlow(ConfigSubentryFlow):
     """An appliance to start in the sun: its name, and what a run takes."""
 
+    _suggested: dict[str, Any] | None = None
+
     async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Suggestions first, when energy counters look like appliances."""
+        found = [
+            f for f in found_appliances(self.hass, self._get_entry()) if not f.existing
+        ]
+        if user_input is None and self._suggested is None and found:
+            return await self.async_step_pick()
+        return await self.async_step_details()
+
+    async def async_step_pick(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        found = [
+            f for f in found_appliances(self.hass, self._get_entry()) if not f.existing
+        ]
+        if user_input is not None:
+            chosen = next(
+                (f for f in found if f.energy == user_input["appliance"]), None
+            )
+            self._suggested = chosen.data() if chosen else {}
+            return await self.async_step_details()
+        return self.async_show_form(
+            step_id="pick",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("appliance", default=found[0].energy): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[
+                                SelectOptionDict(
+                                    value=f.energy, label=f"{f.name} ({f.energy})"
+                                )
+                                for f in found
+                            ]
+                            + [SelectOptionDict(value=MANUAL, label="Something else")],
+                            mode=SelectSelectorMode.LIST,
+                        )
+                    )
+                }
+            ),
+        )
+
+    async def async_step_details(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         if user_input is not None:
             return self.async_create_entry(title=user_input[CONF_NAME], data=user_input)
-        return self.async_show_form(step_id="user", data_schema=APPLIANCE_SCHEMA)
+        return self.async_show_form(
+            step_id="details",
+            data_schema=self.add_suggested_values_to_schema(
+                APPLIANCE_SCHEMA, self._suggested or {}
+            ),
+        )
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None

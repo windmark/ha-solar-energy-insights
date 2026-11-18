@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.const import CONF_ICON
 
 from .const import (
+    CONF_APPLIANCE_ENERGY,
     CONF_ENERGY_PER_RUN,
     CONF_RUN_HOURS,
     CONF_RUN_KWH,
@@ -64,6 +65,20 @@ def card_appliances(entry: ConfigEntry) -> list[dict[str, Any]]:
                 if s.data.get(CONF_ENERGY_PER_RUN)
                 else {}
             ),
+            **(
+                {"energy": s.data[CONF_APPLIANCE_ENERGY]}
+                if s.data.get(CONF_APPLIANCE_ENERGY)
+                else {}
+            ),
         }
         for s in appliances(entry)
+    ]
+
+
+def appliance_energies(entry: ConfigEntry) -> list[str]:
+    """The appliances' own energy counters, where set."""
+    return [
+        s.data[CONF_APPLIANCE_ENERGY]
+        for s in appliances(entry)
+        if s.data.get(CONF_APPLIANCE_ENERGY)
     ]

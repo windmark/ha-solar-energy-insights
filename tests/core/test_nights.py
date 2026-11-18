@@ -8,6 +8,7 @@ from custom_components.solar_energy_insights.core.nights import (
     hourly_use,
     past_days,
     typical,
+    without,
 )
 from tests.core.helpers import TZ, at
 
@@ -82,3 +83,25 @@ def test_a_meter_total_read_as_one_hour_is_dropped_but_big_real_hours_stay() -> 
     assert at(DAY, 0) not in kept
     assert kept[at(DAY, 12)] == 16.0
     assert len(kept) == 23
+
+
+def test_an_appliances_runs_come_out_of_the_house_hour_by_hour() -> None:
+    day = date(2026, 11, 17)
+    house = {(day, 20): 1.4, (day, 21): 0.9, (day, 22): 0.4}
+    dishwasher = {(day, 20): 1.0, (day, 21): 0.6, (day, 23): 0.2}
+
+    got = without(house, dishwasher)
+
+    assert round(got[(day, 20)], 3) == 0.4
+    assert round(got[(day, 21)], 3) == 0.3
+    # An hour the house has no reading for stays unknown, not negative.
+    assert (day, 23) not in got
+    assert got[(day, 22)] == 0.4
+
+
+def test_more_than_the_house_used_leaves_nothing_not_less() -> None:
+    day = date(2026, 11, 17)
+
+    got = without({(day, 20): 0.5}, {(day, 20): 0.8})
+
+    assert got[(day, 20)] == 0.0
