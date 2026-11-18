@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.24.0] - 2026-11-18
+
 ### Fixed
 
 - Appliance suggestions: one per appliance, even when it shows up through several devices or integrations, with the socket's own meter preferred. Estimated or learned counters are no longer suggested, and an appliance that already has a counter gets no more suggestions.
