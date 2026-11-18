@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.23.0] - 2026-11-18
+
 ### Added
 
 - An appliance can have its own energy counter, such as its plug's. The "if you run…" rows then take its past runs out of the replayed nights before adding tonight's run, so a dishwasher your evenings already had is not counted twice. "House only" still replays your nights as they were.
