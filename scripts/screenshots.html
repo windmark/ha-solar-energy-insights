@@ -1,0 +1,71 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body { margin: 0; background: #111111; font-family: Roboto, "Liberation Sans", Arial, sans-serif; }
+#stage { width: {{WIDTH}}px; padding: 0; }
+ha-card { display: block; }
+</style></head><body><div id="stage"></div><script>
+const SOLAR = {{SOLAR}}, ACH = {{ACH}}, ICONS = {{ICONS}};
+// The recorded morning's clock, so the plan and the cards agree.
+const NOW = new Date(SOLAR.now).getTime(), RealDate = Date;
+window.Date = class extends RealDate {
+  constructor(...a) { super(...(a.length ? a : [NOW])); }
+  static now() { return NOW; }
+};
+customElements.define("ha-icon", class extends HTMLElement {
+  connectedCallback() {
+    const d = ICONS[(this.getAttribute("icon") || "").replace("mdi:", "")] || "";
+    this.style.display = "inline-flex";
+    this.style.width = this.style.height = "var(--mdc-icon-size, 24px)";
+    this.innerHTML = `<svg viewBox="0 0 24 24" style="width:100%;height:100%;fill:currentColor"><path d="${d}"/></svg>`;
+  }
+});
+const outcome = (imported, offGrid) => ({ import_kwh: imported, export_kwh: 4100,
+  use_kwh: 4200, heat_pump_kwh: 0, self_sufficiency_pct: Math.round((1 - imported / 4200) * 1000) / 10,
+  nights: 365, nights_off_grid: offGrid });
+const hourly = (q) => {
+  const out = {};
+  for (const id of q.statistic_ids) {
+    const rows = [];
+    const from = new RealDate(q.start_time).getTime(), to = q.end_time ? new RealDate(q.end_time).getTime() : NOW;
+    const step = q.period === "5minute" ? 300e3 : 3600e3;
+    for (let t = from; t < to && rows.length < 2000; t += step) {
+      const h = new RealDate(t).getHours(), sun = Math.max(0, Math.sin(((h - 7) / 10) * Math.PI));
+      const change = (id.includes("house") ? 0.6 : id.includes("import") ? 0.2 * (1 - sun)
+        : id.includes("export") ? 0.8 * sun : id.includes("solar") ? 2.4 * sun : 0) * step / 3600e3;
+      rows.push({ start: t, end: t + step, change, mean: sun * 2000, max: sun * 2500 });
+    }
+    out[id] = rows;
+  }
+  return out;
+};
+window.hass = {
+  states: SOLAR.states,
+  config: { currency: "EUR", time_zone: "Europe/Berlin" },
+  themes: { darkMode: true },
+  language: "en",
+  locale: { language: "en" },
+  callWS: async (q) =>
+    q.type === "solar_energy_insights/plan" ? SOLAR.plan
+    : q.type === "solar_energy_insights/config" ? SOLAR.config
+    : q.type === "solar_energy_insights/achievements" ? ACH
+    : q.type === "recorder/statistics_during_period" ? hourly(q)
+    : q.type === "call_service" && q.service === "scenario"
+      ? { response: { days: 365, now: outcome(900, 240),
+          changed: outcome(900 - 40 * q.service_data.extra_battery_kwh, 240 + 4 * q.service_data.extra_battery_kwh),
+          saving_per_year: 45 * q.service_data.extra_battery_kwh, heat_pump_solar_pct: null,
+          payback_years: q.service_data.battery_price ? q.service_data.battery_price / (45 * q.service_data.extra_battery_kwh) : null,
+          price: 0.3, feed_in: 0.08 } }
+    : q.type === "call_service" ? { response: SOLAR.plan }
+    : {},
+};
+window.draw = async (key, config) => {
+  const stage = document.getElementById("stage");
+  stage.innerHTML = "";
+  const card = document.createElement("solar-energy-insights-" + key);
+  card.setConfig(config);
+  stage.appendChild(card);
+  for (let k = 0; k < 12; k++) {
+    card.hass = window.hass;
+    await new Promise((r) => setTimeout(r, 60));
+  }
+};
+</script><script>{{SCRIPT}}</script></body></html>
