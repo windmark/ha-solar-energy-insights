@@ -16,7 +16,6 @@ from .appliance_discovery import Found, found_appliances, issue_id
 from .const import (
     CONF_APPLIANCE_ENERGY,
     CONF_BATTERY_RESERVE,
-    CONF_ENERGY_PER_RUN,
     CONF_REJECTED_APPLIANCES,
     DOMAIN,
     SUBENTRY_APPLIANCE,
@@ -192,12 +191,6 @@ class ApplianceFoundFlow(RepairsFlow):
                     data={
                         **subentry.data,
                         CONF_APPLIANCE_ENERGY: found.energy,
-                        **(
-                            {CONF_ENERGY_PER_RUN: found.energy_per_run}
-                            if found.energy_per_run
-                            and not subentry.data.get(CONF_ENERGY_PER_RUN)
-                            else {}
-                        ),
                     },
                 )
             else:

@@ -9,6 +9,7 @@
 ### Changed
 
 - An appliance suggestion now asks Reject or Submit. A rejected one is remembered and not suggested again.
+- An appliance's energy counter is all it needs: its runs are found in the counter's last ten days, and their median energy and mean duration replace the typical figures. The separate energy-per-run sensor is gone.
 
 ## [0.23.0] - 2026-11-18
 

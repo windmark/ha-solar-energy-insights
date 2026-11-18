@@ -87,23 +87,27 @@ async def test_while_the_battery_charges_it_is_not_yet_a_good_time(
     assert good.attributes["now_share"] < good.attributes["free_share"]
 
 
-async def test_a_sensor_that_learns_the_run_beats_the_typical_figures(
+async def test_runs_learned_from_the_counter_beat_the_typical_figures(
     home: HomeAssistant,
 ) -> None:
     await record_house(home, recent(14), evening_load)
     set_states(home, soc=100, peak_kw=9)
-    home.states.async_set(
-        "sensor.dishwasher_energy_per_run",
-        "0.8",
-        {"unit_of_measurement": "kWh", "hours": [1.5, 1.5]},
-    )
     entry = await setup_entry(home)
-
     await add_appliance(
-        home,
-        entry.entry_id,
-        {**DISHWASHER, "energy_per_run": "sensor.dishwasher_energy_per_run"},
+        home, entry.entry_id, {**DISHWASHER, "energy": "sensor.dishwasher_plug_energy"}
     )
+    best = home.states.get(BEST)
+    assert best is not None
+    assert best.attributes["estimated"] is True  # no run recorded yet
+
+    coordinator = entry.runtime_data
+    coordinator.appliance_runs["sensor.dishwasher_plug_energy"] = [
+        (0.9, 1.5),
+        (0.8, 1.5),
+        (0.7, 1.5),
+    ]
+    await coordinator.async_refresh()
+    await home.async_block_till_done()
 
     best = home.states.get(BEST)
     assert best is not None

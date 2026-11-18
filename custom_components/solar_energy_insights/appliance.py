@@ -3,24 +3,23 @@ takes, and how the cards see them."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.const import CONF_ICON
 
 from .const import (
     CONF_APPLIANCE_ENERGY,
-    CONF_ENERGY_PER_RUN,
     CONF_RUN_HOURS,
     CONF_RUN_KWH,
     DEFAULT_RUN_HOURS,
     DEFAULT_RUN_KWH,
     SUBENTRY_APPLIANCE,
 )
-from .core.appliances import Run, learned_run
+from .core.appliances import Run, run_from
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry, ConfigSubentry
-    from homeassistant.core import HomeAssistant
 
 DEFAULT_ICON = "mdi:power-plug-outline"
 
@@ -31,48 +30,34 @@ def appliances(entry: ConfigEntry) -> list[ConfigSubentry]:
     ]
 
 
-def appliance_run(hass: HomeAssistant, data: Any) -> Run:
-    """The appliance's run: what its sensor learned, else the typical figures."""
+def appliance_run(data: Any, runs: list[tuple[float, float]] | None) -> Run:
+    """The appliance's run: learned from its counter's recent runs, else the
+    typical figures."""
     kwh = float(data.get(CONF_RUN_KWH, DEFAULT_RUN_KWH))
     hours = float(data.get(CONF_RUN_HOURS, DEFAULT_RUN_HOURS))
-    entity_id = data.get(CONF_ENERGY_PER_RUN)
-    state = hass.states.get(entity_id) if entity_id else None
-    if state is None:
-        return learned_run(kwh, hours)
-    try:
-        learned: float | None = float(state.state)
-    except ValueError:
-        learned = None
-    durations = state.attributes.get("hours")
-    return learned_run(
-        kwh,
-        hours,
-        learned,
-        [float(h) for h in durations] if isinstance(durations, list) else None,
-    )
+    return run_from(kwh, hours, runs or [])
 
 
-def card_appliances(entry: ConfigEntry) -> list[dict[str, Any]]:
-    """The appliances as the cards take them in their own settings."""
-    return [
-        {
-            "name": s.title,
-            "icon": s.data.get(CONF_ICON) or DEFAULT_ICON,
-            "kwh": s.data.get(CONF_RUN_KWH, DEFAULT_RUN_KWH),
-            "hours": s.data.get(CONF_RUN_HOURS, DEFAULT_RUN_HOURS),
-            **(
-                {"energy_per_run": s.data[CONF_ENERGY_PER_RUN]}
-                if s.data.get(CONF_ENERGY_PER_RUN)
-                else {}
-            ),
-            **(
-                {"energy": s.data[CONF_APPLIANCE_ENERGY]}
-                if s.data.get(CONF_APPLIANCE_ENERGY)
-                else {}
-            ),
-        }
-        for s in appliances(entry)
-    ]
+def card_appliances(
+    entry: ConfigEntry, runs: Mapping[str, list[tuple[float, float]]] | None = None
+) -> list[dict[str, Any]]:
+    """The appliances as the cards take them: the run as learned from each
+    counter, and whether it was learned or is still the typical figures."""
+    out = []
+    for s in appliances(entry):
+        counter = s.data.get(CONF_APPLIANCE_ENERGY)
+        run = appliance_run(s.data, (runs or {}).get(counter) if counter else None)
+        out.append(
+            {
+                "name": s.title,
+                "icon": s.data.get(CONF_ICON) or DEFAULT_ICON,
+                "kwh": round(run.kwh, 2),
+                "hours": round(run.hours, 2),
+                "learned": not run.estimated,
+                **({"energy": counter} if counter else {}),
+            }
+        )
+    return out
 
 
 def appliance_energies(entry: ConfigEntry) -> list[str]:

@@ -92,7 +92,6 @@ CONF_RUN_KWH: Final = "kwh"
 CONF_RUN_HOURS: Final = "hours"
 # A sensor that learns the energy of the last run, and the durations of the
 # last runs as its "hours" attribute.
-CONF_ENERGY_PER_RUN: Final = "energy_per_run"
 # The appliance's own energy counter: its past runs, to take out of the nights
 # it is added to.
 CONF_APPLIANCE_ENERGY: Final = "energy"

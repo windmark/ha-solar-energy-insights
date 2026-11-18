@@ -44,7 +44,6 @@ from .const import (
     CONF_BATTERY_RESERVE,
     CONF_BATTERY_SOC,
     CONF_CHARGE_LIMIT,
-    CONF_ENERGY_PER_RUN,
     CONF_FEED_IN,
     CONF_FEED_IN_CAP,
     CONF_FEED_IN_ENTITY,
@@ -291,7 +290,6 @@ APPLIANCE_SCHEMA = vol.Schema(
         vol.Required(CONF_RUN_HOURS, default=DEFAULT_RUN_HOURS): _slider(
             0.5, 8, 0.5, "h"
         ),
-        vol.Optional(CONF_ENERGY_PER_RUN): _sensor(),
         vol.Optional(CONF_APPLIANCE_ENERGY): _sensor(SensorDeviceClass.ENERGY),
     }
 )

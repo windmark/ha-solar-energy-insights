@@ -9,8 +9,10 @@ The dashboard's best-time card works the same way.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
+from statistics import median
 
 from .plan import Plan
 
@@ -75,6 +77,58 @@ def learned_run(
         kwh=kwh if believable and kwh is not None else typical_kwh,
         hours=sum(durations) / len(durations) if durations else typical_hours,
         estimated=not believable,
+    )
+
+
+# A five-minute slot with more than this is running, not standing by (24 W).
+RUN_MIN_SLOT_KWH = 0.002
+# Pauses within one run: a dishwasher drying, a dryer cooling down.
+RUN_GAP = timedelta(minutes=30)
+FIVE_MINUTES = timedelta(minutes=5)
+
+
+def runs_in(
+    slots: Mapping[datetime, float], until: datetime | None = None
+) -> list[tuple[float, float]]:
+    """The runs in an appliance counter's five-minute energy, oldest first, as
+    (kWh, hours). A run still going at *until* is left out: it is not over."""
+    runs: list[tuple[float, float]] = []
+    start: datetime | None = None
+    last: datetime | None = None
+    kwh = 0.0
+
+    def close() -> None:
+        if start is not None and last is not None and kwh >= MIN_LEARNED_KWH:
+            end = last + FIVE_MINUTES
+            if until is None or end <= until - RUN_GAP:
+                runs.append((kwh, (end - start).total_seconds() / 3600))
+
+    for t in sorted(slots):
+        if slots[t] < RUN_MIN_SLOT_KWH:
+            continue
+        if last is not None and t - (last + FIVE_MINUTES) <= RUN_GAP:
+            kwh += slots[t]
+        else:
+            close()
+            start, kwh = t, slots[t]
+        last = t
+    close()
+    return runs
+
+
+def run_from(
+    typical_kwh: float, typical_hours: float, runs: list[tuple[float, float]]
+) -> Run:
+    """The appliance's run from its recent runs: the median energy and the mean
+    duration of the last few, where believable, else the typical figures."""
+    recent = runs[-LEARNED_RUNS:]
+    if not recent:
+        return Run(kwh=typical_kwh, hours=typical_hours, estimated=True)
+    return learned_run(
+        typical_kwh,
+        typical_hours,
+        float(median(k for k, _ in recent)),
+        [h for _, h in recent],
     )
 
 

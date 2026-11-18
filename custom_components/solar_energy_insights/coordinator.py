@@ -54,6 +54,7 @@ from .const import (
     LIVE_INTERVAL_MIN,
 )
 from .core import live
+from .core.appliances import runs_in
 from .core.backtest import (
     EVENING,
     Calibration,
@@ -82,6 +83,9 @@ _LOGGER = logging.getLogger(__name__)
 type InsightsConfigEntry = ConfigEntry[InsightsCoordinator]
 
 
+APPLIANCE_RUN_DAYS = timedelta(days=10)
+
+
 class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
     config_entry: InsightsConfigEntry
 
@@ -99,6 +103,8 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
         self.use: HourlyUse = {}
         # Each appliance counter's hourly use, by entity id.
         self.appliance_use: dict[str, HourlyUse] = {}
+        # Each appliance counter's recent runs, (kWh, hours), oldest first.
+        self.appliance_runs: dict[str, list[tuple[float, float]]] = {}
         self._use_until: datetime | None = None
         self.calibration: Calibration | None = None
         self.evenings: list[Evening] = []
@@ -219,6 +225,31 @@ class InsightsCoordinator(AnswersMixin, DataUpdateCoordinator[Plan]):
             )
             for entity_id in energies
         }
+        if energies:
+            # Five-minute statistics are kept about ten days: enough for runs.
+            slots = await get_instance(self.hass).async_add_executor_job(
+                statistics_during_period,
+                self.hass,
+                now - APPLIANCE_RUN_DAYS,
+                now,
+                energies,
+                "5minute",
+                {"energy": UnitOfEnergy.KILO_WATT_HOUR},
+                {"change"},
+            )
+            self.appliance_runs = {
+                entity_id: runs_in(
+                    {
+                        dt_util.utc_from_timestamp(row["start"]): change
+                        for row in slots.get(entity_id, [])
+                        if (change := row.get("change")) is not None
+                    },
+                    until=now,
+                )
+                for entity_id in energies
+            }
+        else:
+            self.appliance_runs = {}
         soc_hours = {
             dt_util.utc_from_timestamp(row["start"]): (row.get("min"), row.get("mean"))
             for row in rows.get(soc, [])

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 
@@ -10,6 +10,8 @@ from custom_components.solar_energy_insights.core.appliances import (
     Run,
     best_start,
     learned_run,
+    run_from,
+    runs_in,
 )
 from custom_components.solar_energy_insights.core.plan import plan
 from tests.core.helpers import TZ, at
@@ -102,3 +104,47 @@ def test_only_the_last_few_durations_count() -> None:
     run = learned_run(1.2, 2.0, hours=[5.0] * 10 + [1.0] * 5)
 
     assert run.hours == pytest.approx(1.0)
+
+
+DAY = date(2026, 11, 17)
+
+
+def five_minutes(start, kwh_per_slot: list[float]):
+    return {start + timedelta(minutes=5 * k): v for k, v in enumerate(kwh_per_slot)}
+
+
+def test_a_run_with_a_pause_is_one_run() -> None:
+    # 40 min heating, 25 min drying at standby, 20 min rinsing; then nothing.
+    slots = five_minutes(
+        at(DAY, 18), [0.15] * 8 + [0.001] * 5 + [0.02] * 4 + [0.0] * 30
+    )
+
+    runs = runs_in(slots, until=at(DAY, 23))
+
+    assert len(runs) == 1
+    kwh, hours = runs[0]
+    assert kwh == pytest.approx(0.15 * 8 + 0.02 * 4)
+    assert hours == pytest.approx((8 + 5 + 4) * 5 / 60)
+
+
+def test_runs_apart_are_separate_and_one_still_going_is_left_out() -> None:
+    first = five_minutes(at(DAY, 8), [0.1] * 12)
+    second = five_minutes(at(DAY, 14), [0.1] * 12)
+    going = five_minutes(at(DAY, 21), [0.1] * 3)
+
+    runs = runs_in({**first, **second, **going}, until=at(DAY, 21, 15))
+
+    assert [round(k, 2) for k, _ in runs] == [1.2, 1.2]
+
+
+def test_standby_alone_is_no_run() -> None:
+    assert runs_in(five_minutes(at(DAY, 0), [0.001] * 288), until=at(DAY, 23)) == []
+
+
+def test_the_run_is_the_median_of_the_last_runs() -> None:
+    run = run_from(1.2, 2.0, [(5.0, 3.0), (0.8, 1.5), (0.9, 1.5), (0.7, 1.5)])
+
+    assert run.kwh == pytest.approx(0.85)
+    assert run.hours == pytest.approx(1.875)
+    assert not run.estimated
+    assert run_from(1.2, 2.0, []).estimated

@@ -18,7 +18,6 @@ from homeassistant.helpers import entity_registry as er
 from .appliance import appliances
 from .const import (
     CONF_APPLIANCE_ENERGY,
-    CONF_ENERGY_PER_RUN,
     CONF_REJECTED_APPLIANCES,
     CONF_RUN_HOURS,
     CONF_RUN_KWH,
@@ -70,8 +69,6 @@ KINDS = (
     ),
     Kind("Oven", "mdi:stove", 1.0, 1.0, ("oven", "backofen", "herd")),
 )
-# Sensors on the same device that learn the energy of a run.
-PER_RUN_WORDS = ("per_run", "last_run", "last_cycle", "cycle_energy", "run_energy")
 # Daily or period meters restart: a counter of all time is what is wanted.
 PERIOD_WORDS = ("today", "daily", "yesterday", "week", "month", "year")
 # Worked out rather than measured: an estimate is not what the appliance used.
@@ -102,7 +99,6 @@ class Found:
     icon: str
     kwh: float
     hours: float
-    energy_per_run: str | None = None
     # An appliance of the same name that has no counter yet.
     existing: str | None = None
 
@@ -114,11 +110,6 @@ class Found:
             CONF_RUN_KWH: self.kwh,
             CONF_RUN_HOURS: self.hours,
             CONF_APPLIANCE_ENERGY: self.energy,
-            **(
-                {CONF_ENERGY_PER_RUN: self.energy_per_run}
-                if self.energy_per_run
-                else {}
-            ),
         }
 
 
@@ -203,20 +194,6 @@ def found_appliances(hass: HomeAssistant, entry: ConfigEntry) -> list[Found]:
         if kind is None or kind.name in counted or kind.name in out:
             continue
         group = kind.name
-        per_run = (
-            next(
-                (
-                    o.entity_id
-                    for o in er.async_entries_for_device(entities, e.device_id)
-                    if o.domain == "sensor"
-                    and o.entity_id != e.entity_id
-                    and any(w in o.entity_id for w in PER_RUN_WORDS)
-                ),
-                None,
-            )
-            if e.device_id
-            else None
-        )
         name = kind.name
         out[group] = Found(
             energy=e.entity_id,
@@ -224,7 +201,6 @@ def found_appliances(hass: HomeAssistant, entry: ConfigEntry) -> list[Found]:
             icon=kind.icon,
             kwh=kind.kwh,
             hours=kind.hours,
-            energy_per_run=per_run,
             existing=without_counter.get(name.lower()),
         )
     return sorted(out.values(), key=lambda f: f.energy)
