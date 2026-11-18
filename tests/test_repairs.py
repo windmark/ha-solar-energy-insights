@@ -283,6 +283,7 @@ async def test_a_rejected_suggestion_does_not_come_back(home: HomeAssistant) -> 
     issue = ir.async_get(home).async_get_issue(const.DOMAIN, ISSUE)
     assert issue is not None
     flow = await async_create_fix_flow(home, ISSUE, issue.data)
+    assert isinstance(flow, ApplianceFoundFlow)
     flow.hass = home
 
     await flow.async_step_reject()
