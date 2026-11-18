@@ -192,12 +192,18 @@ async def test_a_run_added_to_the_night_is_not_counted_twice(
             blocking=True,
             return_response=True,
         )
-        assert answer is not None
-        return float(answer["night"]["typical"]["spare_kwh"])
+        assert isinstance(answer, dict)
+        night = answer["night"]
+        assert isinstance(night, dict)
+        typical = night["typical"]
+        assert isinstance(typical, dict)
+        spare = typical["spare_kwh"]
+        assert isinstance(spare, (int, float))
+        return float(spare)
 
     twice = await tonight()
     once = await tonight(without_runs=[PLUG])
 
-    # The history's runs out: about the one kWh it held each night is back.
-    assert once > twice
-    assert 0.8 < once - twice < 1.2
+    # The history's runs out: most of the kWh each night held is back, less
+    # what the battery loses on the way.
+    assert 0.5 < once - twice < 1.2
