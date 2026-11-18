@@ -154,7 +154,14 @@ async def test_the_cards_get_the_appliances(
 
     assert response["success"]
     assert response["result"]["appliances"] == [
-        {"name": "Dishwasher", "icon": "mdi:dishwasher", "kwh": 1.2, "hours": 2}
+        {
+            "name": "Dishwasher",
+            "icon": "mdi:dishwasher",
+            "kwh": 1.2,
+            "hours": 2.0,
+            # No counter, nothing learned: the typical figures.
+            "learned": False,
+        }
     ]
 
 
