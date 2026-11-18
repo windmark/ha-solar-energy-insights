@@ -2243,6 +2243,7 @@
         .slice(-5);
       return {
         id: "a" + i,
+        energy: a.energy || null,
         name: a.name || "Appliance",
         icon: a.icon || "mdi:power-plug-outline",
         kwh: k,
@@ -2281,6 +2282,8 @@
               service_data: {
                 extra_kwh: +list.reduce((s, a) => s + a.kwh, 0).toFixed(2),
                 extra_hours: +Math.max(...list.map((a) => a.h)).toFixed(2),
+                // Their past runs out of the nights, so tonight's isn't counted twice
+                without_runs: list.map((a) => a.energy).filter(Boolean),
               },
               return_response: true,
             })
@@ -2513,6 +2516,7 @@
         .slice(-5);
       return {
         id: "a" + i,
+        energy: a.energy || null,
         name: a.name || "Appliance",
         icon: a.icon || "mdi:power-plug-outline",
         kwh: k,
@@ -2551,6 +2555,8 @@
               service_data: {
                 extra_kwh: +list.reduce((s, a) => s + a.kwh, 0).toFixed(2),
                 extra_hours: +Math.max(...list.map((a) => a.h)).toFixed(2),
+                // Their past runs out of the nights, so tonight's isn't counted twice
+                without_runs: list.map((a) => a.energy).filter(Boolean),
               },
               return_response: true,
             })

@@ -14,6 +14,7 @@ from homeassistant.core import (
     SupportsResponse,
 )
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -32,6 +33,11 @@ SIMULATE_SCHEMA = vol.Schema(
         ),
         vol.Optional("extra_hours", default=1.0): vol.All(
             vol.Coerce(float), vol.Range(min=0.1, max=24)
+        ),
+        # Appliance energy counters whose past runs to take out of the nights,
+        # so a run added on top is not counted twice.
+        vol.Optional("without_runs", default=list): vol.All(
+            cv.ensure_list, [cv.entity_id]
         ),
     }
 )
@@ -87,7 +93,7 @@ async def _simulate(call: ServiceCall) -> ServiceResponse:
     now = dt_util.utcnow()
     extra = _extra(now, call.data["extra_kwh"], call.data["extra_hours"])
     try:
-        inputs = coordinator.inputs(extra, now)
+        inputs = coordinator.inputs(extra, now, call.data["without_runs"])
     except UpdateFailed as err:
         raise ServiceValidationError(
             translation_domain=DOMAIN,

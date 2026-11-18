@@ -180,13 +180,15 @@
             "icon": "Icon (optional)",
             "kwh": "Typical energy per run",
             "hours": "Typical duration",
-            "energy_per_run": "Energy per run (optional)"
+            "energy_per_run": "Energy per run (optional)",
+            "energy": "Energy counter (optional)"
           },
           "data_description": {
             "name": "As it should appear, for example Dishwasher.",
             "kwh": "What a usual run takes, for example 1 kWh for a dishwasher in eco mode.",
             "hours": "How long a usual run lasts.",
-            "energy_per_run": "A sensor that learns the energy of the last run, in kWh, with the durations of the last runs as its hours attribute. A believable value beats the typical figures."
+            "energy_per_run": "A sensor that learns the energy of the last run, in kWh, with the durations of the last runs as its hours attribute. A believable value beats the typical figures.",
+            "energy": "The appliance's own energy counter, such as its plug's. Its past runs are taken out of the nights a run is added to, so a run tonight is not counted on top of the ones your history already has."
           }
         },
         "reconfigure": {
@@ -197,13 +199,15 @@
             "icon": "Icon (optional)",
             "kwh": "Typical energy per run",
             "hours": "Typical duration",
-            "energy_per_run": "Energy per run (optional)"
+            "energy_per_run": "Energy per run (optional)",
+            "energy": "Energy counter (optional)"
           },
           "data_description": {
             "name": "As it should appear, for example Dishwasher.",
             "kwh": "What a usual run takes, for example 1 kWh for a dishwasher in eco mode.",
             "hours": "How long a usual run lasts.",
-            "energy_per_run": "A sensor that learns the energy of the last run, in kWh, with the durations of the last runs as its hours attribute. A believable value beats the typical figures."
+            "energy_per_run": "A sensor that learns the energy of the last run, in kWh, with the durations of the last runs as its hours attribute. A believable value beats the typical figures.",
+            "energy": "The appliance's own energy counter, such as its plug's. Its past runs are taken out of the nights a run is added to, so a run tonight is not counted on top of the ones your history already has."
           }
         }
       },
@@ -524,6 +528,10 @@
         "extra_hours": {
           "name": "Duration",
           "description": "How long it runs."
+        },
+        "without_runs": {
+          "name": "Without these appliances' past runs",
+          "description": "Appliance energy counters whose past runs are taken out of the replayed nights, so the run added is not counted twice."
         }
       }
     },

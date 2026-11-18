@@ -35,6 +35,7 @@ from homeassistant.helpers.selector import (
 from .array import array_of
 from .const import (
     CONF_ACHIEVEMENTS,
+    CONF_APPLIANCE_ENERGY,
     CONF_ARRAY_KWP,
     CONF_BATTERY_CAPACITY,
     CONF_BATTERY_CHARGED_ENERGY,
@@ -290,6 +291,7 @@ APPLIANCE_SCHEMA = vol.Schema(
             0.5, 8, 0.5, "h"
         ),
         vol.Optional(CONF_ENERGY_PER_RUN): _sensor(),
+        vol.Optional(CONF_APPLIANCE_ENERGY): _sensor(SensorDeviceClass.ENERGY),
     }
 )
 
