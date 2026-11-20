@@ -1079,68 +1079,73 @@
     });
   };
 
+  // What every achievement card shares: the trophy room, its colours and bars.
+  const achUi = (el, hass, states) => {
+    const base = window.SolarDash.ui(el, hass, states);
+    const { W, sub, ws, waiting } = base;
+    const a = ws("ach", "solar_energy_insights/achievements", 300);
+    const off = W.ach?.error && /disabled|off/i.test(W.ach.error);
+    const bar = (pct, color, h = 6) =>
+      `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
+        h / 2
+      }px;overflow:hidden"><div style="width:${Math.max(
+        0,
+        Math.min(pct, 100),
+      )}%;height:100%;background:${color};border-radius:${
+        h / 2
+      }px"></div></div>`;
+    const dmy = (d) =>
+      d
+        ? new Date(d).toLocaleDateString("en-GB", {
+            day: "numeric",
+            month: "short",
+            year: "2-digit",
+          })
+        : "";
+    const notReady = () =>
+      off
+        ? sub(
+            "Achievements are off: switch them on in the Solar Energy Insights options.",
+          )
+        : waiting("ach", "the trophy room");
+    return {
+      ...base,
+      a,
+      off,
+      TIER: ACH_TIER,
+      RANK: ACH_RANK,
+      bar,
+      dmy,
+      notReady,
+    };
+  };
+  const ACH_TIER = [
+    ["#cd7f32", "Bronze"],
+    ["#c0c0c8", "Silver"],
+    ["#f5b83d", "Gold"],
+  ];
+  const ACH_RANK = {
+    Bronze: ["#cd7f32", "mdi:shield-outline"],
+    Silver: ["#c0c0c8", "mdi:shield-half-full"],
+    Gold: ["#f5b83d", "mdi:shield-star"],
+    Platinum: [
+      "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
+      "mdi:shield-crown",
+    ],
+    Diamond: ["#b9f2ff", "mdi:diamond-stone"],
+  };
+
   defineCard(
     "solar-energy-insights-level",
     "Solar level",
     "Your level, rank, today's score and quest.",
     function (states, hass) {
       const el = this;
-      const {
-        W,
-        C,
-        st,
-        val,
-        attr,
-        num,
-        hm,
-        kwh,
-        sub,
-        head,
-        pill,
-        ws,
-        waiting,
-      } = window.SolarDash.ui(this, hass, states);
-
-      const a = ws("ach", "solar_energy_insights/achievements", 300);
-      const off = W.ach?.error && /disabled|off/i.test(W.ach.error);
-      const TIER = [
-        ["#cd7f32", "Bronze"],
-        ["#c0c0c8", "Silver"],
-        ["#f5b83d", "Gold"],
-      ];
-      const RANK = {
-        Bronze: ["#cd7f32", "mdi:shield-outline"],
-        Silver: ["#c0c0c8", "mdi:shield-half-full"],
-        Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: [
-          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
-          "mdi:shield-crown",
-        ],
-        Diamond: ["#b9f2ff", "mdi:diamond-stone"],
-      };
-      const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
-          h / 2
-        }px;overflow:hidden"><div style="width:${Math.max(
-          0,
-          Math.min(pct, 100),
-        )}%;height:100%;background:${color};border-radius:${
-          h / 2
-        }px"></div></div>`;
-      const dmy = (d) =>
-        d
-          ? new Date(d).toLocaleDateString("en-GB", {
-              day: "numeric",
-              month: "short",
-              year: "2-digit",
-            })
-          : "";
-      const notReady = () =>
-        off
-          ? sub(
-              "Achievements are off: switch them on in the Solar Energy Insights options.",
-            )
-          : waiting("ach", "the trophy room");
+      const { W, C, num, sub, head, a, TIER, RANK, bar, dmy, notReady } = achUi(
+        this,
+        hass,
+        states,
+      );
 
       // The open quest leads: it is what's closest to happening.
       if (!a) return notReady();
@@ -1330,62 +1335,11 @@
     "Your streaks, with their shields.",
     function (states, hass) {
       const el = this;
-      const {
-        W,
-        C,
-        st,
-        val,
-        attr,
-        num,
-        hm,
-        kwh,
-        sub,
-        head,
-        pill,
-        ws,
-        waiting,
-      } = window.SolarDash.ui(this, hass, states);
-
-      const a = ws("ach", "solar_energy_insights/achievements", 300);
-      const off = W.ach?.error && /disabled|off/i.test(W.ach.error);
-      const TIER = [
-        ["#cd7f32", "Bronze"],
-        ["#c0c0c8", "Silver"],
-        ["#f5b83d", "Gold"],
-      ];
-      const RANK = {
-        Bronze: ["#cd7f32", "mdi:shield-outline"],
-        Silver: ["#c0c0c8", "mdi:shield-half-full"],
-        Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: [
-          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
-          "mdi:shield-crown",
-        ],
-        Diamond: ["#b9f2ff", "mdi:diamond-stone"],
-      };
-      const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
-          h / 2
-        }px;overflow:hidden"><div style="width:${Math.max(
-          0,
-          Math.min(pct, 100),
-        )}%;height:100%;background:${color};border-radius:${
-          h / 2
-        }px"></div></div>`;
-      const dmy = (d) =>
-        d
-          ? new Date(d).toLocaleDateString("en-GB", {
-              day: "numeric",
-              month: "short",
-              year: "2-digit",
-            })
-          : "";
-      const notReady = () =>
-        off
-          ? sub(
-              "Achievements are off: switch them on in the Solar Energy Insights options.",
-            )
-          : waiting("ach", "the trophy room");
+      const { W, C, num, sub, head, a, TIER, RANK, bar, dmy, notReady } = achUi(
+        this,
+        hass,
+        states,
+      );
 
       if (!a) return notReady();
       const rows = a.streaks
@@ -1438,62 +1392,11 @@
     "Your best days, all time and this season.",
     function (states, hass) {
       const el = this;
-      const {
-        W,
-        C,
-        st,
-        val,
-        attr,
-        num,
-        hm,
-        kwh,
-        sub,
-        head,
-        pill,
-        ws,
-        waiting,
-      } = window.SolarDash.ui(this, hass, states);
-
-      const a = ws("ach", "solar_energy_insights/achievements", 300);
-      const off = W.ach?.error && /disabled|off/i.test(W.ach.error);
-      const TIER = [
-        ["#cd7f32", "Bronze"],
-        ["#c0c0c8", "Silver"],
-        ["#f5b83d", "Gold"],
-      ];
-      const RANK = {
-        Bronze: ["#cd7f32", "mdi:shield-outline"],
-        Silver: ["#c0c0c8", "mdi:shield-half-full"],
-        Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: [
-          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
-          "mdi:shield-crown",
-        ],
-        Diamond: ["#b9f2ff", "mdi:diamond-stone"],
-      };
-      const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
-          h / 2
-        }px;overflow:hidden"><div style="width:${Math.max(
-          0,
-          Math.min(pct, 100),
-        )}%;height:100%;background:${color};border-radius:${
-          h / 2
-        }px"></div></div>`;
-      const dmy = (d) =>
-        d
-          ? new Date(d).toLocaleDateString("en-GB", {
-              day: "numeric",
-              month: "short",
-              year: "2-digit",
-            })
-          : "";
-      const notReady = () =>
-        off
-          ? sub(
-              "Achievements are off: switch them on in the Solar Energy Insights options.",
-            )
-          : waiting("ach", "the trophy room");
+      const { W, C, num, sub, head, a, TIER, RANK, bar, dmy, notReady } = achUi(
+        this,
+        hass,
+        states,
+      );
 
       if (!a) return notReady();
       const clock = (m) =>
@@ -1704,62 +1607,11 @@
     "Badges within reach, later in the year and complete; tap one to see what it takes.",
     function (states, hass) {
       const el = this;
-      const {
-        W,
-        C,
-        st,
-        val,
-        attr,
-        num,
-        hm,
-        kwh,
-        sub,
-        head,
-        pill,
-        ws,
-        waiting,
-      } = window.SolarDash.ui(this, hass, states);
-
-      const a = ws("ach", "solar_energy_insights/achievements", 300);
-      const off = W.ach?.error && /disabled|off/i.test(W.ach.error);
-      const TIER = [
-        ["#cd7f32", "Bronze"],
-        ["#c0c0c8", "Silver"],
-        ["#f5b83d", "Gold"],
-      ];
-      const RANK = {
-        Bronze: ["#cd7f32", "mdi:shield-outline"],
-        Silver: ["#c0c0c8", "mdi:shield-half-full"],
-        Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: [
-          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
-          "mdi:shield-crown",
-        ],
-        Diamond: ["#b9f2ff", "mdi:diamond-stone"],
-      };
-      const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
-          h / 2
-        }px;overflow:hidden"><div style="width:${Math.max(
-          0,
-          Math.min(pct, 100),
-        )}%;height:100%;background:${color};border-radius:${
-          h / 2
-        }px"></div></div>`;
-      const dmy = (d) =>
-        d
-          ? new Date(d).toLocaleDateString("en-GB", {
-              day: "numeric",
-              month: "short",
-              year: "2-digit",
-            })
-          : "";
-      const notReady = () =>
-        off
-          ? sub(
-              "Achievements are off: switch them on in the Solar Energy Insights options.",
-            )
-          : waiting("ach", "the trophy room");
+      const { W, C, num, sub, head, a, TIER, RANK, bar, dmy, notReady } = achUi(
+        this,
+        hass,
+        states,
+      );
 
       // Every badge appears in exactly one place.
       if (!a) return notReady();
