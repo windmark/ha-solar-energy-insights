@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.26.0] - 2026-11-20
+
 ### Added
 
 - Badges get harder as they climb: bronze asks what the badge asked before, and silver and gold ask for better days, not only more of them. Winter warrior wants one winter day at 80 % self-sufficient, then ten at 85 %, then thirty at 90 %.
