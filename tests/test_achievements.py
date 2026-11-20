@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import async_fire_time_changed
 from pytest_homeassistant_custom_component.typing import WebSocketGenerator
 
 from custom_components.solar_energy_insights import const
+from custom_components.solar_energy_insights.achievements import RULES_VERSION
 from tests.common import (
     DAY,
     local,
@@ -81,6 +82,26 @@ async def test_switched_on_the_history_is_replayed_quietly(home: HomeAssistant) 
     assert int(nights.state) >= 0
     # Everything replayed was already earned: nothing is announced.
     assert events == []
+
+
+async def test_new_rules_are_taken_as_they_stand_without_announcing(
+    home: HomeAssistant,
+) -> None:
+    await history(home, recent(40))
+    set_states(home)
+    entry = await setup_entry(home, ON)
+    achievements = entry.runtime_data.achievements
+    events: list[Event] = []
+    home.bus.async_listen(const.EVENT_ACHIEVEMENT, events.append)
+    # As a version before ladders left it: no tier earned yet.
+    achievements.memory.announced = {"level": 1, "tiers": {}, "records": {}}
+    achievements._computed_key = None
+
+    await achievements.async_update()
+    await home.async_block_till_done()
+
+    assert events == []
+    assert achievements.memory.announced["rules"] == RULES_VERSION
 
 
 async def test_switched_off_there_is_no_game(

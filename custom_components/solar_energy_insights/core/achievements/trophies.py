@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, timedelta, tzinfo
+from datetime import date, tzinfo
 from typing import Any
 
-from .badges import TIER_XP, BadgeState, evaluate
+from .badges import CROWN_XP, TIER_XP, TIERS, BadgeState, evaluate
+from .editions import Edition, in_season, window
 from .facts import DayFacts
 from .game import (
     Level,
@@ -114,11 +115,11 @@ def compute(
 ) -> Trophies:
     facts = sorted(facts, key=lambda f: f.day)
     scores = {f.day: score(f, floor_pct) for f in facts}
-    badges = evaluate(facts, profile, tz)
+    badges = evaluate(facts, profile, tz, today)
     recs = records(facts, tz, profile.southern) if facts else []
     xp = (
         sum(scores.values())
-        + sum(sum(TIER_XP[: b.tier]) for b in badges)
+        + sum(sum(TIER_XP[: b.tier]) + CROWN_XP * b.crowns for b in badges)
         + sum(q.reward for q in quests if q.result)
     )
     return Trophies(
@@ -195,33 +196,7 @@ def as_dict(
             }
             for r in t.records
         ],
-        "badges": [
-            {
-                "id": b.badge.id,
-                "name": b.badge.name if (b.count or not b.badge.hidden) else None,
-                "icon": b.badge.icon if (b.count or not b.badge.hidden) else "mdi:help",
-                "description": b.badge.description
-                if (b.count or not b.badge.hidden)
-                else None,
-                "riddle": b.badge.riddle if b.badge.hidden and not b.count else None,
-                "hidden": b.badge.hidden,
-                "season": b.badge.season,
-                "in_season": _in_season(b.badge.season, today, southern),
-                **_window(b.badge.season, today, southern),
-                "complete": b.tier >= len(b.badge.tiers),
-                "next_tier_at": b.badge.tiers[b.tier]
-                if b.tier < len(b.badge.tiers)
-                else None,
-                "count": b.count,
-                "tier": b.tier,
-                "tiers": list(b.badge.tiers),
-                "next_at": b.next_at,
-                "rarity": b.rarity,
-                "rarity_name": b.rarity_name,
-                "last_earned": b.earned_on[-1].isoformat() if b.earned_on else None,
-            }
-            for b in t.badges
-        ],
+        "badges": [_badge(b, today, southern) for b in t.badges],
         "quests": [q.as_dict() for q in t.quests[-10:]],
         "quest_level": {
             "level": t.quest_level,
@@ -238,24 +213,6 @@ def as_dict(
             "season": str(season_of(today, southern)),
         },
     }
-
-
-def _in_season(season: str | None, today: date, southern: bool) -> bool:
-    from .profile import (
-        days_before_winter_solstice,
-        days_from_summer_solstice,
-        days_from_winter_solstice,
-    )
-
-    if season is None:
-        return True
-    if season == "late autumn":
-        return days_before_winter_solstice(today, southern) <= 42
-    if season == "midwinter":
-        return days_from_winter_solstice(today, southern) <= 10
-    if season == "midsummer":
-        return days_from_summer_solstice(today, southern) <= 10
-    return str(season_of(today, southern)) == season
 
 
 def _month(m: Month, prices: tuple[float, float] | None) -> dict[str, Any]:
@@ -283,31 +240,84 @@ def _month(m: Month, prices: tuple[float, float] | None) -> dict[str, Any]:
     return out
 
 
-# Far enough ahead to reach every season's next window.
-_LOOK_DAYS = 400
+def _badge(b: BadgeState, today: date, southern: bool) -> dict[str, Any]:
+    """A badge as the view shows it. A hidden one keeps its name until earned;
+    a locked one says only what it follows."""
+    badge, known = b.badge, bool(b.count or b.tier or not b.badge.hidden)
+    found = window(badge.season, today, southern) if badge.season else None
+    return {
+        "id": badge.id,
+        "name": badge.name if known else None,
+        "icon": badge.icon if known else "mdi:help",
+        "description": badge.description if known else None,
+        "riddle": badge.riddle if badge.hidden and not known else None,
+        "hidden": badge.hidden,
+        "season": badge.season,
+        "in_season": in_season(badge.season, today, southern),
+        "season_from": found[0].isoformat() if found else None,
+        "season_until": found[1].isoformat() if found else None,
+        "complete": b.tier >= len(badge.tiers),
+        "next_tier_at": b.next_at,
+        "count": b.count,
+        "tier": b.tier,
+        "tiers": list(badge.tiers),
+        "next_at": b.next_at,
+        "rarity": b.rarity,
+        "rarity_name": b.rarity_name,
+        "last_earned": b.earned_on[-1].isoformat() if b.earned_on else None,
+        "steps": _steps(b),
+        "follows": badge.follows,
+        "locked": b.locked,
+        "edition": _edition(b, today),
+        "crowns": b.crowns,
+    }
 
 
-def _window(season: str | None, today: date, southern: bool) -> dict[str, str | None]:
-    """When a seasonal badge can be earned: the window it is in now, or the
-    next one. Found with the same rule that decides "in season", so the dates
-    shown and the badge never disagree."""
-    if season is None:
-        return {"season_from": None, "season_until": None}
-    day = today
-    if _in_season(season, day, southern):
-        while _in_season(season, day - timedelta(days=1), southern):
-            day -= timedelta(days=1)
-    else:
-        for _ in range(_LOOK_DAYS):
-            day += timedelta(days=1)
-            if _in_season(season, day, southern):
-                break
-        else:
-            return {"season_from": None, "season_until": None}
-    until = day
-    while (
-        _in_season(season, until + timedelta(days=1), southern)
-        and (until - day).days < _LOOK_DAYS
-    ):
-        until += timedelta(days=1)
-    return {"season_from": day.isoformat(), "season_until": until.isoformat()}
+def _steps(b: BadgeState) -> list[dict[str, Any]] | None:
+    """Each tier's step of the ladder: what a day must reach, how many such
+    days the tier needs, how many there have been, and how rare they are."""
+    if b.badge.steps is None or b.step_days is None:
+        return None
+    return [
+        {
+            "tier": TIERS[k],
+            "label": label,
+            "need": b.badge.tiers[k],
+            "days": b.step_days[k],
+            "share": round(b.step_days[k] / b.applied, 4) if b.applied else None,
+        }
+        for k, label in enumerate(b.badge.steps)
+    ]
+
+
+def _edition(b: BadgeState, today: date) -> dict[str, Any] | None:
+    """This window's edition against the one before it and the best one: the
+    bar this season is played to. Between windows, the last one played."""
+    if not b.editions:
+        return None
+    now = b.editions[-1]
+    played = [e for e in b.editions[:-1] if not e.partial]
+    before = b.editions[-2] if len(b.editions) > 1 else None
+    best = max(played, key=lambda e: e.days, default=None)
+
+    def brief(e: Edition | None) -> dict[str, Any] | None:
+        if e is None:
+            return None
+        return {
+            "label": e.label,
+            "days": e.days,
+            "top": e.top,
+            "partial": e.partial,
+        }
+
+    return {
+        **(brief(now) or {}),
+        "from": now.start.isoformat(),
+        "until": now.end.isoformat(),
+        "active": now.start <= today <= now.end,
+        "crowned_on": now.crowned_on.isoformat() if now.crowned_on else None,
+        # The bar to beat: the edition before, if it was played in full.
+        "beat": None if before is None or before.partial else before.days + 1,
+        "previous": brief(before),
+        "best": brief(best),
+    }

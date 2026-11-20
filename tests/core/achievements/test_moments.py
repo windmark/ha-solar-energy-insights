@@ -10,6 +10,7 @@ from custom_components.solar_energy_insights.core.achievements.badges import (
     CATALOGUE,
     BadgeState,
 )
+from custom_components.solar_energy_insights.core.achievements.editions import Edition
 from custom_components.solar_energy_insights.core.achievements.game import (
     Level,
     Record,
@@ -28,7 +29,7 @@ def test_a_badge_says_what_earned_it_and_what_is_next() -> None:
     assert m["title"] == "Perfect day: bronze"
     assert m["explain"] == (
         "Grid-free, battery full and the morning forecast beaten. "
-        "1 of 5 for silver. Rare: 4 % of your days earn it."
+        "1 of 5 days for silver. Rare: 4 % of your days earn it."
     )
 
 
@@ -110,3 +111,38 @@ def test_moments_are_kept_two_days_newest_first() -> None:
 
     assert [m["kind"] for m in kept] == ["level", "badge", "record"]
     assert len({m["id"] for m in kept}) == 3
+
+
+WARRIOR = next(b for b in CATALOGUE if b.id == "winter_warrior")
+HARVEST = next(b for b in CATALOGUE if b.id == "harvest_night")
+
+
+def test_a_laddered_tier_says_what_day_it_took_and_the_next_asks() -> None:
+    state = BadgeState(WARRIOR, 2, 2, 10, 0.2, (date(2026, 1, 9),), ())
+
+    explain = moments.badge(state)["explain"]
+
+    assert "5 days at 65 %." in explain
+    assert "2 of 10 days at 80 % for gold." in explain
+
+
+def test_a_complete_badge_names_the_one_that_follows() -> None:
+    state = BadgeState(HARVEST, 20, 3, None, 0.3, (), ())
+
+    assert moments.badge(state)["explain"].endswith(
+        "the badge is complete. Next up: Harvest moon."
+    )
+
+
+def test_a_crown_says_which_edition_it_beat() -> None:
+    last = Edition(date(2025, 9, 22), date(2025, 12, 20), 12, 2, partial=False)
+    now = Edition(
+        date(2026, 9, 22), date(2026, 12, 20), 13, 3, False, date(2026, 11, 14)
+    )
+    state = BadgeState(HARVEST, 13, 3, None, 0.3, (), (), editions=(last, now))
+
+    m = moments.crown(state)
+
+    assert m["kind"] == "crown"
+    assert m["title"] == "Harvest night 2026: better than last autumn"
+    assert m["message"] == "Harvest night 2026 beat 2025: 13 days against 12."

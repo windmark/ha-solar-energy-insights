@@ -58,6 +58,9 @@ _LOGGER = logging.getLogger(__name__)
 # quietly. 2: counter jumps dropped. 3: no cycle counts. 4: load spikes.
 FACTS_VERSION = 4
 SPIKE_DAYS = 30
+# Raise when the same history would earn different tiers: the room is then
+# taken as it stands, without announcing it again. 2: ladders and editions.
+RULES_VERSION = 2
 
 
 class Achievements:
@@ -292,6 +295,8 @@ class Achievements:
             tuple((q.id, q.result) for q in quests),
             battery.floor_pct,
             self._clear_for,
+            # Editions turn over with the date, even without a new day's facts.
+            today,
         )
         if key != self._computed_key or self.trophies is None:
             trophies = await self.c.hass.async_add_executor_job(
@@ -404,8 +409,10 @@ class Achievements:
     def _announce(self, t: Trophies) -> None:
         memory = self.memory
         state = {
+            "rules": RULES_VERSION,
             "level": t.level.level,
             "tiers": {b.badge.id: b.tier for b in t.badges},
+            "crowns": {b.badge.id: b.crowns for b in t.badges if b.crowns},
             "records": {r.id: r.day.isoformat() for r in t.records},
             "quests": sorted(q.id for q in t.quests if q.result),
             "months": [m.month for m in t.months],
@@ -413,8 +420,9 @@ class Achievements:
         before = memory.announced
         memory.announced = state
         self.c.memory.async_save_later()
-        if before is None:
-            # The first replay of history: everything is already earned.
+        if before is None or before.get("rules") != RULES_VERSION:
+            # The first replay of history, or of new rules: everything is
+            # already earned.
             return
         since = t.scores[0][0] if t.scores else None
         found: list[dict[str, Any]] = []
@@ -424,6 +432,11 @@ class Achievements:
             moments.badge(b)
             for b in t.badges
             if b.tier > before.get("tiers", {}).get(b.badge.id, 0)
+        ]
+        found += [
+            moments.crown(b)
+            for b in t.badges
+            if b.crowns > before.get("crowns", {}).get(b.badge.id, 0)
         ]
         found += [
             moments.record(r, since)

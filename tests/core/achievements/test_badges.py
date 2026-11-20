@@ -10,6 +10,10 @@ from custom_components.solar_energy_insights.core.achievements.badges import (
     evaluate,
 )
 from custom_components.solar_energy_insights.core.achievements.profile import profile_of
+from custom_components.solar_energy_insights.core.achievements.rules import (
+    Context,
+    run,
+)
 from tests.core.achievements.homes import home, without
 from tests.core.helpers import TZ
 
@@ -27,7 +31,7 @@ def test_every_badge_is_offered_to_a_home_that_measures_everything() -> None:
 
     missing = {b.id for b in CATALOGUE} - set(got)
     # Only the badges needing the plan's saved advice.
-    assert missing == {"steady_hand", "forecast_whisperer"}
+    assert missing == {"steady_hand", "forecast_whisperer", "oracle"}
 
 
 def test_a_home_without_a_solar_counter_sees_no_yield_badges() -> None:
@@ -97,7 +101,7 @@ def test_thresholds_never_peek_at_later_days() -> None:
     after, _ = states(days + later)
 
     for badge_id, state in before.items():
-        if state.badge.earns is not None:
+        if state.badge.grade is not None:
             assert (
                 after[badge_id].earned_on[: len(state.earned_on)] == state.earned_on
             ), badge_id
@@ -150,5 +154,142 @@ def test_a_roof_facing_away_from_the_sun_earns_power_plant_at_its_own_pace() -> 
     south, _ = states(days, kwp=10.0, relative_yield=1.0)
     east_west, _ = states(days, kwp=10.0, relative_yield=0.81)
 
-    assert south["power_plant"].count == 0
-    assert east_west["power_plant"].count == 60
+    # Silver's 1.5 kWh, not gold's 2 on an ideal roof; gold for east–west.
+    assert south["power_plant"].tier == 2
+    assert east_west["power_plant"].tier == 3
+    assert east_west["power_plant"].step_days == (60, 60, 60)
+
+
+def self_sufficient(share: float):
+    """A day that took *share* of its use from home."""
+
+    def tweak(f):
+        return replace(f, import_kwh=round(f.house_kwh * (1 - share), 3))
+
+    return tweak
+
+
+WINTER_END = date(2026, 2, 15)
+
+
+def winter(days: int, share: float, better: int = 0, best_share: float = 0.0):
+    """*days* up to mid-February at *share* self-sufficiency, the last *better*
+    of them at *best_share*."""
+    out = home(days, WINTER_END, tweak=self_sufficient(share))
+    return out[: len(out) - better] + [
+        self_sufficient(best_share)(f) for f in out[len(out) - better :]
+    ]
+
+
+def test_each_tier_asks_for_a_better_day() -> None:
+    got = states(winter(50, 0.55))[0]["winter_warrior"]
+
+    # Bronze at 50 %; nothing yet towards silver's five days at 65 %.
+    assert got.tier == 1
+    assert got.count == 0
+    assert got.next_at == 5
+    assert got.step_days is not None
+    assert got.step_days[1:] == (0, 0)
+
+
+def test_a_better_day_counts_for_every_step_below_it() -> None:
+    four = states(winter(50, 0.55, better=4, best_share=0.7))[0]["winter_warrior"]
+    five = states(winter(50, 0.55, better=5, best_share=0.7))[0]["winter_warrior"]
+    best = states(winter(50, 0.55, better=10, best_share=0.9))[0]["winter_warrior"]
+
+    assert (four.tier, four.count) == (1, 4)
+    assert five.tier == 2
+    assert best.tier == 3
+    assert best.step_days is not None
+    assert best.step_days[0] >= best.step_days[1] >= best.step_days[2] == 10
+
+
+def test_a_successor_is_locked_until_the_badge_before_is_complete() -> None:
+    dark = home(400, END, tweak=lambda f: replace(f, night_lasted=False))
+
+    got = states(dark)[0]
+
+    assert got["harvest_night"].tier == 0
+    assert got["harvest_moon"].locked
+    assert got["harvest_moon"].count == 0
+
+
+def test_a_successor_counts_only_the_days_after_it_was_unlocked() -> None:
+    got = states(home(730, END))[0]
+
+    night, moon = got["harvest_night"], got["harvest_moon"]
+    assert night.tier == 3
+    assert not moon.locked
+    assert all(d > night.tier_days[-1] for d in moon.earned_on)
+
+
+def test_a_run_is_graded_on_the_day_it_reaches_each_length() -> None:
+    days = home(30, END, tweak=lambda f: replace(f, night_lasted=True))
+    holds = run(lambda f, _c: f.night_lasted, (3, 5, 7))
+    profile = profile_of(days, 10.0, BERLIN)
+
+    grades = [holds(f, Context(profile, TZ, days[:k])) for k, f in enumerate(days[:8])]
+
+    assert grades == [0, 0, 1, 0, 2, 0, 3, 0]
+
+
+def test_a_seasonal_badge_is_played_in_editions() -> None:
+    got = states(home(750, END))[0]["harvest_night"]
+
+    labels = [e.label for e in got.editions]
+    assert labels == ["2024", "2025", "2026"]
+    # History began in the middle of the 2024 autumn.
+    assert got.editions[0].partial
+    assert sum(e.days for e in got.editions) == len(got.earned_on)
+
+
+def test_low_sun_hero_ranks_winter_days_by_the_sky_they_had() -> None:
+    """Against a clear sky, a bright December day counts as much as a bright
+    March one; by yield alone, December can hardly compete."""
+    days = home(800, END)
+    by_sky = states(days)[0]["low_sun_hero"]
+    by_yield = states([replace(f, clear_kwh=None) for f in days])[0]["low_sun_hero"]
+
+    def dark(state):
+        return sum(1 for d in state.earned_on if d.month in (12, 1))
+
+    assert dark(by_sky) > dark(by_yield)
+
+
+def test_bluebird_day_needs_the_planes() -> None:
+    days = home(200, END)
+
+    assert "bluebird_day" in states(days)[0]
+    assert "bluebird_day" not in states([replace(f, clear_kwh=None) for f in days])[0]
+
+
+def test_the_sun_sponge_counts_only_days_after_an_empty_night() -> None:
+    days = home(200, END, varied=True)
+    held = [replace(f, night_lasted=True) for f in days]
+
+    assert states(held)[0]["sun_sponge"].count == 0
+    assert states(held)[0]["sun_sponge"].rarity == 0
+
+
+def test_the_wheel_of_the_year_counts_months_with_a_grid_free_night() -> None:
+    def summer_only(f):
+        return replace(f, night_lasted=f.day.month in (5, 6, 7, 8))
+
+    all_year = states(home(400, END, tweak=lambda f: replace(f, night_lasted=True)))
+    summers = states(home(400, END, tweak=summer_only))
+
+    assert all_year[0]["wheel_of_the_year"].count == 12
+    assert summers[0]["wheel_of_the_year"].count == 4
+
+
+def test_groundhog_day_repeats_last_years_yield() -> None:
+    days = home(400, END)
+    same = replace(days[-1], solar_kwh=days[-366].solar_kwh)
+    sunny = max(days[-60:], key=lambda f: f.solar_kwh or 0)
+    again = [*days[:-1], replace(same, solar_kwh=sunny.solar_kwh)]
+    year_ago = replace(again[-366], solar_kwh=sunny.solar_kwh)
+    again[-366] = year_ago
+
+    got = states(again)[0]["groundhog_day"]
+
+    assert END in got.earned_on

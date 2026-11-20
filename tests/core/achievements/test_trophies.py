@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date
 
-from custom_components.solar_energy_insights.core.achievements.badges import TIER_XP
+from custom_components.solar_energy_insights.core.achievements.badges import (
+    CROWN_XP,
+    TIER_XP,
+)
 from custom_components.solar_energy_insights.core.achievements.profile import profile_of
 from custom_components.solar_energy_insights.core.achievements.quests import Quest
 from custom_components.solar_energy_insights.core.achievements.trophies import (
@@ -24,14 +27,19 @@ def room(days=200, quests=()):
     return facts, compute(facts, profile, TZ, END, quests)
 
 
-def test_xp_is_scores_plus_tiers_plus_quests_met() -> None:
+def test_xp_is_scores_plus_tiers_and_crowns_plus_quests_met() -> None:
     quest = Quest("fill-x", END, "fill_before", "Fill", 700, 60, END, result=True)
     missed = replace(quest, id="fill-y", result=False)
-    _facts, t = room(quests=(quest, missed))
+    _facts, t = room(days=750, quests=(quest, missed))
 
+    crowns = sum(b.crowns for b in t.badges)
     expected = (
-        sum(s for _, s in t.scores) + sum(sum(TIER_XP[: b.tier]) for b in t.badges) + 60
+        sum(s for _, s in t.scores)
+        + sum(sum(TIER_XP[: b.tier]) for b in t.badges)
+        + CROWN_XP * crowns
+        + 60
     )
+    assert crowns
     assert t.level.xp == expected
 
 
@@ -90,19 +98,35 @@ def test_with_prices_a_month_says_what_the_sun_was_worth() -> None:
     assert "saved" not in as_dict(t, END)["months"][-2]
 
 
-def test_a_seasonal_badge_says_when_it_can_be_earned() -> None:
-    from custom_components.solar_energy_insights.core.achievements.trophies import (
-        _window,
-    )
+def test_a_laddered_badge_shows_each_step() -> None:
+    _facts, t = room(days=400)
 
-    before = _window("late autumn", date(2026, 11, 2), southern=False)
-    during = _window("late autumn", date(2026, 11, 20), southern=False)
+    warrior = next(b for b in as_dict(t, END)["badges"] if b["id"] == "winter_warrior")
 
-    # The six weeks before the winter solstice: next, then now.
-    assert before == {"season_from": "2026-11-09", "season_until": "2026-12-21"}
-    assert during == before
-    assert (
-        _window("summer", date(2026, 11, 2), southern=True)["season_from"]
-        == "2026-12-21"
-    )
-    assert _window(None, date(2026, 11, 2), southern=False)["season_from"] is None
+    assert [s["label"] for s in warrior["steps"]] == ["50 %", "65 %", "80 %"]
+    assert [s["need"] for s in warrior["steps"]] == warrior["tiers"]
+    assert warrior["steps"][0]["days"] >= warrior["steps"][2]["days"]
+
+
+def test_a_seasonal_badge_shows_this_edition_against_the_last() -> None:
+    _facts, t = room(days=750)
+    shown = {b["id"]: b for b in as_dict(t, END)["badges"]}
+
+    edition = shown["harvest_night"]["edition"]
+    # 31 October: in the middle of the 2026 autumn.
+    assert edition["label"] == "2026"
+    assert edition["active"]
+    assert edition["previous"]["label"] == "2025"
+    assert edition["beat"] == edition["previous"]["days"] + 1
+    # Badges played all year have no editions.
+    assert shown["every_drop"]["edition"] is None
+
+
+def test_a_locked_successor_says_what_it_follows() -> None:
+    facts = home(200, END, varied=True, tweak=lambda f: replace(f, night_lasted=False))
+    t = compute(facts, profile_of(facts, 10.0, 52.5), TZ, END)
+
+    moon = next(b for b in as_dict(t, END)["badges"] if b["id"] == "harvest_moon")
+
+    assert moon["locked"]
+    assert moon["follows"] == "harvest_night"
