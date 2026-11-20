@@ -4,7 +4,16 @@
 
 ### Added
 
+- Badges get harder as they climb: each tier asks for a better day, not only more of them. Winter warrior wants one winter day at 50 % self-sufficient, then five at 65 %, then ten at 80 %.
+- Seasonal badges are played in editions, one per season, against last year's. Beat last winter's days and this winter earns a crown and 150 XP. A new `crown` announcement says so, and the blueprint offers it.
+- Four badges unlock a harder one once complete: Perfect streak, Harvest moon, Winter legend and Oracle.
+- New badges: Bluebird day and Sun sponge, which compare a day with what its sky allowed, Wheel of the year, and a hidden one.
+- Where Solcast's rooftop sites give the planes' directions, each day is compared with what a clear sky would have made, so a bright December day counts as much as a bright June one.
 - Quests have a level, from 1 to 6. Each quest met makes the next ones a little harder and pay a little more; each one missed makes them easier. The quest shows its level, and the quest sensor has it as an attribute.
+
+### Changed
+
+- Badge tiers are worked out again under the new rules, so some may move up or down once. Nothing is announced for that.
 
 ## [0.25.0] - 2026-11-20
 
