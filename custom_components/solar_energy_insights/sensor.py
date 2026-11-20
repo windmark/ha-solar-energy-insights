@@ -617,6 +617,7 @@ GAME: tuple[GameDescription, ...] = (
                 if (q := _open_quest(v))
                 else {}
             ),
+            "level": (v.get("quest_level") or {}).get("level"),
             "recent": [
                 {"title": q["title"], "met": q["result"]}
                 for q in v.get("quests", [])

@@ -1177,6 +1177,17 @@
       const last = [...(a.quests || [])]
         .reverse()
         .find((q) => q.result === true || q.result === false);
+      // Quests follow how you do: each met one aims a step higher, each missed one a step lower.
+      const QL = a.quest_level;
+      const questPips =
+        QL && QL.max
+          ? `<span title="Quest level ${QL.level} of ${
+              QL.max
+            }: met quests make the next ones harder, missed ones easier" style="margin-right:8px;letter-spacing:1px;opacity:0.9">${Array.from(
+              { length: QL.max },
+              (_, k) => (k < QL.level ? "●" : "○"),
+            ).join("")}</span>`
+          : "";
       const quest = open
         ? `<div style="background:color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 12%, transparent);border-radius:12px;padding:10px 12px;margin:12px 0 4px">
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--sei-good, var(--sei-good-auto, #8be36a))">
@@ -1190,7 +1201,9 @@
                 weekday: "long",
               })
       }</span>
-      <span style="font-weight:500">+${open.reward} XP</span></div>
+      <span style="white-space:nowrap">${questPips}<span style="font-weight:500">+${
+        open.reward
+      } XP</span></span></div>
     <div style="font-size:15px;color:var(--primary-text-color, #fff);font-weight:500;margin-top:4px;white-space:normal">${
       open.title
     }</div>${

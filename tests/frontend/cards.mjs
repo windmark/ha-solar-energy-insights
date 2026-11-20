@@ -179,6 +179,12 @@ check(
   "the quest carries the plan's advice",
   level.includes("keep the rest of the evening under ~5.7 kWh"),
 );
+check(
+  "the quest shows its level",
+  cards["solar-energy-insights-level"].shadowRoot.innerHTML.includes(
+    'title="Quest level 3 of 6',
+  ),
+);
 check("yesterday's news", level.includes("Yesterday: best day since 12 Oct"));
 check(
   "last week in one line",

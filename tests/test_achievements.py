@@ -159,3 +159,7 @@ async def test_a_quest_is_set_in_the_evening(
     assert quests
     quest = state(home, f"sensor.{PREFIX}quest")
     assert quest not in ("unknown", "unavailable")
+    # No quest judged yet: quests start at level 2 of 6.
+    sensor = home.states.get(f"sensor.{PREFIX}quest")
+    assert sensor is not None
+    assert sensor.attributes["level"] == 2
