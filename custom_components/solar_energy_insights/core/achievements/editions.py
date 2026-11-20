@@ -88,6 +88,16 @@ class Edition:
         return label(self.start, self.end)
 
 
+def to_beat(before: Edition | None) -> int | None:
+    """The days an edition needs to beat the one before: one more than it
+    earned. None when there is no fair bar: no edition before, one the history
+    began in the middle of, or one that earned nothing (a first earning day is
+    the tier's to reward, not a crown's)."""
+    if before is None or before.partial or before.days == 0:
+        return None
+    return before.days + 1
+
+
 def editions(
     season: str,
     earned: Sequence[tuple[date, int]],
@@ -99,7 +109,8 @@ def editions(
     what was earned in it. *earned* holds each earning day and its grade.
 
     An edition is crowned on the day its count passes the edition before, as
-    long as that one was played in full."""
+    long as that one was played in full and earned the badge at all: a first
+    earning day is the tier's to reward, not a crown's."""
     out: list[Edition] = []
     day = first
     while day <= today:
@@ -109,9 +120,9 @@ def editions(
         start, end = found
         inside = sorted((d, g) for d, g in earned if start <= d <= end)
         crowned_on = None
-        before = out[-1] if out else None
-        if before is not None and not before.partial and len(inside) > before.days:
-            crowned_on = inside[before.days][0]
+        bar = to_beat(out[-1] if out else None)
+        if bar is not None and len(inside) >= bar:
+            crowned_on = inside[bar - 1][0]
         out.append(
             Edition(
                 start,

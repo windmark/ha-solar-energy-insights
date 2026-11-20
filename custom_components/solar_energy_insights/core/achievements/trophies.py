@@ -8,7 +8,7 @@ from datetime import date, tzinfo
 from typing import Any
 
 from .badges import CROWN_XP, TIER_XP, TIERS, BadgeState, evaluate
-from .editions import Edition, in_season, window
+from .editions import Edition, in_season, to_beat, window
 from .facts import DayFacts
 from .game import (
     Level,
@@ -317,7 +317,7 @@ def _edition(b: BadgeState, today: date) -> dict[str, Any] | None:
         "active": now.start <= today <= now.end,
         "crowned_on": now.crowned_on.isoformat() if now.crowned_on else None,
         # The bar to beat: the edition before, if it was played in full.
-        "beat": None if before is None or before.partial else before.days + 1,
+        "beat": to_beat(before),
         "previous": brief(before),
         "best": brief(best),
     }

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, tzinfo
+from datetime import date, timedelta, tzinfo
 
 from .catalogue import CATALOGUE
 from .editions import Edition, editions
@@ -135,7 +135,8 @@ def _graded(
     count = at_step[badge.level(min(tier + 1, STEPS)) - 1]
     played: tuple[Edition, ...] = ()
     if badge.season is not None and facts and today is not None:
-        first = facts[0].day
+        # A successor's editions start when it was unlocked.
+        first = facts[0].day if after is None else after + timedelta(days=1)
         played = tuple(editions(badge.season, graded, first, today, profile.southern))
     return BadgeState(
         badge=badge,

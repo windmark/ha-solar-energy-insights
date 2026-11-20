@@ -221,6 +221,9 @@ def test_a_successor_counts_only_the_days_after_it_was_unlocked() -> None:
     assert night.tier == 3
     assert not moon.locked
     assert all(d > night.tier_days[-1] for d in moon.earned_on)
+    # Its editions start then too: none before it could be played.
+    assert moon.editions[0].start <= night.tier_days[-1] <= moon.editions[0].end
+    assert moon.editions[0].partial
 
 
 def test_a_run_is_graded_on_the_day_it_reaches_each_length() -> None:

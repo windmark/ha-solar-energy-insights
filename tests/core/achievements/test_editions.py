@@ -8,6 +8,7 @@ from custom_components.solar_energy_insights.core.achievements.editions import (
     editions,
     in_season,
     label,
+    to_beat,
     window,
 )
 
@@ -73,3 +74,15 @@ def test_the_edition_now_is_the_last_one_even_out_of_season() -> None:
     # The last window opened in December 2025; the next opens later.
     assert played[-1].start == date(2025, 12, 11)
     assert played[-1].end == date(2025, 12, 31)
+
+
+def test_beating_an_edition_that_earned_nothing_is_no_crown() -> None:
+    played = editions(
+        "winter", winters(0, 2), date(2023, 12, 1), date(2025, 3, 1), False
+    )
+
+    assert played[1].days == 2
+    assert played[1].crowned_on is None
+    # And so there is no bar to show for it either.
+    assert to_beat(played[0]) is None
+    assert to_beat(played[1]) == 3
