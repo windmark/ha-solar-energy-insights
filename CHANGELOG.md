@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- The cards preview with your own data in the dashboard's card picker. The moments card, which hides with nothing new, previews an example.
+- The card docs show each card as drawn, what it answers and its editor settings, with the YAML folded underneath.
+
 ## [0.24.0] - 2026-11-18
 
 ### Fixed
