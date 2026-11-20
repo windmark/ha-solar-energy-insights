@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.25.0] - 2026-11-20
+
 ### Changed
 
 - The cards preview with your own data in the dashboard's card picker. The moments card, which hides with nothing new, previews an example.
