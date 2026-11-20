@@ -144,17 +144,24 @@ def year_ago(
     by_day = {f.day: f for f in days}
     until = today - timedelta(days=1)
     span = [until - timedelta(days=k) for k in range(WEEK_DAYS - 1, -1, -1)]
-    now = [by_day[d] for d in span if d in by_day]
-    then = [
-        by_day[d - timedelta(days=YEAR_DAYS)]
+    # Only days kept in both years, paired, so a missing day can't pass for
+    # a worse week.
+    year = timedelta(days=YEAR_DAYS)
+    pairs = [
+        (by_day[d], by_day[d - year])
         for d in span
-        if d - timedelta(days=YEAR_DAYS) in by_day
+        if d in by_day and d - year in by_day
     ]
-    if len(now) < MIN_WEEK_DAYS or len(then) < MIN_WEEK_DAYS:
+    if len(pairs) < MIN_WEEK_DAYS:
         return None
+    now = [a for a, _ in pairs]
+    then = [b for _, b in pairs]
 
     def measures(week: Sequence[DayFacts]) -> dict[str, float | None]:
         nights = [f.night_lasted for f in week if f.night_lasted is not None]
+        # The same nights known in both years, or none compared.
+        if len(nights) < len(week):
+            nights = []
         return {
             "score": round(sum(score(f, floor_pct) for f in week) / len(week), 1),
             "self_sufficiency": _ratio(week),
@@ -179,6 +186,7 @@ def year_ago(
         "until": until.isoformat(),
         "then_from": (span[0] - timedelta(days=YEAR_DAYS)).isoformat(),
         "then_until": (until - timedelta(days=YEAR_DAYS)).isoformat(),
+        "days": len(pairs),
         "measures": rows,
         "today_solar_kwh": None if same_day is None else same_day.solar_kwh,
     }

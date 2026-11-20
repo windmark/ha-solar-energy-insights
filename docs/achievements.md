@@ -97,7 +97,7 @@ Facts are kept in the integration's store, about 1 kB a day.
 
 **Quest level.** Quests follow how you are doing. The level runs from 1 to 6 and starts at 2. Each quest met raises it one step, each one missed lowers it one. Level 1 sets targets about two in three similar days would have met; each step aims five points lower, down to two in five at level 6. The week's quest asks half a night more per level above the start. The level is replayed from the judged quests, so it settles where you meet about half of them.
 
-**A year ago.** The last seven closed days against the same seven 52 weeks earlier, so weekends line up and a December is held to a December: the average score, self-sufficiency, yield, grid-free nights and house use (shown, not judged). Today's yield so far is chased against the same day last year as well as the record. Nothing is shown until both weeks have five days.
+**A year ago.** The last seven closed days against the same seven 52 weeks earlier, so weekends line up and a December is held to a December. Only days kept in both years are compared, paired: the average score, self-sufficiency, yield, grid-free nights and house use (shown, not judged). Today's yield so far is chased against the same day last year as well as the record. Nothing is shown until both weeks have five days.
 
 **Recaps and moments.** Earning a tier, breaking a record, levelling up, completing a quest and closing a month fire `solar_energy_insights_achievement` with a title, a ready-made message and a line explaining it. The last two days of them are kept as moments, which the moments card shows for a day.
 

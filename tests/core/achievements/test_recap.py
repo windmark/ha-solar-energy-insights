@@ -183,3 +183,17 @@ def test_today_is_chased_against_the_same_day_last_year() -> None:
     assert got is not None
     year_before = next(f for f in days if f.day == END - timedelta(days=364))
     assert got["today_solar_kwh"] == year_before.solar_kwh
+
+
+def test_a_missing_day_last_year_leaves_that_day_out_of_both_weeks() -> None:
+    same = [replace(f, solar_kwh=10.0, house_kwh=12.0) for f in home(400, END)]
+    gone = {END - timedelta(days=364 + k) for k in (0, 1)}
+    patchy = [f for f in same if f.day not in gone]
+
+    got = year_ago(patchy, END + timedelta(days=1))
+
+    assert got is not None
+    assert got["days"] == 5
+    rows = {r["key"]: r for r in got["measures"]}
+    assert rows["solar_kwh"]["now"] == rows["solar_kwh"]["then"] == 50.0
+    assert rows["solar_kwh"]["better"] is None
