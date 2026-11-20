@@ -261,6 +261,7 @@ def _badge(b: BadgeState, today: date, southern: bool) -> dict[str, Any]:
         "count": b.count,
         "tier": b.tier,
         "tiers": list(badge.tiers),
+        "unit": badge.unit,
         "next_at": b.next_at,
         "rarity": b.rarity,
         "rarity_name": b.rarity_name,

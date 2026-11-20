@@ -146,3 +146,10 @@ def test_a_crown_says_which_edition_it_beat() -> None:
     assert m["kind"] == "crown"
     assert m["title"] == "Harvest night 2026: better than last autumn"
     assert m["message"] == "Harvest night 2026 beat 2025: 13 days against 12."
+
+
+def test_a_count_says_what_it_counts() -> None:
+    wheel = next(b for b in CATALOGUE if b.id == "wheel_of_the_year")
+    state = BadgeState(wheel, 9, 1, 11, None, (), ())
+
+    assert "9 of 11 months for silver." in moments.badge(state)["explain"]

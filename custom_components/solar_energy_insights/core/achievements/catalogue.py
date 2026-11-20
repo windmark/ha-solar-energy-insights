@@ -346,6 +346,7 @@ CATALOGUE: tuple[Badge, ...] = (
         (Cap.GRID,),
         (1, 3, 6),
         count=_runs(_self_sufficient(0.95), 7),
+        unit="week",
     ),
     Badge(
         "silver_lining",
@@ -467,6 +468,7 @@ CATALOGUE: tuple[Badge, ...] = (
         (1, 3, 5),
         season="spring",
         count=_first_grid_free_spring,
+        unit="year",
     ),
     Badge(
         "early_bird",
@@ -511,6 +513,7 @@ CATALOGUE: tuple[Badge, ...] = (
         (Cap.BATTERY, Cap.SEASONS),
         (9, 11, 12),
         count=_wheel_of_the_year,
+        unit="month",
     ),
     Badge(
         "steady_hand",
@@ -556,6 +559,7 @@ CATALOGUE: tuple[Badge, ...] = (
         (Cap.HOUSE,),
         (1, 3, 6),
         count=_thrifty_weeks,
+        unit="week",
     ),
     Badge(
         "night_owl",
@@ -610,5 +614,6 @@ CATALOGUE: tuple[Badge, ...] = (
         (Cap.SOLAR, Cap.ARRAY),
         (1, 5, 10),
         count=_mwh_per_10kwp,
+        unit="MWh",
     ),
 )

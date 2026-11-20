@@ -147,6 +147,8 @@ class Badge:
     count: Count | None = None
     # Offered once this badge is complete, and counted from then on.
     follows: str | None = None
+    # What a count counts; graded badges count days.
+    unit: str = "day"
 
     def level(self, tier: int) -> int:
         """The grade a day needs to count towards *tier* (1 to 3)."""

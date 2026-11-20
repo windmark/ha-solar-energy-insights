@@ -56,8 +56,11 @@ def level(lv: Level) -> dict[str, Any]:
     }
 
 
-def _days(n: float) -> str:
-    return f"{n:g} day" + ("" if n == 1 else "s")
+def _days(n: float, unit: str = "day") -> str:
+    """A count in its unit: 1 day, 5 days, 3 weeks, 2.5 MWh."""
+    if unit == "MWh":
+        return f"{n:g} MWh"
+    return f"{n:g} {unit}" + ("" if n == 1 else "s")
 
 
 def badge(b: BadgeState) -> dict[str, Any]:
@@ -72,7 +75,10 @@ def badge(b: BadgeState) -> dict[str, Any]:
     )
     if b.tier < len(tiers):
         at = f" at {steps[b.tier]}" if steps else ""
-        progress = f"{b.count:g} of {_days(tiers[b.tier])}{at} for {TIERS[b.tier]}."
+        progress = (
+            f"{b.count:g} of {_days(tiers[b.tier], b.badge.unit)}{at} "
+            f"for {TIERS[b.tier]}."
+        )
     else:
         nxt = next((x.name for x in CATALOGUE if x.follows == b.badge.id), None)
         progress = "Its last tier: the badge is complete." + (
