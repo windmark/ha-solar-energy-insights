@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Quests have a level, from 1 to 6. Each quest met makes the next ones a little harder and pay a little more; each one missed makes them easier. The quest shows its level, and the quest sensor has it as an attribute.
+
 ## [0.25.0] - 2026-11-20
 
 ### Changed

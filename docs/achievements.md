@@ -79,7 +79,9 @@ Facts are kept in the integration's store, about 1 kB a day.
 
 **Records.** Each with its date, the season's best, and how the latest day ranked among all your days.
 
-**Quests.** Each evening from 20:00, one quest for the next day; on Mondays, one for the week. Targets come from your own days with a similar forecast, set so about three in five would have met them. A borderline night ahead comes first: "Get to sunrise without the grid". Quests pay 25–100 XP by difficulty; missing one costs nothing.
+**Quests.** Each evening from 20:00, one quest for the next day; on Mondays, one for the week. Targets come from your own days with a similar forecast. A borderline night ahead comes first: "Get to sunrise without the grid". Quests pay 25–100 XP by difficulty; missing one costs nothing.
+
+**Quest level.** Quests follow how you are doing. The level runs from 1 to 6 and starts at 2. Each quest met raises it one step, each one missed lowers it one. Level 1 sets targets about two in three similar days would have met; each step aims five points lower, down to two in five at level 6. The week's quest asks half a night more per level above the start. The level is replayed from the judged quests, so it settles where you meet about half of them.
 
 **Recaps and moments.** Earning a tier, breaking a record, levelling up, completing a quest and closing a month fire `solar_energy_insights_achievement` with a title, a ready-made message and a line explaining it. The last two days of them are kept as moments, which the moments card shows for a day.
 
