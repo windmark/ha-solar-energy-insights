@@ -36,7 +36,16 @@ CARDS = [
     ("best-time", {"appliances": APPLIANCES[:1]}),
     ("appliances", {"appliances": APPLIANCES, "view": "today"}),
     ("forecast-trust", {}),
-    ("scenario-lab", {"extra_battery_kwh": 5, "battery_price_per_kwh": 400}),
+    (
+        "scenario-lab",
+        {
+            "extra_battery_kwh": 5,
+            "battery_price_per_kwh": 400,
+            "heat_loss_w_per_k": 150,
+            "heating_limit_c": 12.5,
+            "gas_price": 0.11,
+        },
+    ),
     ("moments", {}),
     ("level", {}),
     ("streaks", {}),
