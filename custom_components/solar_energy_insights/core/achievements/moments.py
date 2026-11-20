@@ -7,6 +7,9 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from .badges import CROWN_XP
+from .catalogue import CATALOGUE
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -53,13 +56,34 @@ def level(lv: Level) -> dict[str, Any]:
     }
 
 
+def _days(n: float, unit: str = "day") -> str:
+    """A count in its unit: 1 day, 5 days, 3 weeks, 2.5 MWh."""
+    if unit == "MWh":
+        return f"{n:g} MWh"
+    return f"{n:g} {unit}" + ("" if n == 1 else "s")
+
+
 def badge(b: BadgeState) -> dict[str, Any]:
+    """A tier earned: what it took, what the next one takes, and what follows
+    a complete badge."""
     tier = TIERS[b.tier - 1]
-    tiers = b.badge.tiers
+    tiers, steps = b.badge.tiers, b.badge.steps
+    took = (
+        f" {_days(tiers[b.tier - 1])} at {steps[b.tier - 1]}."
+        if steps and b.tier <= len(steps)
+        else ""
+    )
     if b.tier < len(tiers):
-        progress = f"{b.count:g} of {tiers[b.tier]:g} for {TIERS[b.tier]}."
+        at = f" at {steps[b.tier]}" if steps else ""
+        progress = (
+            f"{b.count:g} of {_days(tiers[b.tier], b.badge.unit)}{at} "
+            f"for {TIERS[b.tier]}."
+        )
     else:
-        progress = "Its last tier: the badge is complete."
+        nxt = next((x.name for x in CATALOGUE if x.follows == b.badge.id), None)
+        progress = "Its last tier: the badge is complete." + (
+            f" Next up: {nxt}." if nxt else ""
+        )
     rarity = ""
     name = b.rarity_name
     if b.rarity is not None and name is not None and name != "common":
@@ -73,8 +97,32 @@ def badge(b: BadgeState) -> dict[str, Any]:
         "tier": tier,
         "title": f"{b.badge.name}: {tier}",
         "message": f"New badge, {b.badge.name} ({tier}): {b.badge.description}.",
-        "explain": f"{b.badge.description}. {progress}{rarity}",
+        "explain": f"{b.badge.description}.{took} {progress}{rarity}",
         "icon": b.badge.icon,
+    }
+
+
+def crown(b: BadgeState) -> dict[str, Any]:
+    """A seasonal badge's edition beat the one before it."""
+    crowned = [k for k, e in enumerate(b.editions) if e.crowned_on is not None]
+    now = b.editions[crowned[-1]]
+    before = b.editions[crowned[-1] - 1]
+    season = b.badge.season or "season"
+    return {
+        "kind": "crown",
+        "badge": b.badge.id,
+        "edition": now.label,
+        "title": f"{b.badge.name} {now.label}: better than last {season}",
+        "message": (
+            f"{b.badge.name} {now.label} beat {before.label}: "
+            f"{_days(now.days)} against {before.days}."
+        ),
+        "explain": (
+            f"{b.badge.description}: {_days(now.days)} this {season}, past the "
+            f"{before.days} of {before.label}. +{CROWN_XP} XP, and next "
+            f"{season} has this one to beat."
+        ),
+        "icon": "mdi:crown",
     }
 
 
@@ -93,14 +141,20 @@ def record(r: Record, since: date | None) -> dict[str, Any]:
     }
 
 
-def quest(q: Quest) -> dict[str, Any]:
+def quest(q: Quest, level: int | None = None, top: int = 6) -> dict[str, Any]:
+    """A quest met; with the quest level it led to, which sets the next one."""
     when = "This week's quest" if q.until > q.day else f"{_day(q.day)}'s quest"
+    harder = (
+        f" Quests get a little harder: level {level} of {top}."
+        if level is not None and q.level is not None and level > q.level
+        else ""
+    )
     return {
         "kind": "quest",
         "quest": q.id,
         "title": f"Quest done: {q.title}",
         "message": f"Quest done, {q.title}: +{q.reward} XP.",
-        "explain": f"{when}, met: +{q.reward} XP towards your next level.",
+        "explain": f"{when}, met: +{q.reward} XP towards your next level.{harder}",
         "icon": "mdi:flag-checkered",
     }
 
@@ -148,3 +202,19 @@ def recent(kept: Iterable[dict[str, Any]], now: datetime) -> list[dict[str, Any]
             out.append((at, m))
     out.sort(key=lambda x: x[0], reverse=True)
     return [m for _, m in out[:MAX_KEPT]]
+
+
+def remember(before: dict[str, Any] | None, now: dict[str, Any]) -> dict[str, Any]:
+    """What has been announced, kept at its highest: a level lost to new rules,
+    or a badge missing for a while (its sensor not loaded yet) and back, is
+    not announced again. Records, quests and months as they are now."""
+    if before is None:
+        return now
+    out = dict(now)
+    out["level"] = max(now["level"], before.get("level", 0))
+    for key in ("tiers", "crowns"):
+        merged = dict(before.get(key, {}))
+        for badge, value in now[key].items():
+            merged[badge] = max(value, merged.get(badge, 0))
+        out[key] = merged
+    return out

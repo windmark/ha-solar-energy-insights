@@ -1,13 +1,15 @@
 """Quests: one for the next day each evening, one for the week on Mondays.
 
-Targets come from your own days with a similar forecast, set so that about
-three in five such days would have met them: a quest should be a stretch, not a
-lottery and not a given.
+Targets come from your own days with a similar forecast. How many of those days
+a target should have met depends on the quest level: it starts at three in
+five, and rises one step with each quest met and falls one with each missed, so
+quests follow how you are doing. A quest should be a stretch, not a lottery and
+not a given; missing one still costs nothing.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta, tzinfo
 from typing import Any
@@ -18,8 +20,10 @@ from .facts import DayFacts
 from .profile import Capability as Cap
 from .profile import Profile, season_of
 
-# The share of similar days that should meet a quest.
-AIM = 0.6
+# The share of similar days that should meet a quest, by quest level (1 to 6).
+AIMS = (0.65, 0.6, 0.55, 0.5, 0.45, 0.4)
+START_LEVEL = 2
+MAX_LEVEL = len(AIMS)
 # Forecasts within this share of the next day's count as similar.
 SIMILAR = 0.25
 MIN_SIMILAR = 8
@@ -59,6 +63,8 @@ class Quest:
     result: bool | None = None
     # As the plan advised when the quest was set.
     hint: str | None = None
+    # The quest level it was set at; None for quests set before levels.
+    level: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
         out = asdict(self)
@@ -74,6 +80,23 @@ class Quest:
                 "until": date.fromisoformat(data["until"]),
             }
         )
+
+
+def aim(level: int) -> float:
+    """The share of similar days a quest at this level would have met."""
+    return AIMS[min(max(level, 1), MAX_LEVEL) - 1]
+
+
+def quest_level(quests: Iterable[Quest]) -> int:
+    """Replays the judged quests in order: each met raises the level one step,
+    each missed lowers it one. Where it settles is where you meet about half."""
+    level = START_LEVEL
+    for q in sorted(quests, key=lambda q: (q.until, q.id)):
+        if q.result is True:
+            level = min(level + 1, MAX_LEVEL)
+        elif q.result is False:
+            level = max(level - 1, 1)
+    return level
 
 
 def _similar(
@@ -110,11 +133,14 @@ def next_day(
     forecast_kwh: float | None,
     outlook_tonight: str | None = None,
     advice: Advice | None = None,
+    level: int = START_LEVEL,
 ) -> Quest | None:
-    """The quest for *day*, made the evening before. A borderline night ahead
-    comes first: getting through it is the quest that matters. Each comes with
-    the plan's own advice for meeting it, where the plan has some."""
+    """The quest for *day*, made the evening before, at this quest level. A
+    borderline night ahead comes first: getting through it is the quest that
+    matters. Each comes with the plan's own advice for meeting it, where the
+    plan has some."""
     advice = advice or Advice()
+    share = aim(level)
     if outlook_tonight == "borderline" and profile.has(Cap.BATTERY):
         tonight = day - timedelta(days=1)
         return Quest(
@@ -126,13 +152,14 @@ def next_day(
             75,
             tonight,
             hint=advice.evening(),
+            level=level,
         )
     similar = _similar(facts, profile, day, forecast_kwh)
     options: list[tuple[Quest, float]] = []
     if profile.has(Cap.BATTERY):
         times = [m for f in similar if (m := f.full_minutes(tz)) is not None]
         if len(times) >= MIN_SIMILAR:
-            fill_by = float(15 * round(float(np.quantile(times, AIM)) / 15))
+            fill_by = float(15 * round(float(np.quantile(times, share)) / 15))
             met = sum(1 for m in times if m <= fill_by) / len(similar)
             title = f"Fill the battery before {_hm(fill_by)}"
             quest = Quest(
@@ -144,12 +171,13 @@ def next_day(
                 _reward(met),
                 day,
                 hint=f"heavy loads after {_hm(fill_by)} won't slow it",
+                level=level,
             )
             options.append((quest, met))
     if profile.has(Cap.SOLAR, Cap.GRID):
         kept = [k for f in similar if (k := f.kept_at_home) is not None]
         if len(kept) >= MIN_SIMILAR:
-            target = float(np.round(np.quantile(kept, 1 - AIM) * 20) / 20)
+            target = float(np.round(np.quantile(kept, 1 - share) * 20) / 20)
             met = sum(1 for k in kept if k >= target) / len(kept)
             title = f"Keep {round(target * 100)} % of the sun at home"
             quest = Quest(
@@ -161,12 +189,13 @@ def next_day(
                 _reward(met),
                 day,
                 hint=advice.window(),
+                level=level,
             )
             options.append((quest, met))
     if profile.has(Cap.GRID):
         ss = [v for f in similar if (v := f.self_sufficiency) is not None]
         if len(ss) >= MIN_SIMILAR:
-            target = float(np.round(np.quantile(ss, 1 - AIM) * 20) / 20)
+            target = float(np.round(np.quantile(ss, 1 - share) * 20) / 20)
             if target > 0:
                 met = sum(1 for v in ss if v >= target) / len(ss)
                 title = f"Be {round(target * 100)} % self-sufficient"
@@ -179,6 +208,7 @@ def next_day(
                     _reward(met),
                     day,
                     hint=advice.window(),
+                    level=level,
                 )
                 options.append((quest, met))
     if not options:
@@ -193,15 +223,20 @@ def next_day(
 
 
 def this_week(
-    facts: Sequence[DayFacts], profile: Profile, monday: date
+    facts: Sequence[DayFacts],
+    profile: Profile,
+    monday: date,
+    level: int = START_LEVEL,
 ) -> Quest | None:
-    """Monday's quest: a number of grid-free nights this week, from the last four."""
+    """Monday's quest: a number of grid-free nights this week, from the last
+    four, and half a night more for each quest level above the start."""
     if not profile.has(Cap.BATTERY):
         return None
     recent = [f.night_lasted for f in facts if f.night_lasted is not None][-28:]
     if len(recent) < 14:
         return None
-    nights = max(1, int(np.floor(sum(recent) / len(recent) * 7)))
+    usual = sum(recent) / len(recent) * 7
+    nights = min(7, max(1, int(np.floor(usual + (level - START_LEVEL) / 2))))
     return Quest(
         f"week-{monday}",
         monday,
@@ -210,6 +245,7 @@ def this_week(
         nights,
         50 + 10 * nights,
         monday + timedelta(days=6),
+        level=level,
     )
 
 

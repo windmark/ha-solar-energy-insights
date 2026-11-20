@@ -8,7 +8,7 @@ recent days), plus the integration's saved forecast and answers.
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, fields, replace
 from datetime import date, datetime, timedelta, tzinfo
 from typing import Any
@@ -28,6 +28,11 @@ PLENTY_ABOVE_FLOOR_PCT = 10.0
 CARRYING_ABOVE_FLOOR_PCT = 1.0
 MIN_SPIKE_HOURS = 48
 SPIKE_QUANTILE = 0.95
+# An inverter can't follow the house to the watt, so it draws a steady trickle
+# from the grid even with plenty in the battery. Learned from those hours; more
+# than 100 W is the house using the grid, not regulation.
+TRICKLE_QUANTILE = 0.75
+MAX_TRICKLE_KWH = 0.1
 # Rounding noise in the hourly statistics.
 NOISE_KWH = 0.0001
 FULL_WITHIN_PCT = 1.0
@@ -48,9 +53,18 @@ class DayFacts:
     offgrid_head: float | None = None
     offgrid_tail: float | None = None
     offgrid_run: float | None = None
+    # Import excused as the inverter's own: load spikes and its steady trickle,
+    # in hours the battery carried the house.
     spike_kwh: float | None = None
+    # Before sunrise: the end of the night before, which the night badges
+    # judge. The day's own measures start at sunrise.
+    dawn_house_kwh: float | None = None
+    dawn_own_import_kwh: float | None = None
     # Derived from the days before, so not stored.
     offgrid_stretch: float | None = None
+    # What the array would have made under a clear sky; derived from where its
+    # planes face, so not stored either.
+    clear_kwh: float | None = None
     soc_max: float | None = None
     soc_min: float | None = None
     full_at: datetime | None = None
@@ -72,11 +86,26 @@ class DayFacts:
         return max(self.import_kwh - (self.spike_kwh or 0.0), 0.0)
 
     @property
-    def self_sufficiency(self) -> float | None:
+    def day_house_kwh(self) -> float:
+        """The house's use from sunrise to midnight."""
+        return max(self.house_kwh - (self.dawn_house_kwh or 0.0), 0.0)
+
+    @property
+    def day_own_import_kwh(self) -> float | None:
+        """What came from the grid from sunrise on, beyond the inverter's own."""
         own = self.own_import_kwh
-        if own is None or self.house_kwh <= 0:
+        if own is None:
             return None
-        return max(0.0, min(1.0, 1 - own / self.house_kwh))
+        return max(own - (self.dawn_own_import_kwh or 0.0), 0.0)
+
+    @property
+    def self_sufficiency(self) -> float | None:
+        """From sunrise: a night that ran the battery down is the night's to
+        answer for, and doesn't put the day out of reach before it starts."""
+        own, use = self.day_own_import_kwh, self.day_house_kwh
+        if own is None or use <= 0:
+            return None
+        return max(0.0, min(1.0, 1 - own / use))
 
     @property
     def kept_at_home(self) -> float | None:
@@ -86,8 +115,37 @@ class DayFacts:
 
     @property
     def grid_free(self) -> bool | None:
-        own = self.own_import_kwh
+        """No grid from sunrise on, beyond the inverter's own."""
+        own = self.day_own_import_kwh
         return None if own is None else own < GRID_FREE_DAY_MAX_KWH
+
+    @property
+    def sky_share(self) -> float | None:
+        """The share of a clear sky's yield the day made: how well the panels
+        did with the sky they had, comparable from December to June."""
+        if self.solar_kwh is None or not self.clear_kwh or self.clear_kwh < 0.5:
+            return None
+        # Not capped: badges rank it against your own days, which a model
+        # that is off by a constant factor doesn't change.
+        return self.solar_kwh / self.clear_kwh
+
+    @property
+    def sun_cover(self) -> float | None:
+        """The day's yield against the house's use: how much the sun could
+        have covered at most."""
+        if self.solar_kwh is None or self.day_house_kwh <= 0:
+            return None
+        return self.solar_kwh / self.day_house_kwh
+
+    @property
+    def sun_used(self) -> float | None:
+        """Self-sufficiency against what the day's sun could cover: how much
+        of what was possible the house made of it, whatever the season or the
+        size of the house."""
+        ss, cover = self.self_sufficiency, self.sun_cover
+        if ss is None or cover is None or cover <= 0:
+            return None
+        return ss / min(cover, 1.0)
 
     @property
     def full(self) -> bool | None:
@@ -107,7 +165,9 @@ class DayFacts:
 
     def as_dict(self) -> dict[str, Any]:
         out = asdict(self)
-        out.pop("offgrid_stretch")  # derived from the days before
+        # Derived, not stored.
+        out.pop("offgrid_stretch")
+        out.pop("clear_kwh")
         for key, value in out.items():
             if isinstance(value, (date, datetime)):
                 out[key] = value.isoformat()
@@ -166,10 +226,14 @@ def build(
     said: Mapping[str, Any] | None = None,
     min_hours: int = MIN_HOURS,
     spike_share: float = 0.0,
+    trickle_kwh: float = 0.0,
+    sunrise_hour: int | None = None,
 ) -> DayFacts | None:
     """The facts of one closed day, or None if the house's use is mostly missing.
 
-    With a lower *min_hours*, the day so far: for today's live score.
+    With a lower *min_hours*, the day so far: for today's live score. With
+    *sunrise_hour*, the first local hour starting at or after sunrise, what
+    came before it is kept apart as the end of the night.
     """
     house = _day(s.house, day, min_hours)
     if house is None:
@@ -200,6 +264,7 @@ def build(
             if hour is not None:
                 full_at = datetime(day.year, day.month, day.day, hour, tzinfo=tz)
     peaks = _day(s.solar_peak, day, min_hours)
+    dawn = _dawn(s, day, floor_pct, spike_share, trickle_kwh, sunrise_hour)
     said = said or {}
     said_full_at = said.get("full_at")
     return DayFacts(
@@ -209,7 +274,8 @@ def build(
         solar_best_hour_kwh=None if solar is None else round(max(solar), 3),
         import_kwh=None if imported is None else round(sum(imported), 3),
         export_kwh=None if exported is None else round(sum(exported), 3),
-        **_offgrid(s, day, floor_pct, spike_share, imported is not None),
+        **_offgrid(s, day, floor_pct, spike_share, imported is not None, trickle_kwh),
+        **dawn,
         soc_max=None if highs is None else max(highs),
         soc_min=None if lows is None else min(lows),
         full_at=full_at,
@@ -225,13 +291,41 @@ def build(
     )
 
 
+def _dawn(
+    s: Series,
+    day: date,
+    floor_pct: float,
+    share: float,
+    trickle: float,
+    sunrise_hour: int | None,
+) -> dict[str, float | None]:
+    """The house's use and its own grid import before sunrise."""
+    if sunrise_hour is None or not s.imported:
+        return {"dawn_house_kwh": None, "dawn_own_import_kwh": None}
+    hours = range(min(max(sunrise_hour, 0), 24))
+    house = sum(s.house.get((day, h), 0.0) for h in hours)
+    own = sum(
+        max(s.imported.get((day, h), 0.0), 0.0)
+        for h in hours
+        if not _hour_off(s, (day, h), floor_pct, share, trickle)
+    )
+    return {"dawn_house_kwh": round(house, 3), "dawn_own_import_kwh": round(own, 3)}
+
+
 def yesterday_of(day: date) -> date:
     return day - timedelta(days=1)
 
 
-def _hour_off(s: Series, key: tuple[date, int], floor_pct: float, share: float) -> bool:
-    """Off the grid this hour: next to no import, or only load spikes' share
-    of the house's use while the battery carried the house all hour."""
+def _hour_off(
+    s: Series,
+    key: tuple[date, int],
+    floor_pct: float,
+    share: float,
+    trickle: float,
+) -> bool:
+    """Off the grid this hour: next to no import, or, while the battery carried
+    the house all hour, no more than the inverter's own: load spikes' share of
+    the house's use, or its steady trickle, whichever is more."""
     imp = s.imported.get(key) if s.imported else None
     if imp is None:
         return False
@@ -239,20 +333,26 @@ def _hour_off(s: Series, key: tuple[date, int], floor_pct: float, share: float) 
         return True
     low = s.soc_min.get(key) if s.soc_min else None
     use = s.house.get(key)
+    allowed = max(share * use, trickle) if use is not None else trickle
     return (
-        share > 0
+        allowed > 0
         and low is not None
         and low > floor_pct + CARRYING_ABOVE_FLOOR_PCT
-        and use is not None
-        and imp <= share * use + NOISE_KWH
+        and imp <= allowed + NOISE_KWH
     )
 
 
 def _offgrid(
-    s: Series, day: date, floor_pct: float, share: float, known: bool
+    s: Series,
+    day: date,
+    floor_pct: float,
+    share: float,
+    known: bool,
+    trickle: float = 0.0,
 ) -> dict[str, float | None]:
     """Off-grid hours, the hours from and to midnight, the longest run in the
-    day, and the import excused as spikes. A missing hour breaks a run."""
+    day, and the import excused in them: every hour off the grid counts as
+    taking nothing from it. A missing hour breaks a run."""
     if not known:
         return dict.fromkeys(
             (
@@ -263,7 +363,7 @@ def _offgrid(
                 "spike_kwh",
             )
         )
-    off = [_hour_off(s, (day, h), floor_pct, share) for h in range(24)]
+    off = [_hour_off(s, (day, h), floor_pct, share, trickle) for h in range(24)]
     head = next((h for h, o in enumerate(off) if not o), 24)
     tail = next((h for h, o in enumerate(reversed(off)) if not o), 24)
     run = best = 0
@@ -271,11 +371,7 @@ def _offgrid(
         run = run + 1 if o else 0
         best = max(best, run)
     imported = s.imported or {}
-    spikes = sum(
-        imported[(day, h)]
-        for h in range(24)
-        if off[h] and imported.get((day, h), 0.0) >= OFF_GRID_KWH
-    )
+    spikes = sum(max(imported.get((day, h), 0.0), 0.0) for h in range(24) if off[h])
     return {
         "offgrid_hours": float(sum(off)),
         "offgrid_head": float(head),
@@ -311,6 +407,26 @@ def spike_share(
     )
 
 
+def trickle(
+    imported: Hourly | None, soc_min: Hourly | None, floor_pct: float
+) -> tuple[float, int]:
+    """The inverter's steady trickle from the grid, kWh an hour: learned from
+    hours the battery had plenty (the upper quartile of their import, so load
+    spikes don't count), at most MAX_TRICKLE_KWH; and how many such hours there
+    were. None (0) until there are enough."""
+    if not imported or not soc_min:
+        return 0.0, 0
+    values = sorted(
+        max(imp, 0.0)
+        for key, imp in imported.items()
+        if soc_min.get(key, 0.0) >= floor_pct + PLENTY_ABOVE_FLOOR_PCT
+    )
+    if len(values) < MIN_SPIKE_HOURS:
+        return 0.0, len(values)
+    high = values[min(int(TRICKLE_QUANTILE * len(values)), len(values) - 1)]
+    return round(min(high, MAX_TRICKLE_KWH), 3), len(values)
+
+
 def with_stretches(days: list[DayFacts]) -> list[DayFacts]:
     """Each day with the longest stretch off the grid ending in it, carried
     across midnight and across days. A missing day breaks a stretch."""
@@ -331,3 +447,10 @@ def with_stretches(days: list[DayFacts]) -> list[DayFacts]:
             carry = f.offgrid_tail
         before = f.day
     return out
+
+
+def with_potential(
+    days: list[DayFacts], clear_kwh: Callable[[date], float | None]
+) -> list[DayFacts]:
+    """Each day with the array's clear-sky yield for its date."""
+    return [replace(f, clear_kwh=clear_kwh(f.day)) for f in days]

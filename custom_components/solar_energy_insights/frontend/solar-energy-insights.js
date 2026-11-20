@@ -813,6 +813,7 @@
     ["12:00", "12:00 for the afternoon"],
   ];
   const SECTIONS = [
+    ["this_season", "This season"],
     ["within_reach", "Within reach"],
     ["any_time", "Any time"],
     ["later", "Later"],
@@ -958,6 +959,11 @@
       },
       stub: { hours: 24, max: 3 },
     },
+    records: {
+      schema: [{ name: "year_ago", selector: { boolean: {} } }],
+      labels: { year_ago: "The last week against a year ago" },
+      stub: { year_ago: true },
+    },
     badges: {
       schema: [{ name: "sections", selector: choose(SECTIONS) }],
       labels: { sections: "Sections" },
@@ -1079,68 +1085,73 @@
     });
   };
 
+  // What every achievement card shares: the trophy room, its colours and bars.
+  const achUi = (el, hass, states) => {
+    const base = window.SolarDash.ui(el, hass, states);
+    const { W, sub, ws, waiting } = base;
+    const a = ws("ach", "solar_energy_insights/achievements", 300);
+    const off = W.ach?.error && /disabled|off/i.test(W.ach.error);
+    const bar = (pct, color, h = 6) =>
+      `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
+        h / 2
+      }px;overflow:hidden"><div style="width:${Math.max(
+        0,
+        Math.min(pct, 100),
+      )}%;height:100%;background:${color};border-radius:${
+        h / 2
+      }px"></div></div>`;
+    const dmy = (d) =>
+      d
+        ? new Date(d).toLocaleDateString("en-GB", {
+            day: "numeric",
+            month: "short",
+            year: "2-digit",
+          })
+        : "";
+    const notReady = () =>
+      off
+        ? sub(
+            "Achievements are off: switch them on in the Solar Energy Insights options.",
+          )
+        : waiting("ach", "the trophy room");
+    return {
+      ...base,
+      a,
+      off,
+      TIER: ACH_TIER,
+      RANK: ACH_RANK,
+      bar,
+      dmy,
+      notReady,
+    };
+  };
+  const ACH_TIER = [
+    ["#cd7f32", "Bronze"],
+    ["#c0c0c8", "Silver"],
+    ["#f5b83d", "Gold"],
+  ];
+  const ACH_RANK = {
+    Bronze: ["#cd7f32", "mdi:shield-outline"],
+    Silver: ["#c0c0c8", "mdi:shield-half-full"],
+    Gold: ["#f5b83d", "mdi:shield-star"],
+    Platinum: [
+      "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
+      "mdi:shield-crown",
+    ],
+    Diamond: ["#b9f2ff", "mdi:diamond-stone"],
+  };
+
   defineCard(
     "solar-energy-insights-level",
     "Solar level",
     "Your level, rank, today's score and quest.",
     function (states, hass) {
       const el = this;
-      const {
-        W,
-        C,
-        st,
-        val,
-        attr,
-        num,
-        hm,
-        kwh,
-        sub,
-        head,
-        pill,
-        ws,
-        waiting,
-      } = window.SolarDash.ui(this, hass, states);
-
-      const a = ws("ach", "solar_energy_insights/achievements", 300);
-      const off = W.ach?.error && /disabled|off/i.test(W.ach.error);
-      const TIER = [
-        ["#cd7f32", "Bronze"],
-        ["#c0c0c8", "Silver"],
-        ["#f5b83d", "Gold"],
-      ];
-      const RANK = {
-        Bronze: ["#cd7f32", "mdi:shield-outline"],
-        Silver: ["#c0c0c8", "mdi:shield-half-full"],
-        Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: [
-          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
-          "mdi:shield-crown",
-        ],
-        Diamond: ["#b9f2ff", "mdi:diamond-stone"],
-      };
-      const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
-          h / 2
-        }px;overflow:hidden"><div style="width:${Math.max(
-          0,
-          Math.min(pct, 100),
-        )}%;height:100%;background:${color};border-radius:${
-          h / 2
-        }px"></div></div>`;
-      const dmy = (d) =>
-        d
-          ? new Date(d).toLocaleDateString("en-GB", {
-              day: "numeric",
-              month: "short",
-              year: "2-digit",
-            })
-          : "";
-      const notReady = () =>
-        off
-          ? sub(
-              "Achievements are off: switch them on in the Solar Energy Insights options.",
-            )
-          : waiting("ach", "the trophy room");
+      const { W, C, num, sub, head, a, TIER, RANK, bar, dmy, notReady } = achUi(
+        this,
+        hass,
+        states,
+      );
 
       // The open quest leads: it is what's closest to happening.
       if (!a) return notReady();
@@ -1177,6 +1188,17 @@
       const last = [...(a.quests || [])]
         .reverse()
         .find((q) => q.result === true || q.result === false);
+      // Quests follow how you do: each met one aims a step higher, each missed one a step lower.
+      const QL = a.quest_level;
+      const questPips =
+        QL && QL.max
+          ? `<span title="Quest level ${QL.level} of ${
+              QL.max
+            }: met quests make the next ones harder, missed ones easier" style="margin-right:8px;letter-spacing:1px;opacity:0.9">${Array.from(
+              { length: QL.max },
+              (_, k) => (k < QL.level ? "●" : "○"),
+            ).join("")}</span>`
+          : "";
       const quest = open
         ? `<div style="background:color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 12%, transparent);border-radius:12px;padding:10px 12px;margin:12px 0 4px">
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--sei-good, var(--sei-good-auto, #8be36a))">
@@ -1190,7 +1212,9 @@
                 weekday: "long",
               })
       }</span>
-      <span style="font-weight:500">+${open.reward} XP</span></div>
+      <span style="white-space:nowrap">${questPips}<span style="font-weight:500">+${
+        open.reward
+      } XP</span></span></div>
     <div style="font-size:15px;color:var(--primary-text-color, #fff);font-weight:500;margin-top:4px;white-space:normal">${
       open.title
     }</div>${
@@ -1317,62 +1341,11 @@
     "Your streaks, with their shields.",
     function (states, hass) {
       const el = this;
-      const {
-        W,
-        C,
-        st,
-        val,
-        attr,
-        num,
-        hm,
-        kwh,
-        sub,
-        head,
-        pill,
-        ws,
-        waiting,
-      } = window.SolarDash.ui(this, hass, states);
-
-      const a = ws("ach", "solar_energy_insights/achievements", 300);
-      const off = W.ach?.error && /disabled|off/i.test(W.ach.error);
-      const TIER = [
-        ["#cd7f32", "Bronze"],
-        ["#c0c0c8", "Silver"],
-        ["#f5b83d", "Gold"],
-      ];
-      const RANK = {
-        Bronze: ["#cd7f32", "mdi:shield-outline"],
-        Silver: ["#c0c0c8", "mdi:shield-half-full"],
-        Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: [
-          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
-          "mdi:shield-crown",
-        ],
-        Diamond: ["#b9f2ff", "mdi:diamond-stone"],
-      };
-      const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
-          h / 2
-        }px;overflow:hidden"><div style="width:${Math.max(
-          0,
-          Math.min(pct, 100),
-        )}%;height:100%;background:${color};border-radius:${
-          h / 2
-        }px"></div></div>`;
-      const dmy = (d) =>
-        d
-          ? new Date(d).toLocaleDateString("en-GB", {
-              day: "numeric",
-              month: "short",
-              year: "2-digit",
-            })
-          : "";
-      const notReady = () =>
-        off
-          ? sub(
-              "Achievements are off: switch them on in the Solar Energy Insights options.",
-            )
-          : waiting("ach", "the trophy room");
+      const { W, C, num, sub, head, a, TIER, RANK, bar, dmy, notReady } = achUi(
+        this,
+        hass,
+        states,
+      );
 
       if (!a) return notReady();
       const rows = a.streaks
@@ -1422,65 +1395,14 @@
   defineCard(
     "solar-energy-insights-records",
     "Solar records",
-    "Your best days, all time and this season.",
+    "Your best days, all time and this season, and the last week against a year ago.",
     function (states, hass) {
       const el = this;
-      const {
-        W,
-        C,
-        st,
-        val,
-        attr,
-        num,
-        hm,
-        kwh,
-        sub,
-        head,
-        pill,
-        ws,
-        waiting,
-      } = window.SolarDash.ui(this, hass, states);
-
-      const a = ws("ach", "solar_energy_insights/achievements", 300);
-      const off = W.ach?.error && /disabled|off/i.test(W.ach.error);
-      const TIER = [
-        ["#cd7f32", "Bronze"],
-        ["#c0c0c8", "Silver"],
-        ["#f5b83d", "Gold"],
-      ];
-      const RANK = {
-        Bronze: ["#cd7f32", "mdi:shield-outline"],
-        Silver: ["#c0c0c8", "mdi:shield-half-full"],
-        Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: [
-          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
-          "mdi:shield-crown",
-        ],
-        Diamond: ["#b9f2ff", "mdi:diamond-stone"],
-      };
-      const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
-          h / 2
-        }px;overflow:hidden"><div style="width:${Math.max(
-          0,
-          Math.min(pct, 100),
-        )}%;height:100%;background:${color};border-radius:${
-          h / 2
-        }px"></div></div>`;
-      const dmy = (d) =>
-        d
-          ? new Date(d).toLocaleDateString("en-GB", {
-              day: "numeric",
-              month: "short",
-              year: "2-digit",
-            })
-          : "";
-      const notReady = () =>
-        off
-          ? sub(
-              "Achievements are off: switch them on in the Solar Energy Insights options.",
-            )
-          : waiting("ach", "the trophy room");
+      const { W, C, num, sub, head, a, TIER, RANK, bar, dmy, notReady } = achUi(
+        this,
+        hass,
+        states,
+      );
 
       if (!a) return notReady();
       const clock = (m) =>
@@ -1496,21 +1418,99 @@
               ? v.toFixed(0) + " h"
               : v.toFixed(1) + " kWh";
       const yieldToday = num(a.today.solar_kwh);
+      // The last seven days against the same seven a year ago.
+      const GHOST = {
+        score: ["Average score", (v) => v.toFixed(0)],
+        self_sufficiency: [
+          "Self-sufficiency",
+          (v) => Math.round(v * 100) + " %",
+        ],
+        solar_kwh: ["Solar", (v) => v.toFixed(0) + " kWh"],
+        nights_lasted: ["Grid-free nights", (v) => v.toFixed(0)],
+        house_kwh: ["House use", (v) => v.toFixed(0) + " kWh"],
+      };
+      const yearAgo = () => {
+        const y = a.year_ago;
+        if (
+          (this._config || {}).year_ago === false ||
+          !y ||
+          !y.measures?.length
+        )
+          return "";
+        const rows = y.measures
+          .filter((m) => GHOST[m.key])
+          .map((m) => {
+            const [label, f] = GHOST[m.key];
+            // As shown: a difference the rounding hides is no difference.
+            const same = f(m.now) === f(m.then);
+            const c = same
+              ? C.faint
+              : m.better === true
+                ? C.ok
+                : m.better === false
+                  ? C.bad
+                  : C.muted;
+            const arrow = same ? "=" : m.now > m.then ? "▲" : "▼";
+            return `<span style="color:${
+              C.muted
+            }">${label}</span><span style="text-align:right;color:${
+              C.text
+            }">${f(m.now)}</span><span style="text-align:right;color:${
+              C.faint
+            }">${f(
+              m.then,
+            )}</span><span style="text-align:center;color:${c};font-size:10px">${arrow}</span>`;
+          })
+          .join("");
+        return `<div style="margin-top:14px;padding-top:12px;border-top:1px solid ${
+          C.track
+        }">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:${
+    C.text
+  }">A year ago<span style="font-size:11px;color:${
+    C.muted
+  }">last 7 days · same week ${new Date(
+    y.then_until + "T00:00",
+  ).getFullYear()}</span></div>
+  <div style="display:grid;grid-template-columns:1fr auto auto 14px;gap:5px 14px;align-items:baseline;margin-top:8px;font-size:12px">
+    <span></span><span style="text-align:right;font-size:10px;color:${
+      C.faint
+    }">now</span><span style="text-align:right;font-size:10px;color:${
+      C.faint
+    }">then</span><span></span>
+    ${rows}</div></div>`;
+      };
       const rows = a.records
         .map((r) => {
           const f = fmt(r);
           let chase = "";
           if (r.id === "best_day" && yieldToday !== null && r.value > 0) {
             const p = Math.min((yieldToday / r.value) * 100, 100);
-            chase = `<div style="margin-top:5px">${bar(
+            // The same day last year, as a tick to chase as well.
+            const then = num((a.year_ago || {}).today_solar_kwh);
+            const g =
+              then !== null ? Math.min((then / r.value) * 100, 100) : null;
+            chase = `<div style="position:relative;margin-top:5px">${bar(
               p,
               p >= 100
                 ? "var(--sei-good, var(--sei-good-auto, #8be36a))"
                 : "#f5b83d",
               4,
-            )}</div><div style="font-size:10px;color:var(--disabled-text-color, #636366);margin-top:2px">today ${Math.round(
+            )}${
+              g !== null
+                ? `<i title="Same day last year" style="position:absolute;left:${g.toFixed(
+                    1,
+                  )}%;top:-3px;width:2px;height:10px;border-radius:1px;background:${
+                    C.text
+                  };opacity:.7"></i>`
+                : ""
+            }</div><div style="font-size:10px;color:var(--disabled-text-color, #636366);margin-top:2px">today ${Math.round(
               p,
-            )}% of the record</div>`;
+            )}% of the record${
+              then !== null
+                ? ` · same day last year ${then.toFixed(1)} kWh`
+                : ""
+            }</div>`;
           }
           const season =
             r.season_value !== null &&
@@ -1543,8 +1543,9 @@
     )}</div></div>`;
         })
         .join("");
-      return rows || sub("No records yet.");
+      return (rows || sub("No records yet.")) + yearAgo();
     },
+    FORMS.records,
   );
 
   defineCard(
@@ -1688,65 +1689,14 @@
   defineCard(
     "solar-energy-insights-badges",
     "Solar badges",
-    "Badges within reach, later in the year and complete; tap one to see what it takes.",
+    "This season against the last, badges within reach, later in the year and complete; tap one to see what it takes.",
     function (states, hass) {
       const el = this;
-      const {
-        W,
-        C,
-        st,
-        val,
-        attr,
-        num,
-        hm,
-        kwh,
-        sub,
-        head,
-        pill,
-        ws,
-        waiting,
-      } = window.SolarDash.ui(this, hass, states);
-
-      const a = ws("ach", "solar_energy_insights/achievements", 300);
-      const off = W.ach?.error && /disabled|off/i.test(W.ach.error);
-      const TIER = [
-        ["#cd7f32", "Bronze"],
-        ["#c0c0c8", "Silver"],
-        ["#f5b83d", "Gold"],
-      ];
-      const RANK = {
-        Bronze: ["#cd7f32", "mdi:shield-outline"],
-        Silver: ["#c0c0c8", "mdi:shield-half-full"],
-        Gold: ["#f5b83d", "mdi:shield-star"],
-        Platinum: [
-          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
-          "mdi:shield-crown",
-        ],
-        Diamond: ["#b9f2ff", "mdi:diamond-stone"],
-      };
-      const bar = (pct, color, h = 6) =>
-        `<div style="height:${h}px;background:var(--sei-track, var(--divider-color, #2c2c2e));border-radius:${
-          h / 2
-        }px;overflow:hidden"><div style="width:${Math.max(
-          0,
-          Math.min(pct, 100),
-        )}%;height:100%;background:${color};border-radius:${
-          h / 2
-        }px"></div></div>`;
-      const dmy = (d) =>
-        d
-          ? new Date(d).toLocaleDateString("en-GB", {
-              day: "numeric",
-              month: "short",
-              year: "2-digit",
-            })
-          : "";
-      const notReady = () =>
-        off
-          ? sub(
-              "Achievements are off: switch them on in the Solar Energy Insights options.",
-            )
-          : waiting("ach", "the trophy room");
+      const { W, C, num, sub, head, a, TIER, RANK, bar, dmy, notReady } = achUi(
+        this,
+        hass,
+        states,
+      );
 
       // Every badge appears in exactly one place.
       if (!a) return notReady();
@@ -1790,75 +1740,192 @@
           true,
         );
       }
-      const PIP = ["#cd7f32", "#c0c0c8", "#f5b83d"];
+      const PIP = TIER.map(([c]) => c);
+      const GOLD = "#f5b83d";
       const dm = (d) =>
         new Date(d + "T00:00").toLocaleDateString("en-GB", {
           day: "numeric",
           month: "short",
         });
+      const fmt = (n) => (n % 1 ? n.toFixed(1) : n);
+      // A count in its badge's unit: 5 days, 3 weeks, 2.5 MWh.
+      const days = (n, unit = "day") =>
+        unit === "MWh"
+          ? `${fmt(n)} MWh`
+          : `${fmt(n)} ${unit}${n === 1 ? "" : "s"}`;
       const named = (b) => b.name || "Hidden";
       const what = (b) => (b.name ? b.description : `“${b.riddle}”`);
-      const tierOf = (b) => (b.tier ? ` (${b.tier} of ${b.tiers.length})` : "");
       const close = (b) => (b.next_tier_at ? b.count / b.next_tier_at : 0);
-      const fmt = (n) => (n % 1 ? n.toFixed(1) : n);
-      const now = a.badges
-        .filter((b) => !b.complete && (!b.season || b.in_season))
-        .sort((x, y) => !!y.season - !!x.season || close(y) - close(x));
-      const later = a.badges
+      // Earned tiers as three dots in their colours, the rest as rings.
+      const pips = (b, size = 6) =>
+        `<span style="display:inline-flex;gap:3px;vertical-align:middle">${PIP.map(
+          (c, k) =>
+            `<i style="width:${size}px;height:${size}px;border-radius:50%;display:block;${
+              k < b.tier
+                ? `background:${c}`
+                : `box-shadow:inset 0 0 0 1px ${c}88`
+            }"></i>`,
+        ).join("")}</span>`;
+      // What the next tier asks: "Silver · 5 days at 65 %".
+      const nextStep = (b) => {
+        if (b.complete || !b.next_tier_at) return "";
+        const step = b.steps ? b.steps[b.tier] : null;
+        return `${TIER[b.tier][1]} · ${days(b.next_tier_at, b.unit)}${
+          step ? " at " + step.label : ""
+        }`;
+      };
+      const seasonWord = (b) =>
+        ({
+          "late autumn": "late autumn",
+          midwinter: "midwinter",
+          midsummer: "midsummer",
+        })[b.season] || b.season;
+
+      const SECTIONS = (this._config || {}).sections || [
+        "this_season",
+        "within_reach",
+        "any_time",
+        "later",
+        "complete",
+      ];
+      const visible = a.badges.filter((b) => !b.locked);
+      // Without the section (a card set up before it), they stay where they were.
+      const seasonNow = SECTIONS.includes("this_season")
+        ? visible.filter(
+            (b) => b.season && b.in_season && b.edition && b.edition.active,
+          )
+        : [];
+      const inSeason = new Set(seasonNow.map((b) => b.id));
+      const now = visible
+        .filter(
+          (b) =>
+            !b.complete && !inSeason.has(b.id) && (!b.season || b.in_season),
+        )
+        .sort((x, y) => close(y) - close(x));
+      const later = visible
         .filter((b) => !b.complete && b.season && !b.in_season)
         .sort((x, y) =>
           (x.season_from || "").localeCompare(y.season_from || ""),
         );
-      const done = a.badges
-        .filter((b) => b.complete)
+      const done = visible
+        .filter((b) => b.complete && !inSeason.has(b.id))
         .sort((x, y) =>
           (y.last_earned || "").localeCompare(x.last_earned || ""),
         );
       const SHOW = 3,
         rows = now.slice(0, SHOW),
         anyTime = now.slice(SHOW);
-      const all = [...a.badges];
-      const lit = all.find((b) => b.id === UI.spot) || done[0] || null;
+      const lit =
+        visible.find((b) => b.id === UI.spot) ||
+        visible
+          .filter((b) => b.complete)
+          .sort((x, y) =>
+            (y.last_earned || "").localeCompare(x.last_earned || ""),
+          )[0] ||
+        null;
+      const INFO = "var(--sei-info, var(--sei-info-auto, #9ad7e6))";
+      const WARM = "var(--sei-warn, var(--sei-warn-auto, #ffb74d))";
+      const tint = (c) => `color-mix(in srgb, ${c} 18%, transparent)`;
       const icon = (b, bg, fg, size = 32) =>
         `<span style="width:${size}px;height:${size}px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;flex-shrink:0;${
           b === lit ? "box-shadow:0 0 0 2px " + fg : ""
         }"><ha-icon icon="${b.icon}" style="--mdc-icon-size:${Math.round(
           size * 0.56,
         )}px;color:${fg}"></ha-icon></span>`;
-      const reach = (b) => {
-        const pct = Math.round(close(b) * 100);
-        const when = b.season ? `until ${dm(b.season_until)} · ` : "";
-        const progress =
-          b.next_tier_at && b.count > 0
-            ? `<div style="display:flex;gap:8px;align-items:center;margin-top:4px"><div style="flex:1;min-width:0">${bar(
-                pct,
-                "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
-                4,
-              )}</div><span style="font-size:11px;color:${
-                C.muted
-              };white-space:nowrap">${fmt(b.count)} of ${
-                b.next_tier_at
-              }</span></div>`
+      const tapRow = (b, inner) =>
+        `<div data-badge="${b.id}" style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;cursor:pointer">${inner}</div>`;
+      const title = (b) =>
+        `<div style="display:flex;align-items:center;gap:8px;font-size:14px;color:${
+          C.text
+        }">${named(b)}${b.name ? pips(b) : ""}</div>`;
+      const caption = (t) =>
+        `<div style="font-size:11px;color:${C.muted};line-height:1.35;white-space:normal;margin-top:1px">${t}</div>`;
+
+      // This season: each badge against its last season, with a tick where that one ended.
+      const race = (b) => {
+        const e = b.edition;
+        // Last season, played in full: the mark to see, whether or not a crown is at stake.
+        const prev = e.previous && !e.previous.partial ? e.previous : null;
+        const last = prev ? prev.days : null;
+        const scale = Math.max(e.days, last || 0, e.beat || 0, 1) * 1.1;
+        const need = Math.max((e.beat || 0) - e.days, 0);
+        const tick =
+          last !== null
+            ? `<i style="position:absolute;left:${(
+                (last / scale) *
+                100
+              ).toFixed(
+                1,
+              )}%;top:-3px;width:2px;height:10px;border-radius:1px;background:${
+                C.text
+              };opacity:.7"></i>`
             : "";
-        return `<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0">${icon(
+        const won = !!e.crowned_on;
+        const fill = won ? GOLD : WARM;
+        const track =
+          last === null
+            ? ""
+            : `<div style="position:relative;margin-top:6px"><div style="height:4px;background:${
+                C.track
+              };border-radius:2px;overflow:hidden"><div style="width:${(
+                (e.days / scale) *
+                100
+              ).toFixed(
+                1,
+              )}%;height:100%;background:${fill};border-radius:2px"></div></div>${tick}</div>`;
+        const versus = won
+          ? `<span style="color:${GOLD}"><ha-icon icon="mdi:crown" style="--mdc-icon-size:12px"></ha-icon> better than last ${seasonWord(
+              b,
+            )} since ${dm(e.crowned_on)}</span>`
+          : e.beat
+            ? `${need} more for a crown over ${prev.label}`
+            : "";
+        const step = nextStep(b);
+        return tapRow(
           b,
-          b.season
-            ? "color-mix(in srgb, var(--sei-warn, var(--sei-warn-auto, #ffb74d)) 18%, transparent)"
-            : "color-mix(in srgb, var(--sei-info, var(--sei-info-auto, #9ad7e6)) 18%, transparent)",
-          b.season
-            ? "var(--sei-warn, var(--sei-warn-auto, #ffb74d))"
-            : "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
-        )}
-    <div style="flex:1;min-width:0"><div style="font-size:14px;color:${
-      C.text
-    }">${named(b)}${tierOf(b)}</div>
-    <div style="font-size:11px;color:${
-      C.muted
-    };line-height:1.35;white-space:normal">${when}${what(
+          `${icon(b, tint(WARM), WARM)}
+    <div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px">${title(
       b,
-    )}</div>${progress}</div></div>`;
+    )}<span style="font-size:12px;color:${C.text};white-space:nowrap">${fmt(
+      e.days,
+    )}${
+      last !== null
+        ? `<span style="color:${C.faint}"> / ${fmt(last)} last ${seasonWord(
+            b,
+          )}</span>`
+        : `<span style="color:${C.faint}"> this ${seasonWord(b)}</span>`
+    }</span></div>${track}${caption(
+      [versus, step, `until ${dm(e.until)}`].filter(Boolean).join(" · "),
+    )}</div>`,
+        );
       };
-      const strip = (label, badges, bg, fg, note, pips) =>
+
+      // Within reach: the next tier's step and how far along it is.
+      const reach = (b) => {
+        const step = nextStep(b);
+        const pct = Math.round(close(b) * 100);
+        const progress = b.count
+          ? `<div style="display:flex;gap:8px;align-items:center;margin-top:5px"><div style="flex:1;min-width:0">${bar(
+              pct,
+              INFO,
+              4,
+            )}</div><span style="font-size:11px;color:${
+              C.muted
+            };white-space:nowrap">${fmt(b.count)} of ${
+              b.next_tier_at
+            }</span></div>`
+          : "";
+        return tapRow(
+          b,
+          `${icon(b, tint(INFO), INFO)}<div style="flex:1;min-width:0">${title(
+            b,
+          )}${caption(
+            b.name && step ? `${step}${b.count ? "" : " · none yet"}` : what(b),
+          )}${progress}</div>`,
+        );
+      };
+
+      const strip = (label, badges, bg, fg, note, marks) =>
         !badges.length
           ? ""
           : `<div style="display:flex;gap:10px;align-items:flex-start;margin-top:12px">
@@ -1874,12 +1941,7 @@
                     bg,
                     fg,
                   )}` +
-                  (pips
-                    ? `<span style="display:flex;gap:2px">${PIP.map(
-                        (c) =>
-                          `<i style="width:5px;height:5px;border-radius:50%;background:${c};display:block"></i>`,
-                      ).join("")}</span>`
-                    : "") +
+                  (marks ? pips(b, 5) : "") +
                   (note
                     ? `<span style="font-size:9px;color:${
                         C.muted
@@ -1889,71 +1951,118 @@
               )
               .join("") +
             `</div></div>`;
+      const crownNote = (b) =>
+        b.crowns
+          ? `<span style="color:${GOLD}"><ha-icon icon="mdi:crown" style="--mdc-icon-size:10px"></ha-icon>${
+              b.crowns > 1 ? b.crowns : ""
+            }</span>`
+          : "";
+
+      // Tapped: the ladder, the seasons played, and what comes after.
       const spot = (b) => {
         if (!b) return "";
-        const name = `<b style="color:${C.text};font-weight:500">${named(
-          b,
-        )}</b>${b.complete ? "" : tierOf(b)} · ${what(b)}.`;
-        if (b.complete)
-          return (
-            name +
-            ` You've done it <b style="color:${C.text};font-weight:500">${fmt(
-              b.count,
-            )} time${b.count === 1 ? "" : "s"}</b>${
-              b.last_earned ? ", most recently " + dm(b.last_earned) : ""
-            } · all ${b.tiers.length} tiers.`
-          );
+        const strong = (t) =>
+          `<b style="color:${C.text};font-weight:500">${t}</b>`;
+        let out = `${strong(named(b))} · ${what(b)}.`;
+        if (b.steps && b.name)
+          out += `<div style="display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;margin-top:8px;font-size:12px">${b.steps
+            .map((s, k) => {
+              const got = b.tier > k;
+              return `<span style="display:flex;align-items:center;gap:6px;color:${
+                got ? C.text : C.muted
+              }"><i style="width:7px;height:7px;border-radius:50%;display:block;background:${
+                PIP[k]
+              }${got ? "" : "55"}"></i>${TIER[k][1]}</span><span style="color:${
+                got ? C.text : C.muted
+              }">${days(s.need)} at ${
+                s.label
+              }</span><span style="text-align:right;color:${
+                got ? C.ok : C.muted
+              }">${got ? "✓" : `${fmt(s.days)} of ${s.need}`}</span>`;
+            })
+            .join("")}</div>`;
+        else if (b.complete)
+          out += ` You've done it ${strong(
+            `${fmt(b.count)} time${b.count === 1 ? "" : "s"}`,
+          )}${b.last_earned ? ", most recently " + dm(b.last_earned) : ""}.`;
+        else if (b.count)
+          out += ` ${fmt(b.count)} of ${b.next_tier_at} so far.`;
+        else out += " Not earned yet.";
+        const seasons = (b.edition && b.edition.previous) || b.crowns;
+        if (b.edition && seasons) {
+          const e = b.edition;
+          const past = [e.previous, e]
+            .filter(Boolean)
+            .map(
+              (x) =>
+                `${x.label} ${strong(fmt(x.days))}${
+                  x === e && e.crowned_on
+                    ? ` <span style="color:${GOLD}">♛</span>`
+                    : ""
+                }${x === e && e.active ? " so far" : ""}`,
+            );
+          out += `<div style="margin-top:6px">Seasons: ${past.join(" · ")}${
+            e.best && e.best.label !== (e.previous || {}).label
+              ? ` · best ${e.best.label} (${fmt(e.best.days)})`
+              : ""
+          }${
+            b.crowns ? ` · ${b.crowns} crown${b.crowns > 1 ? "s" : ""}` : ""
+          }</div>`;
+        }
         if (b.season && !b.in_season)
-          return (
-            name +
-            ` Can be earned ${dm(b.season_from)} – ${dm(b.season_until)}.`
-          );
-        return (
-          name + (b.count ? ` ${fmt(b.count)} so far.` : " Not earned yet.")
-        );
+          out += `<div style="margin-top:6px">Can be earned ${dm(
+            b.season_from,
+          )} – ${dm(b.season_until)}.</div>`;
+        const after = a.badges.find((x) => x.follows === b.id);
+        if (after && b.complete)
+          out += `<div style="margin-top:6px;color:${C.ok}">Next up: ${strong(
+            after.name,
+          )}, ${after.description.toLowerCase()}.</div>`;
+        if (b.follows) {
+          const first = a.badges.find((x) => x.id === b.follows);
+          if (first)
+            out += `<div style="margin-top:6px">Unlocked by completing ${first.name}.</div>`;
+        }
+        return out;
       };
+
+      const crowns = visible.reduce((s, b) => s + (b.crowns || 0), 0);
       let out = head(
         "mdi:medal-outline",
         "Badges",
-        `${done.length} of ${a.badges.length} complete`,
+        `${visible.filter((b) => b.complete).length} of ${
+          visible.length
+        } complete${
+          crowns
+            ? ` · <span style="color:${GOLD}">${crowns} crown${
+                crowns > 1 ? "s" : ""
+              }</span>`
+            : ""
+        }`,
       );
-      const SECTIONS = (this._config || {}).sections || [
-        "within_reach",
-        "any_time",
-        "later",
-        "complete",
-      ];
-      if (SECTIONS.includes("within_reach")) out += rows.map(reach).join("");
+      const label = (t) =>
+        `<div style="font-size:11px;color:${C.faint};text-transform:uppercase;letter-spacing:.06em;margin:10px 0 2px">${t}</div>`;
+      if (SECTIONS.includes("this_season") && seasonNow.length)
+        out += label("This season") + seasonNow.map(race).join("");
+      if (SECTIONS.includes("within_reach") && rows.length)
+        out +=
+          (seasonNow.length && SECTIONS.includes("this_season")
+            ? label("Within reach")
+            : "") + rows.map(reach).join("");
       if (SECTIONS.includes("any_time"))
-        out += strip(
-          "Any time",
-          anyTime,
-          "color-mix(in srgb, var(--sei-info, var(--sei-info-auto, #9ad7e6)) 18%, transparent)",
-          "var(--sei-info, var(--sei-info-auto, #9ad7e6))",
-        );
+        out += strip("Any time", anyTime, tint(INFO), INFO);
       if (SECTIONS.includes("later"))
-        out += strip(
-          "Later",
-          later,
-          "var(--sei-track, var(--divider-color, #2c2c2e))",
-          "var(--secondary-text-color, #8e8e93)",
-          (b) => dm(b.season_from),
+        out += strip("Later", later, C.track, C.muted, (b) =>
+          dm(b.season_from),
         );
       if (SECTIONS.includes("complete"))
-        out += strip(
-          "Complete",
-          done,
-          "color-mix(in srgb, var(--sei-good, var(--sei-good-auto, #8be36a)) 18%, transparent)",
-          "var(--sei-good, var(--sei-good-auto, #8be36a))",
-          null,
-          true,
-        );
+        out += strip("Complete", done, tint(C.ok), C.ok, crownNote, true);
       out += `<div style="font-size:12px;color:${
         C.muted
       };line-height:1.45;margin-top:12px;padding-top:10px;border-top:1px solid ${
         C.track
       };white-space:normal">${
-        lit === done[0] && !UI.spot
+        lit && !UI.spot
           ? '<span style="font-size:11px;color:var(--disabled-text-color, #636366)">Latest · </span>'
           : ""
       }${spot(lit)}</div>`;

@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Added
+
+- Badges get harder as they climb: bronze asks what the badge asked before, and silver and gold ask for better days, not only more of them. Winter warrior wants one winter day at 80 % self-sufficient, then ten at 85 %, then thirty at 90 %.
+- Seasonal badges are played in editions, one per season, against last year's. Earn one on clearly more days than last winter (a tenth more, and at least two days) and this winter earns a crown and 150 XP. A new `crown` announcement says so, and the blueprint offers it. Badges ranked against your own days show last season but earn no crown.
+- Four badges unlock a harder one once complete: Perfect streak, Harvest moon, Winter legend and Oracle.
+- New badges: Bluebird day, which compares a day with what a clear sky would have given; Sun sponge, which compares how much of the day's own sun the house used with other days like it; Wheel of the year; and a hidden one.
+- Where Solcast's rooftop sites give the planes' directions, each day is compared with what a clear sky would have made, so a bright December day counts as much as a bright June one.
+- The last seven days are compared with the same week a year ago (score, self-sufficiency, yield, grid-free nights and house use), and today's yield with the same day last year.
+- Quests have a level, from 1 to 6. Each quest met makes the next ones a little harder and pay a little more; each one missed makes them easier. The quest shows its level, and the quest sensor has it as an attribute.
+
+### Changed
+
+- A day's self-sufficiency, and whether it was grid-free, now count from sunrise. The hours before belong to the night, which the night badges and streaks judge, so a night that ran the battery down no longer puts the day's quest or badges out of reach before the sun is up. The days kept are worked out again from the recorder, without announcing anything.
+- The steady trickle an inverter draws from the grid while the battery carries the house no longer counts as grid use. It is learned from your own hours with plenty in the battery (at most 100 W), so a day with nothing else from the grid is 100 % self-sufficient and grid-free.
+- The badges card shows this season's badges first, each racing its last season, and says what each badge's next tier asks. A tapped badge shows its ladder and its seasons. The records card chases the same day last year and ends with the last week against a year ago (`year_ago: false` hides it).
+- Badge tiers are worked out again under the new rules, so some may move once. No badge got easier: bronze asks what it asked before. Nothing is announced for that.
+
 ## [0.25.0] - 2026-11-20
 
 ### Changed

@@ -4,7 +4,6 @@ quests, and announcements. The game itself is in core/achievements."""
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -35,15 +34,20 @@ from .core.achievements.facts import (
     DayFacts,
     Series,
     build,
+    with_potential,
     with_stretches,
 )
 from .core.achievements.facts import (
     spike_share as learn_spike_share,
 )
+from .core.achievements.facts import (
+    trickle as learn_trickle,
+)
 from .core.achievements.profile import profile_of
 from .core.achievements.quests import Quest
-from .core.achievements.recap import best_since, last_week
+from .core.achievements.recap import best_since, last_week, year_ago
 from .core.achievements.trophies import Trophies, as_dict, compute
+from .core.array import Array, clear_day_kwh
 from .core.backtest import EVENING, Evening, clean_lows
 from .core.forecast import PvForecast
 from .core.nights import hourly_means, hourly_use, plausible
@@ -55,8 +59,12 @@ _LOGGER = logging.getLogger(__name__)
 
 # Raise when the same history would give different facts: they are rebuilt
 # quietly. 2: counter jumps dropped. 3: no cycle counts. 4: load spikes.
-FACTS_VERSION = 4
+# 5: the inverter's trickle excused, and the day judged from sunrise.
+FACTS_VERSION = 5
 SPIKE_DAYS = 30
+# Raise when the same history would earn different tiers: the room is then
+# taken as it stands, without announcing it again. 2: ladders and editions.
+RULES_VERSION = 2
 
 
 class Achievements:
@@ -64,6 +72,7 @@ class Achievements:
 
     # None until learned.
     spike_share: float = 0.0
+    trickle_kwh: float = 0.0
     spike_hours: int = 0
 
     def __init__(self, coordinator: InsightsCoordinator) -> None:
@@ -73,6 +82,9 @@ class Achievements:
         self._built_for: date | None = None
         self.view: dict[str, Any] | None = None
         self._computed_key: tuple[Any, ...] | None = None
+        # The array's clear-sky yield by day, for the array it was worked out for.
+        self._clear: dict[date, float] = {}
+        self._clear_for: tuple[Array, float] | None = None
 
     @property
     def enabled(self) -> bool:
@@ -172,6 +184,18 @@ class Achievements:
         )
         return series, lows
 
+    def _sunrise_hour(self, day: date) -> int | None:
+        """The first local hour starting at or after sunrise: from it, the
+        day's self-sufficiency counts. None where the sun doesn't rise."""
+        sunrise = get_astral_event_date(self.c.hass, "sunrise", day)
+        if sunrise is None:
+            return None
+        local = sunrise.astimezone(self.c.tz)
+        if local.date() != day:
+            return None
+        late = local.minute or local.second or local.microsecond
+        return local.hour + (1 if late else 0)
+
     def _evening(self, day: date, lows: dict[datetime, float]) -> Evening | None:
         tz = self.c.tz
         start = datetime.combine(day, EVENING, tz)
@@ -233,6 +257,9 @@ class Achievements:
             self.spike_share, self.spike_hours = learn_spike_share(
                 series.imported, series.house, series.soc_min, battery.floor_pct
             )
+            self.trickle_kwh, _ = learn_trickle(
+                series.imported, series.soc_min, battery.floor_pct
+            )
             day = start_day
             while day < today:
                 closed = build(
@@ -246,6 +273,8 @@ class Achievements:
                     forecast_kwh=self._forecast(day),
                     said=self._said(day),
                     spike_share=self.spike_share,
+                    trickle_kwh=self.trickle_kwh,
+                    sunrise_hour=self._sunrise_hour(day),
                 )
                 if closed is not None:
                     memory.facts[day.isoformat()] = closed.as_dict()
@@ -264,11 +293,16 @@ class Achievements:
             capacity_kwh=battery.capacity_kwh,
             min_hours=1,
             spike_share=self.spike_share,
+            trickle_kwh=self.trickle_kwh,
+            sunrise_hour=self._sunrise_hour(today),
         )
         history = with_stretches(
             [DayFacts.from_dict(v) for _, v in sorted(memory.facts.items())]
         )
         array = self.c.array
+        await self._learn_clear_sky(array, [f.day for f in history])
+        if self._clear:
+            history = with_potential(history, self._clear.get)
         profile = profile_of(
             history,
             battery.capacity_kwh,
@@ -276,21 +310,17 @@ class Achievements:
             kwp=array.kwp,
             relative_yield=array.relative_yield,
         )
+        self._judge_quests(history)
         self._set_quests(history, profile, local)
-        quests = []
-        for raw in sorted(memory.quests.values(), key=lambda q: (q["day"], q["id"])):
-            quest = Quest.from_dict({k: v for k, v in raw.items() if k != "set"})
-            if quest.result is None:
-                result = quest_rules.judge(quest, history, self.c.tz)
-                if result is not None:
-                    quest = replace(quest, result=result)
-                    memory.quests[quest.id] = {**raw, "result": result}
-            quests.append(quest)
+        quests = self._quests()
         key = (
             len(memory.facts),
             max(memory.facts, default=""),
             tuple((q.id, q.result) for q in quests),
             battery.floor_pct,
+            self._clear_for,
+            # Editions turn over with the date, even without a new day's facts.
+            today,
         )
         if key != self._computed_key or self.trophies is None:
             trophies = await self.c.hass.async_add_executor_job(
@@ -301,11 +331,56 @@ class Achievements:
             self._announce(trophies)
         self.view = self.as_dict()
 
+    async def _learn_clear_sky(self, array: Array, days: list[date]) -> None:
+        """What a clear sky would have given each day, for the array as it is
+        now; worked out again from scratch when the array changes. Nothing
+        without the planes' directions."""
+        if not array.planes:
+            self._clear, self._clear_for = {}, None
+            return
+        longitude = float(self.c.hass.config.longitude)
+        if self._clear_for != (array, longitude):
+            self._clear, self._clear_for = {}, (array, longitude)
+        missing = [d for d in days if d not in self._clear]
+        if not missing:
+            return
+        tz = self.c.tz
+
+        def work() -> dict[date, float]:
+            return {
+                d: round(clear_day_kwh(array, d, tz, longitude), 2) for d in missing
+            }
+
+        self._clear.update(await self.c.hass.async_add_executor_job(work))
+
+    def _quests(self) -> list[Quest]:
+        return [
+            Quest.from_dict({k: v for k, v in raw.items() if k != "set"})
+            for raw in sorted(
+                self.memory.quests.values(), key=lambda q: (q["day"], q["id"])
+            )
+        ]
+
+    def _judge_quests(self, facts: list[DayFacts]) -> None:
+        """Judges the quests whose days have closed, before new ones are set:
+        their results decide the quest level."""
+        for quest in self._quests():
+            if quest.result is not None:
+                continue
+            result = quest_rules.judge(quest, facts, self.c.tz)
+            if result is not None:
+                self.memory.quests[quest.id] = {
+                    **self.memory.quests[quest.id],
+                    "result": result,
+                }
+                self.c.memory.async_save_later()
+
     def _set_quests(self, facts: list[DayFacts], profile: Any, local: datetime) -> None:
         memory = self.memory
         today = local.date()
+        level = quest_rules.quest_level(self._quests())
         if local.weekday() == 0:
-            weekly = quest_rules.this_week(facts, profile, today)
+            weekly = quest_rules.this_week(facts, profile, today, level)
             if weekly is not None and weekly.id not in memory.quests:
                 memory.quests[weekly.id] = weekly.as_dict()
         if local.hour < QUEST_HOUR:
@@ -328,6 +403,7 @@ class Achievements:
             self._tomorrow_forecast(tomorrow),
             outlook,
             self._advice(),
+            level,
         )
         if quest is not None:
             memory.quests[quest.id] = {**quest.as_dict(), "set": today.isoformat()}
@@ -357,17 +433,27 @@ class Achievements:
     def _announce(self, t: Trophies) -> None:
         memory = self.memory
         state = {
+            "rules": RULES_VERSION,
+            # Whether the clear sky was known: badges ranked by it change when
+            # the array's planes come or go.
+            "sky": self._clear_for is not None,
             "level": t.level.level,
             "tiers": {b.badge.id: b.tier for b in t.badges},
+            "crowns": {b.badge.id: b.crowns for b in t.badges if b.crowns},
             "records": {r.id: r.day.isoformat() for r in t.records},
             "quests": sorted(q.id for q in t.quests if q.result),
             "months": [m.month for m in t.months],
         }
         before = memory.announced
-        memory.announced = state
+        memory.announced = moments.remember(before, state)
         self.c.memory.async_save_later()
-        if before is None:
-            # The first replay of history: everything is already earned.
+        if (
+            before is None
+            or before.get("rules") != RULES_VERSION
+            or before.get("sky", state["sky"]) != state["sky"]
+        ):
+            # The first replay of history, of new rules, or with or without
+            # the clear sky: everything is already earned.
             return
         since = t.scores[0][0] if t.scores else None
         found: list[dict[str, Any]] = []
@@ -379,12 +465,17 @@ class Achievements:
             if b.tier > before.get("tiers", {}).get(b.badge.id, 0)
         ]
         found += [
+            moments.crown(b)
+            for b in t.badges
+            if b.crowns > before.get("crowns", {}).get(b.badge.id, 0)
+        ]
+        found += [
             moments.record(r, since)
             for r in t.records
             if before.get("records", {}).get(r.id) != r.day.isoformat()
         ]
         found += [
-            moments.quest(q)
+            moments.quest(q, t.quest_level, quest_rules.MAX_LEVEL)
             for q in t.quests
             if q.result and q.id not in before.get("quests", [])
         ]
@@ -425,5 +516,8 @@ class Achievements:
         ]
         view["last_week"] = last_week(history, today, self.c.price, earned)
         view["yesterday"] = best_since(history, today - timedelta(days=1))
+        view["year_ago"] = year_ago(
+            history, today, self.c.battery(as_reported=True).floor_pct
+        )
         view["moments"] = moments.recent(self.memory.moments, dt_util.utcnow())
         return view

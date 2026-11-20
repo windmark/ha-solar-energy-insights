@@ -2,8 +2,8 @@ blueprint:
   name: Announce solar achievements
   description: >-
     Sends a notification when Solar Energy Insights reports something new:
-    a level reached, a badge tier earned, a record broken, a quest met, or a
-    month's recap. Each event already carries a title and a message.
+    a level reached, a badge tier earned, a season beaten, a record broken, a
+    quest met, or a month's recap. Each event already carries a title and a message.
   domain: automation
   source_url: https://github.com/windmark/ha-solar-energy-insights/blob/main/blueprints/automation/solar_energy_insights/announce_achievements.yaml
   input:
@@ -16,7 +16,7 @@ blueprint:
             - integration: mobile_app
     kinds:
       name: What to announce
-      default: [level, badge, record, quest, recap]
+      default: [level, badge, crown, record, quest, recap]
       selector:
         select:
           multiple: true
@@ -25,6 +25,8 @@ blueprint:
               value: level
             - label: A badge tier earned
               value: badge
+            - label: A season better than the last
+              value: crown
             - label: A record broken
               value: record
             - label: A quest met

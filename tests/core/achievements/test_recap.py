@@ -1,7 +1,8 @@
-"""Quests with the plan's advice; last week in one line; best since."""
+"""Quests with the plan's advice; last week in one line; best since; a year ago."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, timedelta
 
 import pytest
@@ -14,7 +15,9 @@ from custom_components.solar_energy_insights.core.achievements.quests import (
 from custom_components.solar_energy_insights.core.achievements.recap import (
     best_since,
     last_week,
+    year_ago,
 )
+from tests.core.achievements.homes import home
 
 TUESDAY = date(2026, 11, 3)
 
@@ -133,3 +136,64 @@ def test_on_record_only_with_a_month_behind_it() -> None:
     assert {"key": "best_day", "since": None}.items() <= best_since(long, yesterday)[
         0
     ].items()
+
+
+END = date(2026, 10, 31)
+
+
+def test_the_last_week_is_held_to_the_same_week_a_year_ago() -> None:
+    days = home(400, END)
+    # A better year: a little less from the grid every day.
+    better = [
+        replace(f, import_kwh=round((f.import_kwh or 0) * 0.5, 2))
+        if f.day > END - timedelta(days=30)
+        else f
+        for f in days
+    ]
+
+    got = year_ago(better, END + timedelta(days=1))
+
+    assert got is not None
+    assert got["until"] == END.isoformat()
+    assert got["then_until"] == (END - timedelta(days=364)).isoformat()
+    rows = {r["key"]: r for r in got["measures"]}
+    assert rows["self_sufficiency"]["now"] >= rows["self_sufficiency"]["then"]
+    assert rows["self_sufficiency"]["better"] in (True, None)
+    # House use is shown, not judged.
+    assert rows["house_kwh"]["better"] is None
+
+
+def test_the_same_weekdays_line_up() -> None:
+    got = year_ago(home(400, END), END + timedelta(days=1))
+
+    assert got is not None
+    then = date.fromisoformat(got["then_until"])
+    assert then.weekday() == END.weekday()
+
+
+def test_without_last_year_there_is_nothing_to_compare() -> None:
+    assert year_ago(home(200, END), END + timedelta(days=1)) is None
+
+
+def test_today_is_chased_against_the_same_day_last_year() -> None:
+    days = home(400, END)
+
+    got = year_ago(days, END)
+
+    assert got is not None
+    year_before = next(f for f in days if f.day == END - timedelta(days=364))
+    assert got["today_solar_kwh"] == year_before.solar_kwh
+
+
+def test_a_missing_day_last_year_leaves_that_day_out_of_both_weeks() -> None:
+    same = [replace(f, solar_kwh=10.0, house_kwh=12.0) for f in home(400, END)]
+    gone = {END - timedelta(days=364 + k) for k in (0, 1)}
+    patchy = [f for f in same if f.day not in gone]
+
+    got = year_ago(patchy, END + timedelta(days=1))
+
+    assert got is not None
+    assert got["days"] == 5
+    rows = {r["key"]: r for r in got["measures"]}
+    assert rows["solar_kwh"]["now"] == rows["solar_kwh"]["then"] == 50.0
+    assert rows["solar_kwh"]["better"] is None

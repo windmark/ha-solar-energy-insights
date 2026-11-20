@@ -279,13 +279,20 @@ type: custom:solar-energy-insights-streaks
 
 <img src="images/records.png" width="380" alt="Solar records card">
 
-Your best days, all time and this season, and how today compares. No settings.
+Your best days, all time and this season, and how today compares with the
+record and with the same day last year. It ends with the last week against the
+same week a year ago.
+
+**In the card editor**
+
+- **The last week against a year ago**: off hides that comparison.
 
 <details>
 <summary>YAML</summary>
 
 ```yaml
 type: custom:solar-energy-insights-records
+year_ago: true
 ```
 
 </details>
@@ -294,8 +301,10 @@ type: custom:solar-energy-insights-records
 
 <img src="images/badges.png" width="380" alt="Solar badges card">
 
-Badges within reach, any time, later in the year and complete. Tap one to see
-what it takes.
+This season's badges first, each racing its last season with a tick where that
+one ended, then badges within reach with what their next tier asks ("Silver · 5
+days at 65 %"), any time, later in the year and complete. Tap one for each
+tier's step, the seasons it was played and what follows it.
 
 **In the card editor**
 
@@ -306,7 +315,7 @@ what it takes.
 
 ```yaml
 type: custom:solar-energy-insights-badges
-sections: [within_reach, any_time, later, complete]
+sections: [this_season, within_reach, any_time, later, complete]
 ```
 
 </details>

@@ -42,6 +42,7 @@ def test_it_offers_every_kind_the_integration_announces() -> None:
     assert {o["value"] for o in options} == {
         "level",
         "badge",
+        "crown",
         "record",
         "quest",
         "recap",

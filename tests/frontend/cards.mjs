@@ -116,7 +116,7 @@ check(
 const badges = cards["solar-energy-insights-badges"];
 check(
   "the badges card starts on the latest badge",
-  text(badges.shadowRoot.innerHTML).includes("Latest · Harvest night"),
+  /Latest · \w/.test(text(badges.shadowRoot.innerHTML)),
 );
 
 const tap = (id, dx = 0) => {
@@ -138,14 +138,32 @@ await settle();
 check(
   "a tap selects a badge",
   text(badges.shadowRoot.innerHTML).includes(
-    "Island mode · 24 hours without the grid in summer",
+    "Island mode · Off the grid in summer, without a break",
   ),
+);
+check(
+  "a laddered badge shows what each tier asks",
+  text(badges.shadowRoot.innerHTML).includes("Silver 5 days at 48 h"),
+);
+check(
+  "and its seasons",
+  text(badges.shadowRoot.innerHTML).includes("Seasons: 2025 65 · 2026 65"),
 );
 tap("last_light", 40);
 await settle();
 check(
   "a scroll selects nothing",
-  text(badges.shadowRoot.innerHTML).includes("Island mode · 24 hours"),
+  text(badges.shadowRoot.innerHTML).includes("Island mode · Off the grid"),
+);
+const season = text(badges.shadowRoot.innerHTML);
+check(
+  "this season races the last",
+  season.includes("THIS SEASON") || season.includes("This season"),
+);
+check(
+  "with what it takes to beat it",
+  season.includes("32 / 33 last autumn") &&
+    season.includes("5 more for a crown over 2025"),
 );
 
 const before = badges.writes;
@@ -179,12 +197,30 @@ check(
   "the quest carries the plan's advice",
   level.includes("keep the rest of the evening under ~5.7 kWh"),
 );
+check(
+  "the quest shows its level",
+  cards["solar-energy-insights-level"].shadowRoot.innerHTML.includes(
+    'title="Quest level 3 of 6',
+  ),
+);
 check("yesterday's news", level.includes("Yesterday: best day since 12 Oct"));
 check(
   "last week in one line",
   level.includes(
     "Last week: 4 of 7 nights without the grid · best day Sunday (26 kWh) · €37.80 kept at home · Night owl earned",
   ),
+);
+const records = text(
+  cards["solar-energy-insights-records"].shadowRoot.innerHTML,
+);
+check(
+  "the last week against a year ago",
+  records.includes("A year ago") &&
+    records.includes("Self-sufficiency 69 % 71 %"),
+);
+check(
+  "today chases the same day last year too",
+  records.includes("same day last year"),
 );
 check(
   "a started badge's progress bar has room to show",
@@ -215,6 +251,7 @@ const drawn = async (tag, config) => {
 };
 for (const tag of [
   "solar-energy-insights-level",
+  "solar-energy-insights-records",
   "solar-energy-insights-badges",
 ]) {
   const Card = registry.get(tag);
@@ -223,6 +260,23 @@ for (const tag of [
     (await drawn(tag, {})) === (await drawn(tag, Card.getStubConfig())),
   );
 }
+const olderSetup = text(
+  await drawn("solar-energy-insights-badges", {
+    sections: ["within_reach", "any_time", "later", "complete"],
+  }),
+);
+check(
+  "badges: set up before this season, in-season badges stay within reach",
+  !olderSetup.includes("This season") &&
+    olderSetup.includes("Harvest night") &&
+    olderSetup.includes("Last light"),
+);
+check(
+  "records: the year ago can go",
+  !text(
+    await drawn("solar-energy-insights-records", { year_ago: false }),
+  ).includes("A year ago"),
+);
 const levelPlain = text(
   await drawn("solar-energy-insights-level", { quest: false, recap: false }),
 );
