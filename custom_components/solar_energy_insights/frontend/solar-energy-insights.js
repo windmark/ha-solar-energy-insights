@@ -1748,7 +1748,11 @@
           month: "short",
         });
       const fmt = (n) => (n % 1 ? n.toFixed(1) : n);
-      const days = (n) => `${fmt(n)} day${n === 1 ? "" : "s"}`;
+      // A count in its badge's unit: 5 days, 3 weeks, 2.5 MWh.
+      const days = (n, unit = "day") =>
+        unit === "MWh"
+          ? `${fmt(n)} MWh`
+          : `${fmt(n)} ${unit}${n === 1 ? "" : "s"}`;
       const named = (b) => b.name || "Hidden";
       const what = (b) => (b.name ? b.description : `“${b.riddle}”`);
       const close = (b) => (b.next_tier_at ? b.count / b.next_tier_at : 0);
@@ -1766,7 +1770,7 @@
       const nextStep = (b) => {
         if (b.complete || !b.next_tier_at) return "";
         const step = b.steps ? b.steps[b.tier] : null;
-        return `${TIER[b.tier][1]} · ${days(b.next_tier_at)}${
+        return `${TIER[b.tier][1]} · ${days(b.next_tier_at, b.unit)}${
           step ? " at " + step.label : ""
         }`;
       };
