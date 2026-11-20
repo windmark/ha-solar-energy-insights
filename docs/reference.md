@@ -77,20 +77,55 @@ action: solar_energy_insights.scenario
 data:
   extra_battery_kwh: 5
   battery_price: 2500 # optional, for the payback
-  heat_loss_w_per_k: 180 # optional: a heat pump; needs the outdoor temperature
-  heating_limit_c: 15
+  heat_loss_w_per_k: 150 # optional: a heat pump; needs the outdoor temperature
+  heating_limit_c: 12.5
   indoor_c: 20
-  hot_water_kwh_per_day: 6
+  hot_water_kwh_per_day: 8
+  design_flow_c: 45 # flow temperature on the coldest day
+  design_outdoor_c: -12 # the coldest day the heating is designed for
+  heat_pump_kw: 7 # optional: above it, a heating rod adds the rest
+  rated_cop: 4.5 # optional: the datasheet's COP at A2/W35
+  hot_water_at_noon: true # heat the hot water in the sunniest hours
+  gas_price: 0.11 # optional: compare with gas
+  boiler_efficiency: 0.9
+  gas_standing_charge: 150
+  fill_year: true # fill the days the recorder lacks
 response_variable: year
 ```
 
 The recorded hours of the last year (from the solar energy counter and the
 house's use) replayed through the battery as it is and with the change: per
 year, what is bought, exported and used, self-sufficiency, nights without the
-grid, the saving, the payback, and how much of a heat pump's electricity the
-roof covers. The heat pump is a simple model: the heat loss below the heating
-limit, divided by a coefficient of performance that falls in the cold, plus hot
-water.
+grid, battery cycles, the saving, the battery's payback, the heat pump's heat,
+electricity, seasonal performance factor and share from the roof, the same by
+month, and with a gas price, what the same heat would cost from gas.
+
+**A whole year, even from part of one.** A replay of half a year, scaled up,
+takes the summer for the winter: too much sun, and for a heat pump far too
+little heat. So each day the recorder lacks borrows a recorded day with a
+similar sun, by k-nearest-neighbour resampling (Rajagopalan & Lall, 1999): its
+solar scaled by the sunlight that reaches the top of the atmosphere on each date
+(Duffie & Beckman, eq. 1.10.3), its temperatures laid on the date's typical
+temperature, from a sinusoid fitted to the recorded days. `year` in the answer
+says how many days were recorded and how many filled. On a test year near
+Augsburg, filling 168 days from the other 197 lands within about 10% of the
+whole year's heat; scaling them gave less than half.
+
+**The heat pump.** The heat is the degree-hour method of VDI 4710: on each day
+whose mean outdoor temperature is below the heating limit, the heat loss times
+indoor less outdoor. Use the _effective_ heat loss, as measured from a heating
+bill (a year's useful heat over the year's G20/15 degree-hours, which the answer
+gives as `degree_hours_g20_15`): the sun's and the household's free heat are
+already in it. A heat-load calculation's figure (DIN EN 12831, heat load ÷
+(20 °C − the design temperature)) leaves them out and is about half as high
+again. The heating limit is about 15 °C for an older house and 12–13 °C once
+well insulated. Each hour's heat is divided by the COP of an air-source heat
+pump in the field: the quadratic fit of Ruhnau et al. (2019) on the lift from
+the outdoor air to the water, times their 0.85 for real systems, scaled to a
+datasheet's A2/W35 if given. The water's temperature follows a heating curve
+for radiators (EN 442, exponent 1.3) up to the design flow temperature; hot
+water is heated to 50 °C. It answers "about how much", not the installer's
+sizing.
 
 ## WebSocket
 

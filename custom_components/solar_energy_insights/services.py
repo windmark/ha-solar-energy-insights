@@ -22,7 +22,7 @@ from .const import DOMAIN
 from .coordinator import InsightsCoordinator
 from .core.battery import Rate
 from .core.plan import plan
-from .core.scenario import HeatPump, Scenario, compare
+from .core.scenario import Gas, HeatPump, Scenario, compare
 from .scenario_lab import comparison_dict
 from .serialize import plan_dict
 
@@ -66,6 +66,26 @@ SCENARIO_SCHEMA = vol.Schema(
         vol.Optional("battery_price"): vol.All(
             vol.Coerce(float), vol.Range(min=0, max=1_000_000)
         ),
+        vol.Optional("design_flow_c", default=45.0): vol.All(
+            vol.Coerce(float), vol.Range(min=25, max=75)
+        ),
+        vol.Optional("design_outdoor_c", default=-12.0): vol.All(
+            vol.Coerce(float), vol.Range(min=-30, max=5)
+        ),
+        vol.Optional("heat_pump_kw"): vol.All(
+            vol.Coerce(float), vol.Range(min=0, max=50)
+        ),
+        vol.Optional("rated_cop"): vol.All(vol.Coerce(float), vol.Range(min=2, max=7)),
+        vol.Optional("hot_water_at_noon", default=False): cv.boolean,
+        vol.Optional("gas_price"): vol.All(vol.Coerce(float), vol.Range(min=0, max=2)),
+        vol.Optional("boiler_efficiency", default=0.9): vol.All(
+            vol.Coerce(float), vol.Range(min=0.5, max=1.1)
+        ),
+        vol.Optional("gas_standing_charge", default=0.0): vol.All(
+            vol.Coerce(float), vol.Range(min=0, max=10_000)
+        ),
+        # Fill the days the recorder lacks, so the year has a winter.
+        vol.Optional("fill_year", default=True): cv.boolean,
     }
 )
 
@@ -116,6 +136,11 @@ async def _scenario(call: ServiceCall) -> ServiceResponse:
             heating_limit_c=data["heating_limit_c"],
             indoor_c=data["indoor_c"],
             hot_water_kwh_per_day=data["hot_water_kwh_per_day"],
+            design_flow_c=data["design_flow_c"],
+            design_outdoor_c=data["design_outdoor_c"],
+            capacity_kw=data.get("heat_pump_kw") or None,
+            hot_water_at_noon=data["hot_water_at_noon"],
+            rated_cop_a2w35=data.get("rated_cop"),
         )
         if data["heat_loss_w_per_k"] > 0 or data["hot_water_kwh_per_day"] > 0
         else None
@@ -136,14 +161,27 @@ async def _scenario(call: ServiceCall) -> ServiceResponse:
     hours = await lab.async_hours()
     if len(hours) < MIN_SCENARIO_DAYS * 24:
         raise _refuse("too_little_history")
+    year = await lab.async_year() if data["fill_year"] else None
     scenario = Scenario(extra_battery_kwh=data["extra_battery_kwh"], heat_pump=pump)
     try:
         result = await call.hass.async_add_executor_job(
-            compare, hours, battery, scenario, coordinator.price, coordinator.feed_in
+            compare,
+            year.hours if year is not None and year.filled else hours,
+            battery,
+            scenario,
+            coordinator.price,
+            coordinator.feed_in,
         )
     except ValueError as err:
         raise _refuse("needs_temperature") from err
-    return comparison_dict(result, data["extra_battery_kwh"], data.get("battery_price"))
+    gas = (
+        Gas(data["gas_price"], data["boiler_efficiency"], data["gas_standing_charge"])
+        if data.get("gas_price")
+        else None
+    )
+    return comparison_dict(
+        result, data["extra_battery_kwh"], data.get("battery_price"), gas, year
+    )
 
 
 def async_setup_services(hass: HomeAssistant) -> None:
