@@ -1781,10 +1781,20 @@
           midsummer: "midsummer",
         })[b.season] || b.season;
 
+      const SECTIONS = (this._config || {}).sections || [
+        "this_season",
+        "within_reach",
+        "any_time",
+        "later",
+        "complete",
+      ];
       const visible = a.badges.filter((b) => !b.locked);
-      const seasonNow = visible.filter(
-        (b) => b.season && b.in_season && b.edition && b.edition.active,
-      );
+      // Without the section (a card set up before it), they stay where they were.
+      const seasonNow = SECTIONS.includes("this_season")
+        ? visible.filter(
+            (b) => b.season && b.in_season && b.edition && b.edition.active,
+          )
+        : [];
       const inSeason = new Set(seasonNow.map((b) => b.id));
       const now = visible
         .filter(
@@ -1834,8 +1844,11 @@
       // This season: each badge against its last season, with a tick where that one ended.
       const race = (b) => {
         const e = b.edition;
-        const last = e.beat ? e.beat - 1 : null;
-        const scale = Math.max(e.days, last || 0, 1) * 1.1;
+        // Last season, played in full: the mark to see, whether or not a crown is at stake.
+        const prev = e.previous && !e.previous.partial ? e.previous : null;
+        const last = prev ? prev.days : null;
+        const scale = Math.max(e.days, last || 0, e.beat || 0, 1) * 1.1;
+        const need = Math.max((e.beat || 0) - e.days, 0);
         const tick =
           last !== null
             ? `<i style="position:absolute;left:${(
@@ -1864,9 +1877,9 @@
           ? `<span style="color:${GOLD}"><ha-icon icon="mdi:crown" style="--mdc-icon-size:12px"></ha-icon> better than last ${seasonWord(
               b,
             )} since ${dm(e.crowned_on)}</span>`
-          : last !== null
-            ? `${e.beat - e.days} more to beat ${e.previous.label}`
-            : `sets the bar for next ${seasonWord(b)}`;
+          : e.beat
+            ? `${need} more for a crown over ${prev.label}`
+            : "";
         const step = nextStep(b);
         return tapRow(
           b,
@@ -1882,7 +1895,7 @@
           )}</span>`
         : `<span style="color:${C.faint}"> this ${seasonWord(b)}</span>`
     }</span></div>${track}${caption(
-      `${versus}${step ? " · " + step : ""} · until ${dm(e.until)}`,
+      [versus, step, `until ${dm(e.until)}`].filter(Boolean).join(" · "),
     )}</div>`,
         );
       };
@@ -2027,13 +2040,6 @@
             : ""
         }`,
       );
-      const SECTIONS = (this._config || {}).sections || [
-        "this_season",
-        "within_reach",
-        "any_time",
-        "later",
-        "complete",
-      ];
       const label = (t) =>
         `<div style="font-size:11px;color:${C.faint};text-transform:uppercase;letter-spacing:.06em;margin:10px 0 2px">${t}</div>`;
       if (SECTIONS.includes("this_season") && seasonNow.length)

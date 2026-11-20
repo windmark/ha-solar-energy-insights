@@ -143,7 +143,7 @@ check(
 );
 check(
   "a laddered badge shows what each tier asks",
-  text(badges.shadowRoot.innerHTML).includes("Silver 3 days at 48 h"),
+  text(badges.shadowRoot.innerHTML).includes("Silver 5 days at 48 h"),
 );
 check(
   "and its seasons",
@@ -163,7 +163,7 @@ check(
 check(
   "with what it takes to beat it",
   season.includes("32 / 33 last autumn") &&
-    season.includes("2 more to beat 2025"),
+    season.includes("5 more for a crown over 2025"),
 );
 
 const before = badges.writes;
@@ -260,6 +260,17 @@ for (const tag of [
     (await drawn(tag, {})) === (await drawn(tag, Card.getStubConfig())),
   );
 }
+const olderSetup = text(
+  await drawn("solar-energy-insights-badges", {
+    sections: ["within_reach", "any_time", "later", "complete"],
+  }),
+);
+check(
+  "badges: set up before this season, in-season badges stay within reach",
+  !olderSetup.includes("This season") &&
+    olderSetup.includes("Harvest night") &&
+    olderSetup.includes("Last light"),
+);
 check(
   "records: the year ago can go",
   !text(
