@@ -8,7 +8,7 @@ recent days), plus the integration's saved forecast and answers.
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, fields, replace
 from datetime import date, datetime, timedelta, tzinfo
 from typing import Any
@@ -51,6 +51,9 @@ class DayFacts:
     spike_kwh: float | None = None
     # Derived from the days before, so not stored.
     offgrid_stretch: float | None = None
+    # What the array would have made under a clear sky; derived from where its
+    # planes face, so not stored either.
+    clear_kwh: float | None = None
     soc_max: float | None = None
     soc_min: float | None = None
     full_at: datetime | None = None
@@ -90,6 +93,32 @@ class DayFacts:
         return None if own is None else own < GRID_FREE_DAY_MAX_KWH
 
     @property
+    def sky_share(self) -> float | None:
+        """The share of a clear sky's yield the day made: how well the panels
+        did with the sky they had, comparable from December to June."""
+        if self.solar_kwh is None or not self.clear_kwh or self.clear_kwh < 0.5:
+            return None
+        return min(self.solar_kwh / self.clear_kwh, 1.5)
+
+    @property
+    def sun_cover(self) -> float | None:
+        """The day's yield against the house's use: how much the sun could
+        have covered at most."""
+        if self.solar_kwh is None or self.house_kwh <= 0:
+            return None
+        return self.solar_kwh / self.house_kwh
+
+    @property
+    def sun_used(self) -> float | None:
+        """Self-sufficiency against what the day's sun could cover: how much
+        of what was possible the house made of it, whatever the season or the
+        size of the house."""
+        ss, cover = self.self_sufficiency, self.sun_cover
+        if ss is None or cover is None or cover <= 0:
+            return None
+        return min(ss / min(cover, 1.0), 1.0)
+
+    @property
     def full(self) -> bool | None:
         return None if self.soc_max is None else self.full_at is not None
 
@@ -107,7 +136,9 @@ class DayFacts:
 
     def as_dict(self) -> dict[str, Any]:
         out = asdict(self)
-        out.pop("offgrid_stretch")  # derived from the days before
+        # Derived, not stored.
+        out.pop("offgrid_stretch")
+        out.pop("clear_kwh")
         for key, value in out.items():
             if isinstance(value, (date, datetime)):
                 out[key] = value.isoformat()
@@ -331,3 +362,10 @@ def with_stretches(days: list[DayFacts]) -> list[DayFacts]:
             carry = f.offgrid_tail
         before = f.day
     return out
+
+
+def with_potential(
+    days: list[DayFacts], clear_kwh: Callable[[date], float | None]
+) -> list[DayFacts]:
+    """Each day with the array's clear-sky yield for its date."""
+    return [replace(f, clear_kwh=clear_kwh(f.day)) for f in days]

@@ -34,6 +34,7 @@ from .core.achievements.facts import (
     DayFacts,
     Series,
     build,
+    with_potential,
     with_stretches,
 )
 from .core.achievements.facts import (
@@ -43,6 +44,7 @@ from .core.achievements.profile import profile_of
 from .core.achievements.quests import Quest
 from .core.achievements.recap import best_since, last_week
 from .core.achievements.trophies import Trophies, as_dict, compute
+from .core.array import Array, clear_day_kwh
 from .core.backtest import EVENING, Evening, clean_lows
 from .core.forecast import PvForecast
 from .core.nights import hourly_means, hourly_use, plausible
@@ -72,6 +74,9 @@ class Achievements:
         self._built_for: date | None = None
         self.view: dict[str, Any] | None = None
         self._computed_key: tuple[Any, ...] | None = None
+        # The array's clear-sky yield by day, for the array it was worked out for.
+        self._clear: dict[date, float] = {}
+        self._clear_for: tuple[Array, float] | None = None
 
     @property
     def enabled(self) -> bool:
@@ -268,6 +273,9 @@ class Achievements:
             [DayFacts.from_dict(v) for _, v in sorted(memory.facts.items())]
         )
         array = self.c.array
+        await self._learn_clear_sky(array, [f.day for f in history])
+        if self._clear:
+            history = with_potential(history, self._clear.get)
         profile = profile_of(
             history,
             battery.capacity_kwh,
@@ -283,6 +291,7 @@ class Achievements:
             max(memory.facts, default=""),
             tuple((q.id, q.result) for q in quests),
             battery.floor_pct,
+            self._clear_for,
         )
         if key != self._computed_key or self.trophies is None:
             trophies = await self.c.hass.async_add_executor_job(
@@ -292,6 +301,28 @@ class Achievements:
             self._computed_key = key
             self._announce(trophies)
         self.view = self.as_dict()
+
+    async def _learn_clear_sky(self, array: Array, days: list[date]) -> None:
+        """What a clear sky would have given each day, for the array as it is
+        now; worked out again from scratch when the array changes. Nothing
+        without the planes' directions."""
+        if not array.planes:
+            self._clear, self._clear_for = {}, None
+            return
+        longitude = float(self.c.hass.config.longitude)
+        if self._clear_for != (array, longitude):
+            self._clear, self._clear_for = {}, (array, longitude)
+        missing = [d for d in days if d not in self._clear]
+        if not missing:
+            return
+        tz = self.c.tz
+
+        def work() -> dict[date, float]:
+            return {
+                d: round(clear_day_kwh(array, d, tz, longitude), 2) for d in missing
+            }
+
+        self._clear.update(await self.c.hass.async_add_executor_job(work))
 
     def _quests(self) -> list[Quest]:
         return [

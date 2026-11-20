@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 
 import pytest
@@ -90,7 +91,9 @@ def test_a_mostly_missing_day_is_no_day() -> None:
 def test_facts_survive_storage() -> None:
     f = home(3, DAY)[-1]
 
-    assert DayFacts.from_dict(f.as_dict()) == f
+    # The clear sky's yield is worked out from the array, never stored.
+    assert "clear_kwh" not in f.as_dict()
+    assert DayFacts.from_dict(f.as_dict()) == replace(f, clear_kwh=None)
 
 
 def test_capabilities_come_from_what_was_measured() -> None:

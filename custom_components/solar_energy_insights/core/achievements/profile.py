@@ -23,6 +23,8 @@ class Capability(StrEnum):
     PEAK = "peak"
     # The array's size is known (from Solcast's sites or set by hand).
     ARRAY = "array"
+    # Where its planes face is known, so what a clear sky would give each day.
+    SKY = "sky"
     SEASONS = "seasons"
 
 
@@ -71,6 +73,8 @@ def profile_of(
         caps.add(Capability.ADVICE)
     if any(f.peak_kw is not None for f in facts):
         caps.add(Capability.PEAK)
+    if any(f.clear_kwh for f in facts):
+        caps.add(Capability.SKY)
     if abs(latitude) >= TROPICS_DEG:
         caps.add(Capability.SEASONS)
     # The array's size is read from its configuration, never guessed from output.

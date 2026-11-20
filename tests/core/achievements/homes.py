@@ -11,14 +11,19 @@ from typing import Any
 from custom_components.solar_energy_insights.core.achievements.facts import DayFacts
 from tests.core.helpers import TZ
 
+WEATHER = (0.35, 1.0, 0.8, 0.95, 0.5, 1.0, 0.9, 0.2, 0.85, 1.0, 0.7)
+
+
+def clear_sky(day: date, southern: bool = False) -> float:
+    """0.1 to 1: what a clear sky gives, long days around midsummer and short
+    ones in winter."""
+    doy = day.timetuple().tm_yday + (182 if southern else 0)
+    return 0.55 + 0.45 * math.cos((doy - 172) / 365 * 2 * math.pi)
+
 
 def sunshine(day: date, southern: bool = False) -> float:
-    """0 to 1: long sunny days around midsummer, short dull ones in winter, with
-    a weather pattern that repeats every 11 days."""
-    doy = day.timetuple().tm_yday + (182 if southern else 0)
-    season = 0.55 + 0.45 * math.cos((doy - 172) / 365 * 2 * math.pi)
-    weather = (0.35, 1.0, 0.8, 0.95, 0.5, 1.0, 0.9, 0.2, 0.85, 1.0, 0.7)
-    return season * weather[day.toordinal() % len(weather)]
+    """0 to 1: the clear sky, with a weather pattern that repeats every 11 days."""
+    return clear_sky(day, southern) * WEATHER[day.toordinal() % len(WEATHER)]
 
 
 def home(
@@ -74,6 +79,7 @@ def home(
                 solar / (0.85 + 0.3 * ((day.toordinal() * 7) % 10) / 10), 2
             ),
             peak_kw=round(kwp * 0.85 * sun, 2),
+            clear_kwh=round(kwp * 5.5 * clear_sky(day, southern), 2),
         )
         out.append(tweak(f) if tweak else f)
     return out
