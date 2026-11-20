@@ -2,13 +2,16 @@
 
 A seasonal badge can be earned in a window of the year: a season, or a few
 weeks around a solstice. Each window is one edition of the badge (Winter
-warrior 2026/27), and an edition's bar is the one before it: beat last
-winter's days and the edition earns a crown. So the season is the reset, and
-last year is the opponent.
+warrior 2026/27), and an edition's bar is the one before it: earn the badge on
+clearly more of the days than last winter did and the edition earns a crown.
+So the season is the reset, and last year is the opponent. Badges ranked
+against your own days earn about the same share every season by design, so
+they show the season before for reference but earn no crown.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -71,6 +74,13 @@ def label(start: date, end: date) -> str:
     return f"{start.year}/{end.year % 100:02d}"
 
 
+# A crown asks for clearly more than the season before, not a lucky week.
+CROWN_MARGIN = 1.1
+CROWN_MIN_DAYS = 2
+# A window counts as played when at least this share of its days were judged.
+PLAYED_SHARE = 0.9
+
+
 @dataclass(frozen=True, slots=True)
 class Edition:
     start: date
@@ -78,39 +88,54 @@ class Edition:
     # Days that earned the badge in this window, and the best grade among them.
     days: int
     top: int
-    # The history began after the window opened: not a fair bar to beat.
+    # Not a fair bar to beat: the history began after the window opened, or
+    # too few of its days could be judged (missing data, or percentiles not
+    # ready yet).
     partial: bool
-    # The day it passed the edition before it, if it did.
+    # Days judged in the window so far.
+    judged: int = 0
+    # The earning days this edition needs for a crown; None when it can't get one.
+    bar: int | None = None
+    # The day it reached the bar, if it did.
     crowned_on: date | None = None
 
     @property
     def label(self) -> str:
         return label(self.start, self.end)
 
+    @property
+    def length(self) -> int:
+        return (self.end - self.start).days + 1
 
-def to_beat(before: Edition | None) -> int | None:
-    """The days an edition needs to beat the one before: one more than it
-    earned. None when there is no fair bar: no edition before, one the history
-    began in the middle of, or one that earned nothing (a first earning day is
+
+def to_beat(before: Edition | None, length: int) -> int | None:
+    """The earning days a window of *length* days needs to beat the edition
+    before: a share of its days at least a tenth above that one's share, and
+    at least two days more. None when there is no fair bar: no edition before,
+    one not played in full, or one that earned nothing (a first earning day is
     the tier's to reward, not a crown's)."""
-    if before is None or before.partial or before.days == 0:
+    if before is None or before.partial or before.days == 0 or not before.judged:
         return None
-    return before.days + 1
+    share = before.days / before.judged
+    return max(before.days + CROWN_MIN_DAYS, math.ceil(share * CROWN_MARGIN * length))
 
 
 def editions(
     season: str,
     earned: Sequence[tuple[date, int]],
+    judged: Sequence[date],
     first: date,
     today: date,
     southern: bool,
+    crowns: bool = True,
 ) -> list[Edition]:
     """Every window from the first day of history to today, oldest first, with
-    what was earned in it. *earned* holds each earning day and its grade.
+    what was earned in it. *earned* holds each earning day and its grade,
+    *judged* every day the badge could be judged on.
 
-    An edition is crowned on the day its count passes the edition before, as
-    long as that one was played in full and earned the badge at all: a first
-    earning day is the tier's to reward, not a crown's."""
+    With *crowns*, an edition is crowned on the day it reaches its bar (see
+    to_beat), as long as it is being played in full itself: at least nine in
+    ten of its days so far judged."""
     out: list[Edition] = []
     day = first
     while day <= today:
@@ -119,17 +144,32 @@ def editions(
             break
         start, end = found
         inside = sorted((d, g) for d, g in earned if start <= d <= end)
+        seen = sorted(d for d in judged if start <= d <= end)
+        last_day = min(end, today)
+        elapsed = (last_day - max(start, first)).days + 1
+        partial = start < first or len(seen) < PLAYED_SHARE * max(elapsed, 1)
+        length = (end - start).days + 1
+        bar = to_beat(out[-1] if out else None, length)
+        # No crown without crowns, in a window history began in the middle
+        # of, or past what the window's days allow.
+        if not crowns or start < first or (bar is not None and bar > length):
+            bar = None
         crowned_on = None
-        bar = to_beat(out[-1] if out else None)
         if bar is not None and len(inside) >= bar:
-            crowned_on = inside[bar - 1][0]
+            on = inside[bar - 1][0]
+            # Played in full up to that day.
+            so_far = sum(1 for d in seen if d <= on)
+            if so_far >= PLAYED_SHARE * ((on - start).days + 1):
+                crowned_on = on
         out.append(
             Edition(
                 start,
                 end,
                 len(inside),
                 max((g for _, g in inside), default=0),
-                partial=start < first,
+                partial=partial,
+                judged=len(seen),
+                bar=bar,
                 crowned_on=crowned_on,
             )
         )

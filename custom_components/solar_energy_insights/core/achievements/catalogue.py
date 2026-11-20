@@ -13,6 +13,7 @@ from datetime import date
 
 import numpy as np
 
+from .editions import window
 from .facts import DayFacts
 from .profile import (
     Capability as Cap,
@@ -60,7 +61,7 @@ def _every_drop(f: DayFacts, c: Context) -> int | None:
     median = c.quantile(c.specific_yield, 0.5, key="specific_yield")
     if kept is None or sy is None or median is None:
         return None
-    return steps_met(kept, (0.90, 0.95, 0.99)) if sy >= median else 0
+    return steps_met(kept, (0.95, 0.97, 0.99)) if sy >= median else 0
 
 
 def _power_plant(f: DayFacts, c: Context) -> int | None:
@@ -68,7 +69,7 @@ def _power_plant(f: DayFacts, c: Context) -> int | None:
         return None
     # Per kWp of a roof facing the equator; a roof facing away needs less.
     per_kwp = f.export_kwh / c.profile.kwp / c.profile.relative_yield
-    return steps_met(per_kwp, (1.0, 1.5, 2.0))
+    return steps_met(per_kwp, (2.0, 2.5, 3.0))
 
 
 def _silver_lining(f: DayFacts, c: Context) -> int | None:
@@ -79,7 +80,7 @@ def _silver_lining(f: DayFacts, c: Context) -> int | None:
         return None
     if f.forecast_kwh > gloomy:
         return 0
-    return steps_met(f.solar_kwh / f.forecast_kwh, (1.25, 1.5, 2.0))
+    return steps_met(f.solar_kwh / f.forecast_kwh, (1.5, 2.0, 2.5))
 
 
 def _night_with_spare(f: DayFacts, c: Context) -> int | None:
@@ -120,42 +121,55 @@ def _sky_or_yield(f: DayFacts, c: Context) -> float | None:
 
 
 def _winter_week(f: DayFacts, c: Context) -> int | None:
-    """A winter week's self-sufficiency, as seven days in a row ending today."""
-    if c.season(f.day) != Season.WINTER or f.self_sufficiency is None:
-        return 0 if f.self_sufficiency is not None else None
+    """A winter week's self-sufficiency, judged on its last day. Weeks are
+    counted from the start of winter, so they don't overlap."""
+    if f.self_sufficiency is None:
+        return None
+    found = window("winter", f.day, c.profile.southern)
+    if found is None or not found[0] <= f.day <= found[1]:
+        return 0
+    if (f.day - found[0]).days % 7 != 6:
+        return 0
     week = [f]
     for before in reversed(c.past):
         if len(week) == 7:
             break
-        if (week[-1].day - before.day).days != 1:
+        if (week[-1].day - before.day).days != 1 or not c.counts(before):
             return 0
-        if c.season(before.day) != Season.WINTER or before.self_sufficiency is None:
+        if before.self_sufficiency is None:
             return 0
         week.append(before)
     if len(week) < 7:
         return 0
     mean = sum(d.self_sufficiency or 0.0 for d in week) / 7
-    return steps_met(mean, (0.5, 0.65, 0.8))
+    return steps_met(mean, (0.8, 0.85, 0.9))
 
 
 def _early_bird(f: DayFacts, c: Context) -> int | None:
-    """Battery full earlier than half, four in five, nineteen in twenty of
-    your days."""
+    """Battery full earlier than four in five, nine in ten, nineteen in
+    twenty of your days."""
     if f.full is None:
         return None
     minutes = f.full_minutes(c.tz)
     cuts = c.quantiles(
-        lambda d: d.full_minutes(c.tz), (0.5, 0.2, 0.05), key="full_minutes"
+        lambda d: d.full_minutes(c.tz), (0.2, 0.1, 0.05), key="full_minutes"
     )
     if cuts is None:
         return None
     return 0 if minutes is None else steps_met(minutes, cuts, lowest=True)
 
 
-def _offgrid_hours(f: DayFacts) -> float | None:
-    """The longest stretch off the grid ending this day; across midnight
-    where the stretches are known."""
-    return f.offgrid_stretch if f.offgrid_stretch is not None else f.offgrid_hours
+def _island(f: DayFacts, _c: Context) -> int | None:
+    """A stretch off the grid, counted once: on the day it ends, at its full
+    length across midnights. A day off the grid all through waits for the
+    stretch to end. Without stretches, a whole day off the grid."""
+    if f.offgrid_stretch is None or f.offgrid_run is None:
+        if f.offgrid_hours is None:
+            return None
+        return steps_met(f.offgrid_hours, (24, 48, 72))
+    if f.offgrid_run >= 24:
+        return 0
+    return steps_met(f.offgrid_stretch, (24, 48, 72))
 
 
 def _minutes_off(f: DayFacts) -> float | None:
@@ -170,7 +184,7 @@ def _minutes_off(f: DayFacts) -> float | None:
 
 def _whisperer(f: DayFacts, _c: Context) -> int | None:
     off = _minutes_off(f)
-    return None if off is None else steps_met(off, (30, 15, 5), lowest=True)
+    return None if off is None else steps_met(off, (15, 10, 5), lowest=True)
 
 
 def _whisper(f: DayFacts, _c: Context) -> bool | None:
@@ -178,18 +192,18 @@ def _whisper(f: DayFacts, _c: Context) -> bool | None:
     return None if off is None else off <= 15
 
 
-def _sun_sponge(f: DayFacts, c: Context) -> int | None:
-    """From an empty battery, how much of what the day's sun could cover the
-    house made its own. Only days that are a real test count: the night before
-    ran the battery down, so nothing was carried over, and the sun could not
-    cover the whole day's use, so not all of it was easy."""
+def _sponge_test(f: DayFacts, c: Context) -> float | None:
+    """How much of what the day's sun could cover the house made its own, on
+    days that are a real test: the night before ran the battery down, so
+    nothing was carried over, and the sun could not cover the whole day's use.
+    None on other days, which neither count nor set the bar."""
     used, cover = f.sun_used, f.sun_cover
     night_before = c.earlier(f.day, 1)
     if used is None or cover is None or night_before is None:
         return None
     if night_before.night_lasted is not False or not 0.3 <= cover <= 1.0:
-        return 0
-    return steps_met(used, (0.8, 0.9, 0.97))
+        return None
+    return used
 
 
 def _night_owl(f: DayFacts, c: Context) -> bool | None:
@@ -205,7 +219,7 @@ def _photo_finish(f: DayFacts, c: Context) -> int | None:
     if not f.night_lasted or not c.profile.battery_kwh:
         return 0
     spare = f.night_spare_kwh / c.profile.battery_kwh
-    return steps_met(spare, (0.05, 0.02, 0.01), lowest=True)
+    return steps_met(spare, (0.01, 0.005, 0.002), lowest=True)
 
 
 def _equinox(f: DayFacts, _c: Context) -> bool | None:
@@ -324,8 +338,8 @@ CATALOGUE: tuple[Badge, ...] = (
         "mdi:water-check",
         "The sun kept at home on a better-than-usual day",
         (Cap.SOLAR, Cap.GRID),
-        (1, 5, 10),
-        steps=("90 %", "95 %", "99 %"),
+        (1, 5, 15),
+        steps=("95 %", "97 %", "99 %"),
         grade=_every_drop,
     ),
     Badge(
@@ -334,8 +348,8 @@ CATALOGUE: tuple[Badge, ...] = (
         "mdi:factory",
         "Exported in a day, per kWp of panels",
         (Cap.SOLAR, Cap.GRID, Cap.ARRAY),
-        (1, 10, 20),
-        steps=("1 kWh", "1.5 kWh", "2 kWh"),
+        (1, 10, 30),
+        steps=("2 kWh", "2.5 kWh", "3 kWh"),
         grade=_power_plant,
     ),
     Badge(
@@ -354,8 +368,8 @@ CATALOGUE: tuple[Badge, ...] = (
         "mdi:weather-cloudy-arrow-right",
         "Beat one of the season's gloomiest forecasts by far",
         (Cap.SOLAR, Cap.FORECAST),
-        (1, 3, 5),
-        steps=("1.25 times", "1.5 times", "twice"),
+        (1, 5, 15),
+        steps=("1.5 times", "twice", "2.5 times"),
         grade=_silver_lining,
     ),
     Badge(
@@ -372,11 +386,11 @@ CATALOGUE: tuple[Badge, ...] = (
         "sun_sponge",
         "Sun sponge",
         "mdi:sprout-outline",
-        "From an empty battery, what the day's sun could cover made your own",
+        "From an empty battery, more of the sun made your own than on most such days",
         (Cap.SOLAR, Cap.GRID),
         (1, 10, 25),
-        steps=("80 %", "90 %", "97 %"),
-        grade=_sun_sponge,
+        steps=("top 25 %", "top 10 %", "top 3 %"),
+        grade=top(_sponge_test, (0.25, 0.1, 0.03)),
     ),
     Badge(
         "harvest_night",
@@ -384,7 +398,7 @@ CATALOGUE: tuple[Badge, ...] = (
         "mdi:weather-night",
         "A grid-free autumn night",
         (Cap.BATTERY, Cap.SEASONS),
-        (1, 10, 20),
+        (1, 10, 30),
         steps=("until sunrise", "10 % to spare", "25 % to spare"),
         season="autumn",
         grade=seasonal(Season.AUTUMN, _night_with_spare),
@@ -417,11 +431,12 @@ CATALOGUE: tuple[Badge, ...] = (
         "mdi:snowflake",
         "A winter day among your best for the sky it had",
         (Cap.SOLAR, Cap.SEASONS),
-        (1, 3, 5),
-        steps=("top 25 %", "top 10 %", "top 3 %"),
+        (1, 3, 8),
+        steps=("top 10 %", "top 5 %", "top 2 %"),
         season="winter",
+        crowns=False,
         grade=seasonal(
-            Season.WINTER, top(_sky_or_yield, (0.25, 0.1, 0.03), Season.WINTER)
+            Season.WINTER, top(_sky_or_yield, (0.1, 0.05, 0.02), Season.WINTER)
         ),
     ),
     Badge(
@@ -440,11 +455,11 @@ CATALOGUE: tuple[Badge, ...] = (
         "mdi:shield-sun",
         "Self-sufficient on a winter day",
         (Cap.GRID, Cap.SEASONS),
-        (1, 5, 10),
-        steps=("50 %", "65 %", "80 %"),
+        (1, 10, 30),
+        steps=("80 %", "85 %", "90 %"),
         season="winter",
         grade=seasonal(
-            Season.WINTER, at_least(lambda f: f.self_sufficiency, (0.5, 0.65, 0.8))
+            Season.WINTER, at_least(lambda f: f.self_sufficiency, (0.8, 0.85, 0.9))
         ),
     ),
     Badge(
@@ -454,7 +469,7 @@ CATALOGUE: tuple[Badge, ...] = (
         "Self-sufficient through a whole winter week",
         (Cap.GRID, Cap.SEASONS),
         (1, 1, 1),
-        steps=("50 %", "65 %", "80 %"),
+        steps=("80 %", "85 %", "90 %"),
         season="winter",
         grade=_winter_week,
         follows="winter_warrior",
@@ -476,9 +491,10 @@ CATALOGUE: tuple[Badge, ...] = (
         "mdi:bird",
         "Battery full in spring earlier than most of your days",
         (Cap.BATTERY, Cap.SEASONS),
-        (1, 5, 10),
-        steps=("top 50 %", "top 20 %", "top 5 %"),
+        (1, 10, 30),
+        steps=("top 20 %", "top 10 %", "top 5 %"),
         season="spring",
+        crowns=False,
         grade=seasonal(Season.SPRING, _early_bird),
     ),
     Badge(
@@ -487,11 +503,12 @@ CATALOGUE: tuple[Badge, ...] = (
         "mdi:sun-wireless",
         "One of your best days, within ten days of midsummer",
         (Cap.SOLAR, Cap.SEASONS),
-        (1, 3, 5),
-        steps=("top 20 %", "top 10 %", "top 5 %"),
+        (1, 3, 7),
+        steps=("top 5 %", "top 3 %", "top 1 %"),
         season="midsummer",
+        crowns=False,
         grade=in_window(
-            _midsummer, top(lambda f, c: c.specific_yield(f), (0.2, 0.1, 0.05))
+            _midsummer, top(lambda f, c: c.specific_yield(f), (0.05, 0.03, 0.01))
         ),
     ),
     Badge(
@@ -500,10 +517,10 @@ CATALOGUE: tuple[Badge, ...] = (
         "mdi:island",
         "Off the grid in summer, without a break",
         (Cap.GRID, Cap.SEASONS),
-        (1, 3, 5),
+        (1, 5, 15),
         steps=("24 h", "48 h", "72 h"),
         season="summer",
-        grade=seasonal(Season.SUMMER, at_least(_offgrid_hours, (24, 48, 72))),
+        grade=seasonal(Season.SUMMER, _island),
     ),
     Badge(
         "wheel_of_the_year",
@@ -536,8 +553,8 @@ CATALOGUE: tuple[Badge, ...] = (
         "mdi:crystal-ball",
         'The morning\'s "full at" close to the real time',
         (Cap.ADVICE, Cap.BATTERY),
-        (1, 5, 10),
-        steps=("30 min", "15 min", "5 min"),
+        (1, 10, 30),
+        steps=("15 min", "10 min", "5 min"),
         grade=_whisperer,
     ),
     Badge(
@@ -579,7 +596,7 @@ CATALOGUE: tuple[Badge, ...] = (
         "A night that lasted with almost nothing to spare",
         (Cap.BATTERY,),
         (1, 1, 1),
-        steps=("under 5 %", "under 2 %", "under 1 %"),
+        steps=("under 1 %", "under 0.5 %", "under 0.2 %"),
         hidden=True,
         riddle="A night won by a whisker",
         grade=_photo_finish,

@@ -109,6 +109,7 @@ def _graded(
 ) -> BadgeState:
     assert badge.grade is not None
     graded: list[tuple[date, int]] = []
+    judged: list[date] = []
     applied = 0
     at_step = [0] * STEPS
     tier_days: list[date] = []
@@ -116,10 +117,11 @@ def _graded(
     for k, f in enumerate(facts):
         if after is not None and f.day <= after:
             continue
-        grade = badge.grade(f, Context(profile, tz, facts[:k], by_day, memo))
+        grade = badge.grade(f, Context(profile, tz, facts[:k], by_day, memo, after))
         if grade is None:
             continue
         applied += 1
+        judged.append(f.day)
         if not grade:
             continue
         graded.append((f.day, grade))
@@ -137,7 +139,17 @@ def _graded(
     if badge.season is not None and facts and today is not None:
         # A successor's editions start when it was unlocked.
         first = facts[0].day if after is None else after + timedelta(days=1)
-        played = tuple(editions(badge.season, graded, first, today, profile.southern))
+        played = tuple(
+            editions(
+                badge.season,
+                graded,
+                judged,
+                first,
+                today,
+                profile.southern,
+                crowns=badge.crowns,
+            )
+        )
     return BadgeState(
         badge=badge,
         count=count,

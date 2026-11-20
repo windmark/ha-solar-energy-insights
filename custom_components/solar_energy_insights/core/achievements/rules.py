@@ -71,12 +71,19 @@ class Context:
         past: Sequence[DayFacts],
         by_day: Mapping[date, DayFacts] | None = None,
         memo: Memo | None = None,
+        since: date | None = None,
     ) -> None:
         self.profile = profile
         self.tz = tz
         self.past = past
         self._by_day = by_day or {}
         self._memo = memo
+        # A successor's unlock: what came before doesn't count towards it.
+        self.since = since
+
+    def counts(self, f: DayFacts) -> bool:
+        """Whether an earlier day may count towards a run or a week."""
+        return self.since is None or f.day > self.since
 
     def season(self, day: date) -> Season:
         return season_of(day, self.profile.southern)
@@ -147,6 +154,9 @@ class Badge:
     count: Count | None = None
     # Offered once this badge is complete, and counted from then on.
     follows: str | None = None
+    # Seasons beat the season before for a crown. Off for badges ranked
+    # against your own days, which earn about the same share every season.
+    crowns: bool = True
     # What a count counts; graded badges count days.
     unit: str = "day"
 
@@ -233,7 +243,11 @@ def run(
             return 0
         length, day = 1, f.day
         for before in reversed(c.past):
-            if (day - before.day).days != 1 or not holds(before, c):
+            if (
+                (day - before.day).days != 1
+                or not c.counts(before)
+                or not holds(before, c)
+            ):
                 break
             length, day = length + 1, before.day
         return lengths.index(length) + 1 if length in lengths else 0

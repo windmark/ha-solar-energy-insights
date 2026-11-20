@@ -410,6 +410,9 @@ class Achievements:
         memory = self.memory
         state = {
             "rules": RULES_VERSION,
+            # Whether the clear sky was known: badges ranked by it change when
+            # the array's planes come or go.
+            "sky": self._clear_for is not None,
             "level": t.level.level,
             "tiers": {b.badge.id: b.tier for b in t.badges},
             "crowns": {b.badge.id: b.crowns for b in t.badges if b.crowns},
@@ -418,11 +421,15 @@ class Achievements:
             "months": [m.month for m in t.months],
         }
         before = memory.announced
-        memory.announced = state
+        memory.announced = moments.remember(before, state)
         self.c.memory.async_save_later()
-        if before is None or before.get("rules") != RULES_VERSION:
-            # The first replay of history, or of new rules: everything is
-            # already earned.
+        if (
+            before is None
+            or before.get("rules") != RULES_VERSION
+            or before.get("sky", state["sky"]) != state["sky"]
+        ):
+            # The first replay of history, of new rules, or with or without
+            # the clear sky: everything is already earned.
             return
         since = t.scores[0][0] if t.scores else None
         found: list[dict[str, Any]] = []

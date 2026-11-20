@@ -98,7 +98,9 @@ class DayFacts:
         did with the sky they had, comparable from December to June."""
         if self.solar_kwh is None or not self.clear_kwh or self.clear_kwh < 0.5:
             return None
-        return min(self.solar_kwh / self.clear_kwh, 1.5)
+        # Not capped: badges rank it against your own days, which a model
+        # that is off by a constant factor doesn't change.
+        return self.solar_kwh / self.clear_kwh
 
     @property
     def sun_cover(self) -> float | None:
@@ -116,7 +118,7 @@ class DayFacts:
         ss, cover = self.self_sufficiency, self.sun_cover
         if ss is None or cover is None or cover <= 0:
             return None
-        return min(ss / min(cover, 1.0), 1.0)
+        return ss / min(cover, 1.0)
 
     @property
     def full(self) -> bool | None:

@@ -122,8 +122,8 @@ def test_a_laddered_tier_says_what_day_it_took_and_the_next_asks() -> None:
 
     explain = moments.badge(state)["explain"]
 
-    assert "5 days at 65 %." in explain
-    assert "2 of 10 days at 80 % for gold." in explain
+    assert "10 days at 85 %." in explain
+    assert "2 of 30 days at 90 % for gold." in explain
 
 
 def test_a_complete_badge_names_the_one_that_follows() -> None:
@@ -135,17 +135,26 @@ def test_a_complete_badge_names_the_one_that_follows() -> None:
 
 
 def test_a_crown_says_which_edition_it_beat() -> None:
-    last = Edition(date(2025, 9, 22), date(2025, 12, 20), 12, 2, partial=False)
-    now = Edition(
-        date(2026, 9, 22), date(2026, 12, 20), 13, 3, False, date(2026, 11, 14)
+    last = Edition(
+        date(2025, 9, 22), date(2025, 12, 20), 12, 2, partial=False, judged=90
     )
-    state = BadgeState(HARVEST, 13, 3, None, 0.3, (), (), editions=(last, now))
+    now = Edition(
+        date(2026, 9, 22),
+        date(2026, 12, 20),
+        14,
+        3,
+        partial=False,
+        judged=54,
+        bar=14,
+        crowned_on=date(2026, 11, 14),
+    )
+    state = BadgeState(HARVEST, 14, 3, None, 0.3, (), (), editions=(last, now))
 
     m = moments.crown(state)
 
     assert m["kind"] == "crown"
     assert m["title"] == "Harvest night 2026: better than last autumn"
-    assert m["message"] == "Harvest night 2026 beat 2025: 13 days against 12."
+    assert m["message"] == "Harvest night 2026 beat 2025: 14 days against 12."
 
 
 def test_a_count_says_what_it_counts() -> None:
@@ -153,3 +162,16 @@ def test_a_count_says_what_it_counts() -> None:
     state = BadgeState(wheel, 9, 1, 11, None, (), ())
 
     assert "9 of 11 months for silver." in moments.badge(state)["explain"]
+
+
+def test_what_was_announced_is_remembered_at_its_highest() -> None:
+    before = {"level": 9, "tiers": {"bluebird_day": 3, "every_drop": 1}, "crowns": {}}
+    # New rules lowered the level, and the clear sky isn't known yet.
+    now = {"level": 8, "tiers": {"every_drop": 2}, "crowns": {"harvest_night": 1}}
+
+    kept = moments.remember(before, now)
+
+    assert kept["level"] == 9
+    assert kept["tiers"] == {"bluebird_day": 3, "every_drop": 2}
+    assert kept["crowns"] == {"harvest_night": 1}
+    assert moments.remember(None, now) == now

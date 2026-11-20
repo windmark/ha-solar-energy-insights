@@ -202,3 +202,19 @@ def recent(kept: Iterable[dict[str, Any]], now: datetime) -> list[dict[str, Any]
             out.append((at, m))
     out.sort(key=lambda x: x[0], reverse=True)
     return [m for _, m in out[:MAX_KEPT]]
+
+
+def remember(before: dict[str, Any] | None, now: dict[str, Any]) -> dict[str, Any]:
+    """What has been announced, kept at its highest: a level lost to new rules,
+    or a badge missing for a while (its sensor not loaded yet) and back, is
+    not announced again. Records, quests and months as they are now."""
+    if before is None:
+        return now
+    out = dict(now)
+    out["level"] = max(now["level"], before.get("level", 0))
+    for key in ("tiers", "crowns"):
+        merged = dict(before.get(key, {}))
+        for badge, value in now[key].items():
+            merged[badge] = max(value, merged.get(badge, 0))
+        out[key] = merged
+    return out

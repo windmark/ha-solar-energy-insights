@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 
 from custom_components.solar_energy_insights.core.achievements.badges import (
     CROWN_XP,
@@ -30,7 +30,14 @@ def room(days=200, quests=()):
 def test_xp_is_scores_plus_tiers_and_crowns_plus_quests_met() -> None:
     quest = Quest("fill-x", END, "fill_before", "Fill", 700, 60, END, result=True)
     missed = replace(quest, id="fill-y", result=False)
-    _facts, t = room(days=750, quests=(quest, missed))
+    # A bigger battery since last winter: every night lasts now.
+    facts = [
+        replace(f, night_lasted=True, night_spare_kwh=3.0, import_kwh=0.0)
+        if f.day > END - timedelta(days=300)
+        else f
+        for f in home(750, END, varied=True)
+    ]
+    t = compute(facts, profile_of(facts, 10.0, 52.5), TZ, END, (quest, missed))
 
     crowns = sum(b.crowns for b in t.badges)
     expected = (
@@ -103,7 +110,7 @@ def test_a_laddered_badge_shows_each_step() -> None:
 
     warrior = next(b for b in as_dict(t, END)["badges"] if b["id"] == "winter_warrior")
 
-    assert [s["label"] for s in warrior["steps"]] == ["50 %", "65 %", "80 %"]
+    assert [s["label"] for s in warrior["steps"]] == ["80 %", "85 %", "90 %"]
     assert [s["need"] for s in warrior["steps"]] == warrior["tiers"]
     assert warrior["steps"][0]["days"] >= warrior["steps"][2]["days"]
 
@@ -117,7 +124,8 @@ def test_a_seasonal_badge_shows_this_edition_against_the_last() -> None:
     assert edition["label"] == "2026"
     assert edition["active"]
     assert edition["previous"]["label"] == "2025"
-    assert edition["beat"] == edition["previous"]["days"] + 1
+    # A crown asks for at least two more days than last autumn's.
+    assert edition["beat"] >= edition["previous"]["days"] + 2
     # Badges played all year have no editions.
     assert shown["every_drop"]["edition"] is None
 

@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from custom_components.solar_energy_insights.core.achievements.badges import (
     CATALOGUE,
     evaluate,
 )
+from custom_components.solar_energy_insights.core.achievements.facts import (
+    with_stretches,
+)
 from custom_components.solar_energy_insights.core.achievements.profile import profile_of
 from custom_components.solar_energy_insights.core.achievements.rules import (
     Context,
+    Memo,
     run,
 )
 from tests.core.achievements.homes import home, without
@@ -109,7 +113,7 @@ def test_thresholds_never_peek_at_later_days() -> None:
 
 def test_hidden_badges_keep_their_name_until_earned_and_are_rare() -> None:
     days = home(200, END)
-    lucky = replace(days[-1], night_lasted=True, night_spare_kwh=0.05)
+    lucky = replace(days[-1], night_lasted=True, night_spare_kwh=0.01)
 
     got, _ = states([*days[:-1], lucky])
 
@@ -154,10 +158,10 @@ def test_a_roof_facing_away_from_the_sun_earns_power_plant_at_its_own_pace() -> 
     south, _ = states(days, kwp=10.0, relative_yield=1.0)
     east_west, _ = states(days, kwp=10.0, relative_yield=0.81)
 
-    # Silver's 1.5 kWh, not gold's 2 on an ideal roof; gold for east–west.
-    assert south["power_plant"].tier == 2
-    assert east_west["power_plant"].tier == 3
-    assert east_west["power_plant"].step_days == (60, 60, 60)
+    # Short of bronze's 2 kWh on an ideal roof; 2.2 for east–west.
+    assert south["power_plant"].tier == 0
+    assert east_west["power_plant"].tier == 1
+    assert east_west["power_plant"].step_days == (60, 0, 0)
 
 
 def self_sufficient(share: float):
@@ -182,26 +186,26 @@ def winter(days: int, share: float, better: int = 0, best_share: float = 0.0):
 
 
 def test_each_tier_asks_for_a_better_day() -> None:
-    got = states(winter(50, 0.55))[0]["winter_warrior"]
+    got = states(winter(50, 0.82))[0]["winter_warrior"]
 
-    # Bronze at 50 %; nothing yet towards silver's five days at 65 %.
+    # Bronze at 80 %; nothing yet towards silver's ten days at 85 %.
     assert got.tier == 1
     assert got.count == 0
-    assert got.next_at == 5
+    assert got.next_at == 10
     assert got.step_days is not None
     assert got.step_days[1:] == (0, 0)
 
 
 def test_a_better_day_counts_for_every_step_below_it() -> None:
-    four = states(winter(50, 0.55, better=4, best_share=0.7))[0]["winter_warrior"]
-    five = states(winter(50, 0.55, better=5, best_share=0.7))[0]["winter_warrior"]
-    best = states(winter(50, 0.55, better=10, best_share=0.9))[0]["winter_warrior"]
+    nine = states(winter(50, 0.82, better=9, best_share=0.87))[0]["winter_warrior"]
+    ten = states(winter(50, 0.82, better=10, best_share=0.87))[0]["winter_warrior"]
+    best = states(winter(50, 0.82, better=30, best_share=0.95))[0]["winter_warrior"]
 
-    assert (four.tier, four.count) == (1, 4)
-    assert five.tier == 2
+    assert (nine.tier, nine.count) == (1, 9)
+    assert ten.tier == 2
     assert best.tier == 3
     assert best.step_days is not None
-    assert best.step_days[0] >= best.step_days[1] >= best.step_days[2] == 10
+    assert best.step_days[0] >= best.step_days[1] >= best.step_days[2] == 30
 
 
 def test_a_successor_is_locked_until_the_badge_before_is_complete() -> None:
@@ -270,8 +274,10 @@ def test_the_sun_sponge_counts_only_days_after_an_empty_night() -> None:
     days = home(200, END, varied=True)
     held = [replace(f, night_lasted=True) for f in days]
 
-    assert states(held)[0]["sun_sponge"].count == 0
-    assert states(held)[0]["sun_sponge"].rarity == 0
+    sponge = states(held)[0]["sun_sponge"]
+    # Not one day was a test, so none counts either way.
+    assert sponge.count == 0
+    assert sponge.applied == 0
 
 
 def test_the_wheel_of_the_year_counts_months_with_a_grid_free_night() -> None:
@@ -296,3 +302,77 @@ def test_groundhog_day_repeats_last_years_yield() -> None:
     got = states(again)[0]["groundhog_day"]
 
     assert END in got.earned_on
+
+
+def test_a_successor_only_counts_runs_after_it_was_unlocked() -> None:
+    """Every day perfect: Perfect day's gold comes on its 20th perfect day,
+    and Perfect streak's runs start the day after, not before it."""
+    perfect = home(
+        120,
+        END,
+        tweak=lambda f: replace(
+            f,
+            import_kwh=0.0,
+            soc_max=100.0,
+            full_at=datetime(f.day.year, f.day.month, f.day.day, 12, tzinfo=TZ),
+            forecast_kwh=(f.solar_kwh or 1) * 0.5,
+        ),
+    )
+
+    got = states(perfect)[0]
+
+    gold = got["perfect_day"].tier_days[-1]
+    streak = got["perfect_streak"]
+    assert streak.tier == 3
+    assert streak.tier_days[0] == gold + timedelta(days=2)
+    assert streak.tier_days[-1] == gold + timedelta(days=5)
+
+
+def test_percentiles_kept_between_days_are_the_same_as_worked_out_afresh() -> None:
+    days = home(400, END, varied=True)
+    profile = profile_of(days, 10.0, BERLIN, 10.0)
+    value = Context(profile, TZ, days).specific_yield
+    memo = Memo()
+
+    for k in (20, 150, 399):
+        kept = Context(profile, TZ, days[:k], memo=memo)
+        fresh = Context(profile, TZ, days[:k])
+        assert kept.quantiles(value, (0.1, 0.5, 0.95), key="y") == fresh.quantiles(
+            value, (0.1, 0.5, 0.95)
+        )
+
+
+def test_a_long_stretch_off_the_grid_counts_once() -> None:
+    """Four summer days off the grid in a row: one stretch of 96 hours, counted
+    on the day it ends, not once a day."""
+    start = date(2026, 7, 10)
+
+    def stretch(f):
+        on = start <= f.day < start + timedelta(days=4)
+        return replace(
+            f,
+            offgrid_run=24.0 if on else 6.0,
+            offgrid_head=24.0 if on else 0.0,
+            offgrid_tail=24.0 if on else 0.0,
+        )
+
+    days = with_stretches(home(120, date(2026, 8, 31), tweak=stretch))
+
+    island = states(days)[0]["island_mode"]
+
+    assert island.earned_on == (start + timedelta(days=4),)
+    assert island.step_days == (1, 1, 1)
+
+
+def test_an_unchanged_home_is_rarely_crowned_by_the_weather() -> None:
+    """Five years of the same home under the same repeating sky: a crown asks
+    for clearly more than the season before, so the weather alone gives few."""
+    days = home(5 * 365, END, varied=True)
+
+    got = states(days)[0]
+
+    crowns = sum(b.crowns for b in got.values())
+    assert crowns <= 2
+    # Badges ranked against your own days are never crowned.
+    for badge_id in ("low_sun_hero", "early_bird", "midsummer"):
+        assert got[badge_id].crowns == 0
