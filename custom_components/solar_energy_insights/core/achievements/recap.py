@@ -109,8 +109,9 @@ MIN_WEEK_DAYS = 5
 
 
 def _ratio(week: Sequence[DayFacts]) -> float | None:
-    """Self-sufficiency over the week, weighted by each day's use."""
-    rows = [(f.own_import_kwh, f.house_kwh) for f in week]
+    """Self-sufficiency over the week, weighted by each day's use, each day
+    from sunrise as the day's own measure."""
+    rows = [(f.day_own_import_kwh, f.day_house_kwh) for f in week]
     known = [(i, h) for i, h in rows if i is not None]
     use = sum(h for _, h in known)
     if not known or use <= 0:

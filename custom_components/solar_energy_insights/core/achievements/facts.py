@@ -56,6 +56,10 @@ class DayFacts:
     # Import excused as the inverter's own: load spikes and its steady trickle,
     # in hours the battery carried the house.
     spike_kwh: float | None = None
+    # Before sunrise: the end of the night before, which the night badges
+    # judge. The day's own measures start at sunrise.
+    dawn_house_kwh: float | None = None
+    dawn_own_import_kwh: float | None = None
     # Derived from the days before, so not stored.
     offgrid_stretch: float | None = None
     # What the array would have made under a clear sky; derived from where its
@@ -82,11 +86,26 @@ class DayFacts:
         return max(self.import_kwh - (self.spike_kwh or 0.0), 0.0)
 
     @property
-    def self_sufficiency(self) -> float | None:
+    def day_house_kwh(self) -> float:
+        """The house's use from sunrise to midnight."""
+        return max(self.house_kwh - (self.dawn_house_kwh or 0.0), 0.0)
+
+    @property
+    def day_own_import_kwh(self) -> float | None:
+        """What came from the grid from sunrise on, beyond the inverter's own."""
         own = self.own_import_kwh
-        if own is None or self.house_kwh <= 0:
+        if own is None:
             return None
-        return max(0.0, min(1.0, 1 - own / self.house_kwh))
+        return max(own - (self.dawn_own_import_kwh or 0.0), 0.0)
+
+    @property
+    def self_sufficiency(self) -> float | None:
+        """From sunrise: a night that ran the battery down is the night's to
+        answer for, and doesn't put the day out of reach before it starts."""
+        own, use = self.day_own_import_kwh, self.day_house_kwh
+        if own is None or use <= 0:
+            return None
+        return max(0.0, min(1.0, 1 - own / use))
 
     @property
     def kept_at_home(self) -> float | None:
@@ -96,7 +115,8 @@ class DayFacts:
 
     @property
     def grid_free(self) -> bool | None:
-        own = self.own_import_kwh
+        """No grid from sunrise on, beyond the inverter's own."""
+        own = self.day_own_import_kwh
         return None if own is None else own < GRID_FREE_DAY_MAX_KWH
 
     @property
@@ -113,9 +133,9 @@ class DayFacts:
     def sun_cover(self) -> float | None:
         """The day's yield against the house's use: how much the sun could
         have covered at most."""
-        if self.solar_kwh is None or self.house_kwh <= 0:
+        if self.solar_kwh is None or self.day_house_kwh <= 0:
             return None
-        return self.solar_kwh / self.house_kwh
+        return self.solar_kwh / self.day_house_kwh
 
     @property
     def sun_used(self) -> float | None:
@@ -207,10 +227,13 @@ def build(
     min_hours: int = MIN_HOURS,
     spike_share: float = 0.0,
     trickle_kwh: float = 0.0,
+    sunrise_hour: int | None = None,
 ) -> DayFacts | None:
     """The facts of one closed day, or None if the house's use is mostly missing.
 
-    With a lower *min_hours*, the day so far: for today's live score.
+    With a lower *min_hours*, the day so far: for today's live score. With
+    *sunrise_hour*, the first local hour starting at or after sunrise, what
+    came before it is kept apart as the end of the night.
     """
     house = _day(s.house, day, min_hours)
     if house is None:
@@ -241,6 +264,7 @@ def build(
             if hour is not None:
                 full_at = datetime(day.year, day.month, day.day, hour, tzinfo=tz)
     peaks = _day(s.solar_peak, day, min_hours)
+    dawn = _dawn(s, day, floor_pct, spike_share, trickle_kwh, sunrise_hour)
     said = said or {}
     said_full_at = said.get("full_at")
     return DayFacts(
@@ -251,6 +275,7 @@ def build(
         import_kwh=None if imported is None else round(sum(imported), 3),
         export_kwh=None if exported is None else round(sum(exported), 3),
         **_offgrid(s, day, floor_pct, spike_share, imported is not None, trickle_kwh),
+        **dawn,
         soc_max=None if highs is None else max(highs),
         soc_min=None if lows is None else min(lows),
         full_at=full_at,
@@ -264,6 +289,27 @@ def build(
         said_full=None if "full_at" not in said else said_full_at is not None,
         said_outlook=said.get("outlook"),
     )
+
+
+def _dawn(
+    s: Series,
+    day: date,
+    floor_pct: float,
+    share: float,
+    trickle: float,
+    sunrise_hour: int | None,
+) -> dict[str, float | None]:
+    """The house's use and its own grid import before sunrise."""
+    if sunrise_hour is None or not s.imported:
+        return {"dawn_house_kwh": None, "dawn_own_import_kwh": None}
+    hours = range(min(max(sunrise_hour, 0), 24))
+    house = sum(s.house.get((day, h), 0.0) for h in hours)
+    own = sum(
+        max(s.imported.get((day, h), 0.0), 0.0)
+        for h in hours
+        if not _hour_off(s, (day, h), floor_pct, share, trickle)
+    )
+    return {"dawn_house_kwh": round(house, 3), "dawn_own_import_kwh": round(own, 3)}
 
 
 def yesterday_of(day: date) -> date:

@@ -146,3 +146,40 @@ def test_seasons_follow_the_hemisphere() -> None:
 def test_near_the_equator_there_are_no_seasonal_badges() -> None:
     assert Capability.SEASONS not in profile_of(home(30, DAY), 10.0, 1.3).capabilities
     assert Capability.SEASONS in profile_of(home(30, DAY), 10.0, -33.9).capabilities
+
+
+def night_ran_out() -> Series:
+    """The battery ran out at 3:00 and the grid carried the house until the
+    sun was up at 6:20; from then on, nothing from the grid."""
+    return Series(
+        house=hours(lambda _h: 0.5),
+        imported=hours(lambda h: 0.5 if 3 <= h < 7 else 0.0),
+        soc_min=hours(lambda h: 5.0 if 3 <= h < 9 else 60.0),
+        solar=hours(lambda h: 3.0 if 8 <= h < 17 else 0.0),
+    )
+
+
+def test_the_day_counts_from_sunrise() -> None:
+    f = build(DAY, TZ, night_ran_out(), floor_pct=5.0, sunrise_hour=7)
+
+    assert f is not None
+    assert (f.dawn_house_kwh, f.dawn_own_import_kwh) == (3.5, 2.0)
+    # Nothing from the grid since sunrise: the day is all its own.
+    assert f.self_sufficiency == 1.0
+    assert f.grid_free
+
+
+def test_without_a_sunrise_the_whole_day_counts() -> None:
+    f = build(DAY, TZ, night_ran_out(), floor_pct=5.0)
+
+    assert f is not None
+    assert f.dawn_house_kwh is None
+    assert f.self_sufficiency == pytest.approx(1 - 2.0 / 12.0, abs=1e-3)
+    assert not f.grid_free
+
+
+def test_the_dawn_survives_storage() -> None:
+    f = build(DAY, TZ, night_ran_out(), floor_pct=5.0, sunrise_hour=7)
+
+    assert f is not None
+    assert DayFacts.from_dict(f.as_dict()) == f

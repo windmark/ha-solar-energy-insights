@@ -184,6 +184,18 @@ class Achievements:
         )
         return series, lows
 
+    def _sunrise_hour(self, day: date) -> int | None:
+        """The first local hour starting at or after sunrise: from it, the
+        day's self-sufficiency counts. None where the sun doesn't rise."""
+        sunrise = get_astral_event_date(self.c.hass, "sunrise", day)
+        if sunrise is None:
+            return None
+        local = sunrise.astimezone(self.c.tz)
+        if local.date() != day:
+            return None
+        late = local.minute or local.second or local.microsecond
+        return local.hour + (1 if late else 0)
+
     def _evening(self, day: date, lows: dict[datetime, float]) -> Evening | None:
         tz = self.c.tz
         start = datetime.combine(day, EVENING, tz)
@@ -262,6 +274,7 @@ class Achievements:
                     said=self._said(day),
                     spike_share=self.spike_share,
                     trickle_kwh=self.trickle_kwh,
+                    sunrise_hour=self._sunrise_hour(day),
                 )
                 if closed is not None:
                     memory.facts[day.isoformat()] = closed.as_dict()
@@ -281,6 +294,7 @@ class Achievements:
             min_hours=1,
             spike_share=self.spike_share,
             trickle_kwh=self.trickle_kwh,
+            sunrise_hour=self._sunrise_hour(today),
         )
         history = with_stretches(
             [DayFacts.from_dict(v) for _, v in sorted(memory.facts.items())]
