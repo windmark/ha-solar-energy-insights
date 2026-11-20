@@ -42,7 +42,9 @@ trust the forecast.
   solar counter.
 - **Appliances.** When to start the dishwasher on spare sun, and what it leaves
   of the battery tonight, learned from its energy counter.
-- **Achievements** (optional). Levels, streaks, records and badges.
+- **Achievements** (optional). Levels, streaks, records and badges. Badges
+  climb ladders of better days, seasonal ones are played against last season,
+  and quests follow how you do.
 
 It learns from your own history, and only keeps what a backtest shows predicts
 better. Everything is a sensor, so it works in automations too.

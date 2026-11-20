@@ -176,6 +176,7 @@ flowchart TD
 - **Money in recaps** uses the integration's prices: sun kept at home at the electricity price, export at the feed-in tariff.
 - **A blueprint** (`blueprints/automation/solar_energy_insights/announce_achievements.yaml`) announces chosen kinds on a phone.
 - **New rules are taken as they stand.** When the rules change what the same history earns (ladders and editions were such a change), or the clear sky becomes known or unknown, the room is computed again and nothing is announced for it. What was announced is remembered at its highest, so a badge that goes missing for a while (its sensor not loaded yet) and comes back, or a level lost to new rules, is not announced again.
+- **The view.** The badges card shows this season's badges first, each against its last season with a tick where that one ended, then the badges within reach with what their next tier asks. A tapped badge shows its ladder, its seasons and what follows it. Locked successors stay out of sight until unlocked. The records card ends with the last week against a year ago.
 - **Percentiles are kept between days** of a replay, so three years of history take a fraction of a second.
 - **Not built yet:** Sun chaser (needs appliance runs from plugs) and the yearly "Wrapped" card.
 

@@ -14,6 +14,7 @@
 
 ### Changed
 
+- The badges card shows this season's badges first, each racing its last season, and says what each badge's next tier asks. A tapped badge shows its ladder and its seasons. The records card chases the same day last year and ends with the last week against a year ago (`year_ago: false` hides it).
 - Badge tiers are worked out again under the new rules, so some may move once. No badge got easier: bronze asks what it asked before. Nothing is announced for that.
 
 ## [0.25.0] - 2026-11-20
