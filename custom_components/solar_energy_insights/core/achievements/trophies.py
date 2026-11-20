@@ -22,7 +22,7 @@ from .game import (
     streaks,
 )
 from .profile import Profile, season_of
-from .quests import Quest
+from .quests import AIMS, Quest, aim, quest_level
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +52,7 @@ class Trophies:
     quests: tuple[Quest, ...]
     months: tuple[Month, ...]
     profile: Profile
+    quest_level: int
 
 
 def _months(
@@ -130,6 +131,7 @@ def compute(
         quests=tuple(quests),
         months=tuple(_months(facts, scores, badges, recs)),
         profile=profile,
+        quest_level=quest_level(quests),
     )
 
 
@@ -221,6 +223,11 @@ def as_dict(
             for b in t.badges
         ],
         "quests": [q.as_dict() for q in t.quests[-10:]],
+        "quest_level": {
+            "level": t.quest_level,
+            "max": len(AIMS),
+            "aim": aim(t.quest_level),
+        },
         "months": [_month(m, prices) for m in t.months[-13:]],
         "profile": {
             "capabilities": sorted(str(c) for c in t.profile.capabilities),

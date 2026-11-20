@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
 from custom_components.solar_energy_insights.core.achievements import moments
@@ -77,6 +78,27 @@ def test_a_weeks_quest_is_called_one() -> None:
     )
 
     assert moments.quest(week)["explain"].startswith("This week's quest, met: +80 XP")
+
+
+def test_a_quest_met_says_when_quests_get_harder() -> None:
+    met = Quest(
+        "q",
+        date(2026, 11, 9),
+        "self_sufficient",
+        "Be 85 % self-sufficient",
+        0.85,
+        52,
+        date(2026, 11, 9),
+        result=True,
+        level=3,
+    )
+
+    assert moments.quest(met, 4, 6)["explain"].endswith(
+        "Quests get a little harder: level 4 of 6."
+    )
+    # At the top, or for quests set before levels, nothing is said.
+    assert "harder" not in moments.quest(met, 3, 6)["explain"]
+    assert "harder" not in moments.quest(replace(met, level=None), 4, 6)["explain"]
 
 
 def test_moments_are_kept_two_days_newest_first() -> None:

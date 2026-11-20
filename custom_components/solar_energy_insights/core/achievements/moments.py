@@ -93,14 +93,20 @@ def record(r: Record, since: date | None) -> dict[str, Any]:
     }
 
 
-def quest(q: Quest) -> dict[str, Any]:
+def quest(q: Quest, level: int | None = None, top: int = 6) -> dict[str, Any]:
+    """A quest met; with the quest level it led to, which sets the next one."""
     when = "This week's quest" if q.until > q.day else f"{_day(q.day)}'s quest"
+    harder = (
+        f" Quests get a little harder: level {level} of {top}."
+        if level is not None and q.level is not None and level > q.level
+        else ""
+    )
     return {
         "kind": "quest",
         "quest": q.id,
         "title": f"Quest done: {q.title}",
         "message": f"Quest done, {q.title}: +{q.reward} XP.",
-        "explain": f"{when}, met: +{q.reward} XP towards your next level.",
+        "explain": f"{when}, met: +{q.reward} XP towards your next level.{harder}",
         "icon": "mdi:flag-checkered",
     }
 

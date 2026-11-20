@@ -7,8 +7,12 @@ from datetime import date, timedelta
 
 from custom_components.solar_energy_insights.core.achievements.profile import profile_of
 from custom_components.solar_energy_insights.core.achievements.quests import (
+    MAX_LEVEL,
+    START_LEVEL,
+    Quest,
     judge,
     next_day,
+    quest_level,
     this_week,
 )
 from tests.core.achievements.homes import home
@@ -73,3 +77,83 @@ def test_the_weeks_quest_counts_grid_free_nights() -> None:
     assert judge(quest, [*facts, *week], TZ) is True
     short = [replace(f, night_lasted=False) for f in week]
     assert judge(quest, [*facts, *short], TZ) is False
+
+
+def judged(*results):
+    day = date(2026, 10, 1)
+    return [
+        Quest(
+            f"q{k}",
+            day + timedelta(days=k),
+            "fill_before",
+            "",
+            0,
+            50,
+            day + timedelta(days=k),
+            result,
+        )
+        for k, result in enumerate(results)
+    ]
+
+
+def test_quests_start_at_level_two_and_follow_how_you_do() -> None:
+    assert quest_level([]) == START_LEVEL
+    assert quest_level(judged(True)) == START_LEVEL + 1
+    assert quest_level(judged(True, True, False)) == START_LEVEL + 1
+    # Open quests do not count either way.
+    assert quest_level(judged(None, None)) == START_LEVEL
+
+
+def test_the_level_stays_between_one_and_the_top() -> None:
+    assert quest_level(judged(*[True] * 20)) == MAX_LEVEL
+    assert quest_level(judged(*[False] * 20)) == 1
+    # From the top, one miss is one step down.
+    assert quest_level(judged(*[True] * 20, False)) == MAX_LEVEL - 1
+
+
+def test_a_higher_level_sets_a_harder_target_for_more_xp() -> None:
+    facts, profile = setup(300)
+    day = END + timedelta(days=1)
+    for forecast in (5.0, 30.0, 60.0):
+        easy = next_day(facts, profile, TZ, day, forecast, level=1)
+        hard = next_day(facts, profile, TZ, day, forecast, level=MAX_LEVEL)
+        assert easy is not None
+        assert hard is not None
+        assert (easy.level, hard.level) == (1, MAX_LEVEL)
+        assert hard.reward >= easy.reward
+        if easy.kind == hard.kind == "fill_before":
+            assert hard.target <= easy.target  # full earlier
+        elif easy.kind == hard.kind:
+            assert hard.target >= easy.target
+
+
+def test_met_quests_make_about_half_of_them_met() -> None:
+    """Played forward, the level settles where about half the quests are met:
+    harder than the start, where three in five would be."""
+    facts, profile = setup(400)
+    played: list[Quest] = []
+    for k in range(200, 400):
+        level = quest_level(played)
+        quest = next_day(
+            facts[:k], profile, TZ, facts[k].day, facts[k].forecast_kwh, level=level
+        )
+        assert quest is not None
+        result = judge(quest, facts, TZ)
+        if result is not None:
+            played.append(replace(quest, result=result))
+    met = sum(1 for q in played if q.result) / len(played)
+    assert len(played) > 100
+    assert 0.35 <= met <= 0.65
+
+
+def test_the_weeks_quest_asks_more_nights_at_a_higher_level() -> None:
+    facts, profile = setup()
+    monday = END + timedelta(days=(7 - END.weekday()) % 7 or 7)
+
+    low = this_week(facts, profile, monday, level=1)
+    high = this_week(facts, profile, monday, level=MAX_LEVEL)
+
+    assert low is not None
+    assert high is not None
+    assert low.target < high.target <= 7
+    assert high.reward > low.reward

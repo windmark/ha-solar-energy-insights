@@ -4,7 +4,6 @@ quests, and announcements. The game itself is in core/achievements."""
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -276,16 +275,9 @@ class Achievements:
             kwp=array.kwp,
             relative_yield=array.relative_yield,
         )
+        self._judge_quests(history)
         self._set_quests(history, profile, local)
-        quests = []
-        for raw in sorted(memory.quests.values(), key=lambda q: (q["day"], q["id"])):
-            quest = Quest.from_dict({k: v for k, v in raw.items() if k != "set"})
-            if quest.result is None:
-                result = quest_rules.judge(quest, history, self.c.tz)
-                if result is not None:
-                    quest = replace(quest, result=result)
-                    memory.quests[quest.id] = {**raw, "result": result}
-            quests.append(quest)
+        quests = self._quests()
         key = (
             len(memory.facts),
             max(memory.facts, default=""),
@@ -301,11 +293,34 @@ class Achievements:
             self._announce(trophies)
         self.view = self.as_dict()
 
+    def _quests(self) -> list[Quest]:
+        return [
+            Quest.from_dict({k: v for k, v in raw.items() if k != "set"})
+            for raw in sorted(
+                self.memory.quests.values(), key=lambda q: (q["day"], q["id"])
+            )
+        ]
+
+    def _judge_quests(self, facts: list[DayFacts]) -> None:
+        """Judges the quests whose days have closed, before new ones are set:
+        their results decide the quest level."""
+        for quest in self._quests():
+            if quest.result is not None:
+                continue
+            result = quest_rules.judge(quest, facts, self.c.tz)
+            if result is not None:
+                self.memory.quests[quest.id] = {
+                    **self.memory.quests[quest.id],
+                    "result": result,
+                }
+                self.c.memory.async_save_later()
+
     def _set_quests(self, facts: list[DayFacts], profile: Any, local: datetime) -> None:
         memory = self.memory
         today = local.date()
+        level = quest_rules.quest_level(self._quests())
         if local.weekday() == 0:
-            weekly = quest_rules.this_week(facts, profile, today)
+            weekly = quest_rules.this_week(facts, profile, today, level)
             if weekly is not None and weekly.id not in memory.quests:
                 memory.quests[weekly.id] = weekly.as_dict()
         if local.hour < QUEST_HOUR:
@@ -328,6 +343,7 @@ class Achievements:
             self._tomorrow_forecast(tomorrow),
             outlook,
             self._advice(),
+            level,
         )
         if quest is not None:
             memory.quests[quest.id] = {**quest.as_dict(), "set": today.isoformat()}
@@ -384,7 +400,7 @@ class Achievements:
             if before.get("records", {}).get(r.id) != r.day.isoformat()
         ]
         found += [
-            moments.quest(q)
+            moments.quest(q, t.quest_level, quest_rules.MAX_LEVEL)
             for q in t.quests
             if q.result and q.id not in before.get("quests", [])
         ]
