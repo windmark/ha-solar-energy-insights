@@ -9,6 +9,7 @@
 - Four badges unlock a harder one once complete: Perfect streak, Harvest moon, Winter legend and Oracle.
 - New badges: Bluebird day, which compares a day with what a clear sky would have given; Sun sponge, which compares how much of the day's own sun the house used with other days like it; Wheel of the year; and a hidden one.
 - Where Solcast's rooftop sites give the planes' directions, each day is compared with what a clear sky would have made, so a bright December day counts as much as a bright June one.
+- The last seven days are compared with the same week a year ago (score, self-sufficiency, yield, grid-free nights and house use), and today's yield with the same day last year.
 - Quests have a level, from 1 to 6. Each quest met makes the next ones a little harder and pay a little more; each one missed makes them easier. The quest shows its level, and the quest sensor has it as an attribute.
 
 ### Changed

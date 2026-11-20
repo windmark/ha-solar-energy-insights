@@ -97,6 +97,8 @@ Facts are kept in the integration's store, about 1 kB a day.
 
 **Quest level.** Quests follow how you are doing. The level runs from 1 to 6 and starts at 2. Each quest met raises it one step, each one missed lowers it one. Level 1 sets targets about two in three similar days would have met; each step aims five points lower, down to two in five at level 6. The week's quest asks half a night more per level above the start. The level is replayed from the judged quests, so it settles where you meet about half of them.
 
+**A year ago.** The last seven closed days against the same seven 52 weeks earlier, so weekends line up and a December is held to a December: the average score, self-sufficiency, yield, grid-free nights and house use (shown, not judged). Today's yield so far is chased against the same day last year as well as the record. Nothing is shown until both weeks have five days.
+
 **Recaps and moments.** Earning a tier, breaking a record, levelling up, completing a quest and closing a month fire `solar_energy_insights_achievement` with a title, a ready-made message and a line explaining it. The last two days of them are kept as moments, which the moments card shows for a day.
 
 ## Badge catalogue
@@ -156,12 +158,12 @@ flowchart TD
 - `core/achievements/`: plain Python, no Home Assistant. `facts.py`, `profile.py`, `game.py` (score, levels, ranks, streaks, records), `rules.py` (what a badge is, and the kinds of rule: one bar, a ladder of bars, your own percentiles, days in a row), `catalogue.py` (the badges, as data), `editions.py` (windows of the year and editions), `badges.py` (the catalogue played over the history), `quests.py`, `trophies.py`.
 - `achievements.py`: reads the recorder, keeps the facts and quests in the store, computes the room off the event loop, and announces what is new.
 
-| Exposed                                        | What                                                                                                                                              |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sensors                                        | Solar score today (live), level, rank, the four streaks, the quest                                                                                |
-| Event `solar_energy_insights_achievement`      | `kind` (level, badge, crown, record, quest, recap), `title`, `message`, `explain`, `icon`                                                         |
-| WebSocket `solar_energy_insights/achievements` | The whole room: today, level, rank, streaks, records, badges with rarity and riddles, quests, monthly recaps, profile, the last two days' moments |
-| Diagnostics                                    | Days of facts, quests, and the room                                                                                                               |
+| Exposed                                        | What                                                                                                                                                                           |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Sensors                                        | Solar score today (live), level, rank, the four streaks, the quest                                                                                                             |
+| Event `solar_energy_insights_achievement`      | `kind` (level, badge, crown, record, quest, recap), `title`, `message`, `explain`, `icon`                                                                                      |
+| WebSocket `solar_energy_insights/achievements` | The whole room: today, level, rank, streaks, records, badges with rarity and riddles, quests, monthly recaps, the week against a year ago, profile, the last two days' moments |
+| Diagnostics                                    | Days of facts, quests, and the room                                                                                                                                            |
 
 ## As built
 
