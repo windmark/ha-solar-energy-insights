@@ -42,7 +42,7 @@ from .core.achievements.facts import (
 )
 from .core.achievements.profile import profile_of
 from .core.achievements.quests import Quest
-from .core.achievements.recap import best_since, last_week
+from .core.achievements.recap import best_since, last_week, year_ago
 from .core.achievements.trophies import Trophies, as_dict, compute
 from .core.array import Array, clear_day_kwh
 from .core.backtest import EVENING, Evening, clean_lows
@@ -492,5 +492,8 @@ class Achievements:
         ]
         view["last_week"] = last_week(history, today, self.c.price, earned)
         view["yesterday"] = best_since(history, today - timedelta(days=1))
+        view["year_ago"] = year_ago(
+            history, today, self.c.battery(as_reported=True).floor_pct
+        )
         view["moments"] = moments.recent(self.memory.moments, dt_util.utcnow())
         return view
