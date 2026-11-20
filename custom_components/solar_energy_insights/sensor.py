@@ -1028,6 +1028,8 @@ class SpikeShareSensor(InsightsEntity, SensorEntity):
             "hours_seen": a.spike_hours,
             "cap_pct": round(MAX_SPIKE_SHARE * 100),
             "excused_today_kwh": None if live is None else live.spike_kwh,
+            # The inverter's steady draw, excused in hours the battery carries.
+            "trickle_w": round(a.trickle_kwh * 1000),
         }
 
 

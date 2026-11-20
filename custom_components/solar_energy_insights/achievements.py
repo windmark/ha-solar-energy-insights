@@ -40,6 +40,9 @@ from .core.achievements.facts import (
 from .core.achievements.facts import (
     spike_share as learn_spike_share,
 )
+from .core.achievements.facts import (
+    trickle as learn_trickle,
+)
 from .core.achievements.profile import profile_of
 from .core.achievements.quests import Quest
 from .core.achievements.recap import best_since, last_week, year_ago
@@ -56,7 +59,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # Raise when the same history would give different facts: they are rebuilt
 # quietly. 2: counter jumps dropped. 3: no cycle counts. 4: load spikes.
-FACTS_VERSION = 4
+# 5: the inverter's trickle excused, and the day judged from sunrise.
+FACTS_VERSION = 5
 SPIKE_DAYS = 30
 # Raise when the same history would earn different tiers: the room is then
 # taken as it stands, without announcing it again. 2: ladders and editions.
@@ -68,6 +72,7 @@ class Achievements:
 
     # None until learned.
     spike_share: float = 0.0
+    trickle_kwh: float = 0.0
     spike_hours: int = 0
 
     def __init__(self, coordinator: InsightsCoordinator) -> None:
@@ -240,6 +245,9 @@ class Achievements:
             self.spike_share, self.spike_hours = learn_spike_share(
                 series.imported, series.house, series.soc_min, battery.floor_pct
             )
+            self.trickle_kwh, _ = learn_trickle(
+                series.imported, series.soc_min, battery.floor_pct
+            )
             day = start_day
             while day < today:
                 closed = build(
@@ -253,6 +261,7 @@ class Achievements:
                     forecast_kwh=self._forecast(day),
                     said=self._said(day),
                     spike_share=self.spike_share,
+                    trickle_kwh=self.trickle_kwh,
                 )
                 if closed is not None:
                     memory.facts[day.isoformat()] = closed.as_dict()
@@ -271,6 +280,7 @@ class Achievements:
             capacity_kwh=battery.capacity_kwh,
             min_hours=1,
             spike_share=self.spike_share,
+            trickle_kwh=self.trickle_kwh,
         )
         history = with_stretches(
             [DayFacts.from_dict(v) for _, v in sorted(memory.facts.items())]

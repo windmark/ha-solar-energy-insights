@@ -28,6 +28,11 @@ PLENTY_ABOVE_FLOOR_PCT = 10.0
 CARRYING_ABOVE_FLOOR_PCT = 1.0
 MIN_SPIKE_HOURS = 48
 SPIKE_QUANTILE = 0.95
+# An inverter can't follow the house to the watt, so it draws a steady trickle
+# from the grid even with plenty in the battery. Learned from those hours; more
+# than 100 W is the house using the grid, not regulation.
+TRICKLE_QUANTILE = 0.75
+MAX_TRICKLE_KWH = 0.1
 # Rounding noise in the hourly statistics.
 NOISE_KWH = 0.0001
 FULL_WITHIN_PCT = 1.0
@@ -48,6 +53,8 @@ class DayFacts:
     offgrid_head: float | None = None
     offgrid_tail: float | None = None
     offgrid_run: float | None = None
+    # Import excused as the inverter's own: load spikes and its steady trickle,
+    # in hours the battery carried the house.
     spike_kwh: float | None = None
     # Derived from the days before, so not stored.
     offgrid_stretch: float | None = None
@@ -199,6 +206,7 @@ def build(
     said: Mapping[str, Any] | None = None,
     min_hours: int = MIN_HOURS,
     spike_share: float = 0.0,
+    trickle_kwh: float = 0.0,
 ) -> DayFacts | None:
     """The facts of one closed day, or None if the house's use is mostly missing.
 
@@ -242,7 +250,7 @@ def build(
         solar_best_hour_kwh=None if solar is None else round(max(solar), 3),
         import_kwh=None if imported is None else round(sum(imported), 3),
         export_kwh=None if exported is None else round(sum(exported), 3),
-        **_offgrid(s, day, floor_pct, spike_share, imported is not None),
+        **_offgrid(s, day, floor_pct, spike_share, imported is not None, trickle_kwh),
         soc_max=None if highs is None else max(highs),
         soc_min=None if lows is None else min(lows),
         full_at=full_at,
@@ -262,9 +270,16 @@ def yesterday_of(day: date) -> date:
     return day - timedelta(days=1)
 
 
-def _hour_off(s: Series, key: tuple[date, int], floor_pct: float, share: float) -> bool:
-    """Off the grid this hour: next to no import, or only load spikes' share
-    of the house's use while the battery carried the house all hour."""
+def _hour_off(
+    s: Series,
+    key: tuple[date, int],
+    floor_pct: float,
+    share: float,
+    trickle: float,
+) -> bool:
+    """Off the grid this hour: next to no import, or, while the battery carried
+    the house all hour, no more than the inverter's own: load spikes' share of
+    the house's use, or its steady trickle, whichever is more."""
     imp = s.imported.get(key) if s.imported else None
     if imp is None:
         return False
@@ -272,20 +287,26 @@ def _hour_off(s: Series, key: tuple[date, int], floor_pct: float, share: float) 
         return True
     low = s.soc_min.get(key) if s.soc_min else None
     use = s.house.get(key)
+    allowed = max(share * use, trickle) if use is not None else trickle
     return (
-        share > 0
+        allowed > 0
         and low is not None
         and low > floor_pct + CARRYING_ABOVE_FLOOR_PCT
-        and use is not None
-        and imp <= share * use + NOISE_KWH
+        and imp <= allowed + NOISE_KWH
     )
 
 
 def _offgrid(
-    s: Series, day: date, floor_pct: float, share: float, known: bool
+    s: Series,
+    day: date,
+    floor_pct: float,
+    share: float,
+    known: bool,
+    trickle: float = 0.0,
 ) -> dict[str, float | None]:
     """Off-grid hours, the hours from and to midnight, the longest run in the
-    day, and the import excused as spikes. A missing hour breaks a run."""
+    day, and the import excused in them: every hour off the grid counts as
+    taking nothing from it. A missing hour breaks a run."""
     if not known:
         return dict.fromkeys(
             (
@@ -296,7 +317,7 @@ def _offgrid(
                 "spike_kwh",
             )
         )
-    off = [_hour_off(s, (day, h), floor_pct, share) for h in range(24)]
+    off = [_hour_off(s, (day, h), floor_pct, share, trickle) for h in range(24)]
     head = next((h for h, o in enumerate(off) if not o), 24)
     tail = next((h for h, o in enumerate(reversed(off)) if not o), 24)
     run = best = 0
@@ -304,11 +325,7 @@ def _offgrid(
         run = run + 1 if o else 0
         best = max(best, run)
     imported = s.imported or {}
-    spikes = sum(
-        imported[(day, h)]
-        for h in range(24)
-        if off[h] and imported.get((day, h), 0.0) >= OFF_GRID_KWH
-    )
+    spikes = sum(max(imported.get((day, h), 0.0), 0.0) for h in range(24) if off[h])
     return {
         "offgrid_hours": float(sum(off)),
         "offgrid_head": float(head),
@@ -342,6 +359,26 @@ def spike_share(
     return round(min(math.ceil(high * 1000) / 1000 + 0.001, MAX_SPIKE_SHARE), 3), len(
         shares
     )
+
+
+def trickle(
+    imported: Hourly | None, soc_min: Hourly | None, floor_pct: float
+) -> tuple[float, int]:
+    """The inverter's steady trickle from the grid, kWh an hour: learned from
+    hours the battery had plenty (the upper quartile of their import, so load
+    spikes don't count), at most MAX_TRICKLE_KWH; and how many such hours there
+    were. None (0) until there are enough."""
+    if not imported or not soc_min:
+        return 0.0, 0
+    values = sorted(
+        max(imp, 0.0)
+        for key, imp in imported.items()
+        if soc_min.get(key, 0.0) >= floor_pct + PLENTY_ABOVE_FLOOR_PCT
+    )
+    if len(values) < MIN_SPIKE_HOURS:
+        return 0.0, len(values)
+    high = values[min(int(TRICKLE_QUANTILE * len(values)), len(values) - 1)]
+    return round(min(high, MAX_TRICKLE_KWH), 3), len(values)
 
 
 def with_stretches(days: list[DayFacts]) -> list[DayFacts]:

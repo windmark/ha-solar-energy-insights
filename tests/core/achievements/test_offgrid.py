@@ -8,10 +8,12 @@ import pytest
 
 from custom_components.solar_energy_insights.core.achievements.facts import (
     MAX_SPIKE_SHARE,
+    MAX_TRICKLE_KWH,
     DayFacts,
     Series,
     _offgrid,
     spike_share,
+    trickle,
     with_stretches,
 )
 
@@ -137,3 +139,59 @@ def test_only_import_excused_as_spikes_is_left_out() -> None:
     assert f.grid_free is True
     assert g.own_import_kwh == pytest.approx(2.62)
     assert g.grid_free is False
+
+
+def test_the_inverters_trickle_is_off_the_grid_and_excused() -> None:
+    # A quiet night: 200 W of use, 40 W of it from the grid as the inverter
+    # regulates, a fifth: more than any load spike's share.
+    s = series([0.04] * 24, [0.2] * 24, [60.0] * 24)
+
+    without = _offgrid(s, DAY, FLOOR, share=0.04, known=True)
+    allowed = _offgrid(s, DAY, FLOOR, share=0.04, known=True, trickle=0.04)
+
+    assert without["offgrid_hours"] == 0.0
+    assert allowed["offgrid_hours"] == 24.0
+    # All of it excused: the day counts as fully self-sufficient.
+    assert allowed["spike_kwh"] == pytest.approx(0.96)
+    f = DayFacts(DAY, house_kwh=4.8, import_kwh=0.96, spike_kwh=allowed["spike_kwh"])
+    assert f.self_sufficiency == 1.0
+    assert f.grid_free
+
+
+def test_the_trickle_is_still_grid_use_once_the_battery_is_at_its_reserve() -> None:
+    soc = [60.0] * 12 + [FLOOR] * 12
+    s = series([0.04] * 24, [0.2] * 24, soc)
+
+    off = _offgrid(s, DAY, FLOOR, share=0.0, known=True, trickle=0.04)
+
+    assert off["offgrid_hours"] == 12.0
+
+
+def test_tiny_hours_count_as_nothing_from_the_grid() -> None:
+    s = series([0.01] * 24, [0.5] * 24, [FLOOR] * 24)
+
+    off = _offgrid(s, DAY, FLOOR, share=0.0, known=True)
+
+    assert off["offgrid_hours"] == 24.0
+    assert off["spike_kwh"] == pytest.approx(0.24)
+
+
+def test_the_trickle_is_learned_from_hours_with_plenty_in_the_battery() -> None:
+    imported, _, low = history(14, [0.0])
+    steady = dict.fromkeys(imported, 0.035)
+    # Now and then a kettle beyond what the inverter follows.
+    for k in list(steady)[::10]:
+        steady[k] = 0.6
+
+    learned, hours = trickle(steady, low, FLOOR)
+
+    assert learned == pytest.approx(0.035)
+    assert hours == 14 * 24
+
+
+def test_the_trickle_learned_is_never_more_than_a_hundred_watts() -> None:
+    imported, _, low = history(14, [0.0])
+    heavy = dict.fromkeys(imported, 0.5)
+
+    assert trickle(heavy, low, FLOOR)[0] == MAX_TRICKLE_KWH
+    assert trickle(heavy, dict.fromkeys(low, FLOOR), FLOOR) == (0.0, 0)
