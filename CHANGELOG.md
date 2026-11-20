@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- The scenario lab fills the days the recorder doesn't have yet from recorded days with a similar sun, moved to their season, so half a year replays as a whole one with a winter in it. Before, it scaled the recorded days up, which for a summer and an autumn made a heat pump look less than half its size and twice as sunny.
+- The scenario lab shows the heat pump's heat for rooms and hot water, its electricity, its seasonal performance factor and its share from the roof, month by month, and what it saves against gas (`gas_price`). A year's gas works out the house's heat loss as it is.
+- The heat pump can be given a size (above it, a heating rod adds the rest), its datasheet COP at A2/W35, its flow temperature on the coldest day, and hot water heated in the sunniest hours.
+- The battery shows its cycles a year.
+
+### Changed
+
+- The scenario lab's sliders show their value as they move, and what you set is kept across reloads, per dashboard and card.
+- The heat pump's COP follows the published curve of real air-source heat pumps (Ruhnau et al. 2019) at the flow temperature the heating curve asks for, in place of a fixed line. Heating days are decided by the day's mean temperature, as degree days count them, and hot water is set at 8 kWh a day in the card unless changed.
+- With both a bigger battery and a heat pump, each is priced on its own: the battery's payback no longer includes the heat pump's cost, and the heat pump's roof share no longer counts the bigger battery's.
+
 ## [0.26.0] - 2026-11-20
 
 ### Added
