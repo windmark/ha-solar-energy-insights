@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.recorder import get_instance
@@ -117,12 +118,36 @@ async def recorded_hours(
     ]
 
 
+async def recorded_temperatures(
+    hass: HomeAssistant, temperature: str, now: datetime
+) -> dict[datetime, float]:
+    """The thermometer's hourly means over the last year, also for hours
+    without the house's use or the solar: it is often older than either."""
+    end = now.replace(minute=0, second=0, microsecond=0)
+    rows = await get_instance(hass).async_add_executor_job(
+        statistics_during_period,
+        hass,
+        end - timedelta(days=SCENARIO_DAYS),
+        end,
+        {temperature},
+        "hour",
+        UNITS,
+        {"mean"},
+    )
+    return {
+        dt_util.utc_from_timestamp(row["start"]): mean
+        for row in rows.get(temperature, [])
+        if (mean := row.get("mean")) is not None
+    }
+
+
 class ScenarioLab:
     """The year's hours, kept for a while: every question replays the same."""
 
     def __init__(self, coordinator: InsightsCoordinator) -> None:
         self.coordinator = coordinator
         self._hours: list[Hour] = []
+        self._temperatures: dict[datetime, float] = {}
         self._read_at: datetime | None = None
         self._year: Year | None = None
         self._year_of: datetime | None = None
@@ -156,6 +181,12 @@ class ScenarioLab:
                 grid_import=entry.options.get(CONF_GRID_IMPORT_ENERGY),
                 grid_export=entry.options.get(CONF_GRID_EXPORT_ENERGY),
             )
+            temperature = self.temperature
+            self._temperatures = (
+                await recorded_temperatures(self.coordinator.hass, temperature, now)
+                if temperature
+                else {}
+            )
             self._read_at = now
         return self._hours
 
@@ -167,7 +198,13 @@ class ScenarioLab:
             hass = self.coordinator.hass
             end = self._read_at or dt_util.utcnow()
             self._year = await hass.async_add_executor_job(
-                fill_year, hours, end, hass.config.latitude
+                partial(
+                    fill_year,
+                    hours,
+                    end,
+                    hass.config.latitude,
+                    temperatures=self._temperatures,
+                )
             )
             self._year_of = self._read_at
         return self._year
@@ -199,12 +236,19 @@ def _year(year: Year | None, c: Comparison) -> dict[str, Any]:
             "measured_days": round(c.now.days, 1),
             "filled_days": 0,
             "filled_by_month": [0] * 12,
+            "measured_temperature_pct": 100,
         }
     return {
         "filled": True,
         "measured_days": round(year.recorded_hours / 24, 1),
         "filled_days": round(year.filled_hours / 24, 1),
         "filled_by_month": [round(x * 100) for x in year.filled_share_by_month],
+        # How much of the filled time kept the thermometer's own readings.
+        "measured_temperature_pct": round(
+            100 * year.measured_temperature_hours / year.filled_hours
+        )
+        if year.filled_hours
+        else 100,
     }
 
 

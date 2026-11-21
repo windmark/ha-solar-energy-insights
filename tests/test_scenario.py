@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import math
-from datetime import date
+from collections.abc import Callable
+from datetime import date, timedelta
 from typing import Any
 
 import pytest
@@ -39,10 +40,17 @@ def sun(_day: date, hour: int) -> float:
     return 6.0 * math.sin(math.pi * (hour - 5) / 15) if 5 <= hour < 20 else 0.0
 
 
-async def record_temperature(home: HomeAssistant, celsius: float) -> None:
+async def record_temperature(
+    home: HomeAssistant,
+    celsius: float | Callable[[date], float],
+    days: list[date] = DAYS,
+) -> None:
+    def at(day: date) -> float:
+        return celsius(day) if callable(celsius) else celsius
+
     rows = [
-        StatisticData(start=local(day, hour), mean=celsius, min=celsius, max=celsius)
-        for day in DAYS
+        StatisticData(start=local(day, hour), mean=at(day), min=at(day), max=at(day))
+        for day in days
         for hour in range(24)
     ]
     async_import_statistics(
@@ -149,6 +157,38 @@ async def test_a_short_history_is_filled_to_a_year(home: HomeAssistant) -> None:
     assert year["filled_days"] > 300
     assert len(result["months"]) == 12
     assert result["changed"]["import_kwh"] < result["now"]["import_kwh"]
+
+
+def season(day: date) -> float:
+    """A steady day at the season's mean: 9 °C ± 9 K, coldest mid-January."""
+    n = day.timetuple().tm_yday
+    return 9.0 - 9.0 * math.cos(2 * math.pi * (n - 17) / 365.25)
+
+
+async def test_the_thermometer_fills_the_year_with_its_own_readings(
+    home: HomeAssistant,
+) -> None:
+    # The thermometer is older than the solar and the house's meter.
+    await record_temperature(home, season, recent(360))
+    days = recent(45)
+    await record_house(home, days, evening)
+    await record_energy(home, SOLAR, days, sun)
+    set_states(home)
+    await setup(
+        home, {const.CONF_SOLAR_ENERGY: SOLAR, const.CONF_OUTDOOR_TEMPERATURE: OUTDOOR}
+    )
+
+    result = await scenario(home, heat_loss_w_per_k=150, hot_water_kwh_per_day=0)
+
+    year = result["year"]
+    assert year["filled"]
+    assert year["measured_temperature_pct"] > 90
+    # The heat follows the thermometer's year, not a guess from 45 days.
+    last_year = [DAYS[-1] - timedelta(days=k) for k in range(365)]
+    kelvin_hours = sum((20 - season(d)) * 24 for d in last_year if season(d) < 15)
+    assert result["changed"]["space_heat_kwh"] == pytest.approx(
+        150 * kelvin_hours / 1000, rel=0.03
+    )
 
 
 async def test_a_heat_pump_needs_the_outdoor_temperature(home: HomeAssistant) -> None:
