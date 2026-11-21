@@ -3481,7 +3481,9 @@
           lab[k] || ""
         }" aria-label="${label}" style="width:84px;font:inherit;padding:3px 6px;border-radius:6px;border:1px solid ${
           C.track
-        };background:transparent;color:${C.text};text-align:right">${unit}</span></label>`;
+        };background:transparent;color:${
+          C.text
+        };text-align:right">${unit}</span></label>`;
       const section = (k, title, body) =>
         `<details data-section="${k}"${
           ui.open[k] ? " open" : ""
@@ -3508,7 +3510,9 @@
             0.5,
             "About 2 kWh a day per person.",
           ) +
-          `<div data-out="estimate" style="font-size:12px;color:${C.muted};white-space:normal;margin:2px 0 4px">${estimate()}</div>` +
+          `<div data-out="estimate" style="font-size:12px;color:${
+            C.muted
+          };white-space:normal;margin:2px 0 4px">${estimate()}</div>` +
           section(
             "pump",
             "The heat pump itself",
@@ -3568,7 +3572,9 @@
         "Scenario lab",
         year
           ? year.filled && year.filled_days
-            ? `${n(year.measured_days)} days recorded, ${n(year.filled_days)} filled`
+            ? `${n(year.measured_days)} days recorded, ${n(
+                year.filled_days,
+              )} filled`
             : `${n(year.measured_days)} days`
           : "a year in your house",
       );
@@ -3586,7 +3592,9 @@
       const row = (label, now, changed, better) =>
         `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;font-size:13px;padding:4px 0;border-top:1px solid ${
           C.track
-        }"><span style="color:${C.muted};white-space:normal">${label}</span><span style="color:${
+        }"><span style="color:${
+          C.muted
+        };white-space:normal">${label}</span><span style="color:${
           C.muted
         };text-align:right">${now}</span><span style="text-align:right;color:${
           better === null ? C.text : better ? C.ok : C.heavy
@@ -3688,14 +3696,34 @@
             if (withPump) {
               const roof = y(m.heat_pump_solar_kwh),
                 all = y(m.heat_pump_kwh);
-              bars += `<rect x="${x}" y="${H_ - all}" width="${bw}" height="${all - roof}" rx="1.5" fill="${C.heavy}" opacity="${op}"/><rect x="${x}" y="${H_ - roof}" width="${bw}" height="${roof}" rx="1.5" fill="${C.ok}" opacity="${op}"/>`;
+              bars += `<rect x="${x}" y="${H_ - all}" width="${bw}" height="${
+                all - roof
+              }" rx="1.5" fill="${
+                C.heavy
+              }" opacity="${op}"/><rect x="${x}" y="${
+                H_ - roof
+              }" width="${bw}" height="${roof}" rx="1.5" fill="${
+                C.ok
+              }" opacity="${op}"/>`;
             } else {
               const hn = y(m.import_now_kwh),
                 hc = y(m.import_kwh);
-              bars += `<rect x="${x}" y="${H_ - hn}" width="${bw / 2}" height="${hn}" rx="1.5" fill="${C.track}" opacity="${op}"/><rect x="${x + bw / 2}" y="${H_ - hc}" width="${bw / 2}" height="${hc}" rx="1.5" fill="${C.typical}" opacity="${op}"/>`;
+              bars += `<rect x="${x}" y="${H_ - hn}" width="${
+                bw / 2
+              }" height="${hn}" rx="1.5" fill="${
+                C.track
+              }" opacity="${op}"/><rect x="${x + bw / 2}" y="${
+                H_ - hc
+              }" width="${bw / 2}" height="${hc}" rx="1.5" fill="${
+                C.typical
+              }" opacity="${op}"/>`;
             }
           }
-          bars += `<text x="${x + bw / 2}" y="${H_ + 11}" font-size="8" text-anchor="middle" fill="${C.muted}">${MONTHS[i]}</text>`;
+          bars += `<text x="${x + bw / 2}" y="${
+            H_ + 11
+          }" font-size="8" text-anchor="middle" fill="${C.muted}">${
+            MONTHS[i]
+          }</text>`;
         }
         const key = withPump
           ? `<span style="color:${C.ok}">■</span> from the roof <span style="color:${C.heavy}">■</span> from the grid`
@@ -3705,7 +3733,9 @@
           : "";
         return `<div style="margin-top:12px"><div style="font-size:11px;color:${
           C.muted
-        };margin-bottom:4px;white-space:normal">${withPump ? "Heat pump electricity" : "Bought"} by month: ${key}${lighter}</div><svg viewBox="0 0 ${W_} ${
+        };margin-bottom:4px;white-space:normal">${
+          withPump ? "Heat pump electricity" : "Bought"
+        } by month: ${key}${lighter}</div><svg viewBox="0 0 ${W_} ${
           H_ + 14
         }" width="100%" role="img" aria-label="By month">${bars}</svg></div>`;
       })();
@@ -3717,12 +3747,17 @@
         const s = shown.battery_saving_per_year;
         lines.push(
           s > 0
-            ? `${n(lab.battery, 1)} kWh more battery saves about <b>${money(s)}</b> a year${
+            ? `${n(lab.battery, 1)} kWh more battery saves about <b>${money(
+                s,
+              )}</b> a year${
                 shown.payback_years
                   ? `, paid back in ${n(shown.payback_years, 1)} years`
                   : ""
               }.`
-            : `${n(lab.battery, 1)} kWh more battery would save next to nothing.`,
+            : `${n(
+                lab.battery,
+                1,
+              )} kWh more battery would save next to nothing.`,
         );
       }
       if (withPump) {
@@ -3731,20 +3766,34 @@
         lines.push(
           gas
             ? gas.saving_per_year >= 0
-              ? `The heat pump adds about ${money(cost)} a year to the electricity bill; gas for the same heat costs ${money(
+              ? `The heat pump adds about ${money(
+                  cost,
+                )} a year to the electricity bill; gas for the same heat costs ${money(
                   gas.cost_per_year,
                 )}: it saves about <b>${money(gas.saving_per_year)}</b> a year.`
-              : `The heat pump adds about ${money(cost)} a year to the electricity bill, ${money(
+              : `The heat pump adds about ${money(
+                  cost,
+                )} a year to the electricity bill, ${money(
                   -gas.saving_per_year,
-                )} more than gas for the same heat (${money(gas.cost_per_year)}).`
-            : `The heat pump adds about <b>${money(cost)}</b> a year to the electricity bill, in place of the heating you use now.`,
+                )} more than gas for the same heat (${money(
+                  gas.cost_per_year,
+                )}).`
+            : `The heat pump adds about <b>${money(
+                cost,
+              )}</b> a year to the electricity bill, in place of the heating you use now.`,
         );
       }
-      const verdict = `<div style="font-size:14px;color:${C.text};margin-top:10px;white-space:normal;line-height:1.45">${lines.join("<br>")}</div>`;
+      const verdict = `<div style="font-size:14px;color:${
+        C.text
+      };margin-top:10px;white-space:normal;line-height:1.45">${lines.join(
+        "<br>",
+      )}</div>`;
       const filled = year?.filled && year.filled_days;
       const notes = [
         filled
-          ? `Your last ${n(year.measured_days)} recorded days, with the other ${n(
+          ? `Your last ${n(
+              year.measured_days,
+            )} recorded days, with the other ${n(
               year.filled_days,
             )} borrowed from recorded days with a similar sun, moved to their season.`
           : `Your last ${n(shown.days)} recorded days, scaled to a year${
@@ -3752,7 +3801,10 @@
                 ? ": with no winter in them, a heat pump comes out too small and too sunny"
                 : ""
             }.`,
-        `At ${n(shown.price * 100, 1)} ct bought and ${n(shown.feed_in * 100, 1)} ct exported.`,
+        `At ${n(shown.price * 100, 1)} ct bought and ${n(
+          shown.feed_in * 100,
+          1,
+        )} ct exported.`,
         withPump
           ? "Heat: the heat loss times the degree-hours below the heating limit. COP: the published curve of real air-source heat pumps, at the flow temperature the heating curve asks for."
           : "",
