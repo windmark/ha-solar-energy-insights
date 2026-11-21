@@ -17,6 +17,7 @@ from custom_components.solar_energy_insights.core.climate import (
     fit_annual_cycle,
 )
 from custom_components.solar_energy_insights.core.scenario import (
+    Comparison,
     HeatPump,
     Scenario,
     compare,
@@ -158,12 +159,14 @@ def test_a_filled_half_year_answers_much_like_the_whole_year() -> None:
     scaled = compare(part, BATTERY, scenario, 0.30, 0.08)
     filled = compare(fill_year(part, END, LATITUDE).hours, BATTERY, scenario, 0.3, 0.08)
 
-    def heat(c):  # per year
+    def heat(c: Comparison) -> float:  # per year
         return c.changed.space_heat_kwh * c.per_year
+
+    def roof(c: Comparison) -> float:
+        assert c.heat_pump_solar_share is not None
+        return c.heat_pump_solar_share
 
     assert heat(scaled) < 0.5 * heat(whole)
     assert heat(filled) == pytest.approx(heat(whole), rel=0.15)
-    whole_share = whole.heat_pump_solar_share
-    assert whole_share is not None
-    assert scaled.heat_pump_solar_share > 1.5 * whole_share
-    assert filled.heat_pump_solar_share == pytest.approx(whole_share, abs=0.05)
+    assert roof(scaled) > 1.5 * roof(whole)
+    assert roof(filled) == pytest.approx(roof(whole), abs=0.05)

@@ -26,6 +26,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 
 import numpy as np
+import numpy.typing as npt
 
 from .scenario import Hour
 
@@ -103,7 +104,7 @@ class AnnualCycle:
 
 
 def fit_annual_cycle(
-    days_of_year: Sequence[float], means_c: Sequence[float], latitude: float
+    days_of_year: npt.ArrayLike, means_c: npt.ArrayLike, latitude: float
 ) -> AnnualCycle | None:
     """The annual cycle that fits the daily means best, by least squares
     (harmonic regression). With most of a year, the phase is fitted too;

@@ -15,6 +15,7 @@ from custom_components.solar_energy_insights.core.battery import Battery
 from custom_components.solar_energy_insights.core.scenario import (
     COP_IN_THE_FIELD,
     G20_15,
+    Comparison,
     Gas,
     HeatPump,
     Hour,
@@ -225,6 +226,12 @@ def test_a_renovated_house_near_augsburg_lands_where_the_bill_says() -> None:
     assert 0.15 < share < 0.35
 
 
+def roof(c: Comparison) -> float:
+    """The heat pump's share from the roof, which a heat pump always has."""
+    assert c.heat_pump_solar_share is not None
+    return c.heat_pump_solar_share
+
+
 def test_hot_water_in_the_sun_takes_more_from_the_roof() -> None:
     hours = weather_year()
     spread = HeatPump(150.0, 12.5, hot_water_kwh_per_day=8.0)
@@ -234,7 +241,7 @@ def test_hot_water_in_the_sun_takes_more_from_the_roof() -> None:
     b = compare(hours, BATTERY, Scenario(heat_pump=sunny), PRICE, FEED_IN)
 
     assert b.changed.water_heat_kwh == pytest.approx(a.changed.water_heat_kwh)
-    assert b.heat_pump_solar_share > a.heat_pump_solar_share
+    assert roof(b) > roof(a)
     assert b.heat_pump_cost_per_year < a.heat_pump_cost_per_year
 
 
@@ -250,6 +257,8 @@ def test_a_small_heat_pump_leaves_the_coldest_hours_to_the_heating_rod() -> None
     assert b.backup_kwh > 0
     assert b.heat_kwh == pytest.approx(a.heat_kwh)
     assert b.heat_pump_kwh > a.heat_pump_kwh
+    assert a.seasonal_cop is not None
+    assert b.seasonal_cop is not None
     assert b.seasonal_cop < a.seasonal_cop
 
 
@@ -272,7 +281,7 @@ def test_a_battery_and_a_heat_pump_are_priced_apart() -> None:
     # With the heat pump's nights to cover, the battery is worth no less.
     assert both.battery_saving_per_year >= battery_only.battery_saving_per_year - 1e-6
     # The bigger battery lets more of the heat pump run on the roof's power.
-    assert both.heat_pump_solar_share >= pump_only.heat_pump_solar_share
+    assert roof(both) >= roof(pump_only)
     assert both.heat_pump_cost_per_year <= pump_only.heat_pump_cost_per_year
 
 
