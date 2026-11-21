@@ -16,6 +16,7 @@ from homeassistant.components.recorder.models import (
 from homeassistant.components.recorder.statistics import async_import_statistics
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.components.recorder.common import (
     async_wait_recording_done,
 )
@@ -48,11 +49,15 @@ async def record_temperature(
     def at(day: date) -> float:
         return celsius(day) if callable(celsius) else celsius
 
-    rows = [
-        StatisticData(start=local(day, hour), mean=at(day), min=at(day), max=at(day))
-        for day in days
-        for hour in range(24)
-    ]
+    # Hour by hour in UTC: a year of local hours repeats one in October.
+    start = dt_util.as_utc(local(days[0], 0))
+    end = dt_util.as_utc(local(days[-1] + timedelta(days=1), 0))
+    rows = []
+    t = start
+    while t < end:
+        c = at(dt_util.as_local(t).date())
+        rows.append(StatisticData(start=t, mean=c, min=c, max=c))
+        t += timedelta(hours=1)
     async_import_statistics(
         home,
         {
