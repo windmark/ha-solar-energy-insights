@@ -3795,7 +3795,11 @@
               year.measured_days,
             )} recorded days, with the other ${n(
               year.filled_days,
-            )} borrowed from recorded days with a similar sun, moved to their season.`
+            )} borrowed from recorded days with a similar sun${
+              year.measured_temperature_pct >= 50
+                ? " and weather, at your thermometer’s own temperatures"
+                : ", moved to their season"
+            }.`
           : `Your last ${n(shown.days)} recorded days, scaled to a year${
               shown.days < 330
                 ? ": with no winter in them, a heat pump comes out too small and too sunny"

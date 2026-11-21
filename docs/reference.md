@@ -103,13 +103,24 @@ month, and with a gas price, what the same heat would cost from gas.
 **A whole year, even from part of one.** A replay of half a year, scaled up,
 takes the summer for the winter: too much sun, and for a heat pump far too
 little heat. So each day the recorder lacks borrows a recorded day with a
-similar sun, by k-nearest-neighbour resampling (Rajagopalan & Lall, 1999): its
+similar sun, by k-nearest-neighbour resampling (Rajagopalan & Lall, 1999), its
 solar scaled by the sunlight that reaches the top of the atmosphere on each date
-(Duffie & Beckman, eq. 1.10.3), its temperatures laid on the date's typical
-temperature, from a sinusoid fitted to the recorded days. `year` in the answer
-says how many days were recorded and how many filled. On a test year near
-Augsburg, filling 168 days from the other 197 lands within about 10% of the
-whole year's heat; scaling them gave less than half.
+(Duffie & Beckman, eq. 1.10.3). The outdoor thermometer is read for the whole
+year on its own, as it is often older than the solar and the house's meter:
+its readings stand in the borrowed hours, and among days with a similar sun a
+day it measured cold borrows a cold one. Where it has no readings either, the
+borrowed day's temperatures are laid on the date's typical temperature, from a
+sinusoid fitted to the readings there are. `year` in the answer says how many
+days were recorded, how many filled and how much of the filled time kept the
+thermometer's readings (`measured_temperature_pct`). On a test year near
+Augsburg, filling 168 days from the other 197 gives the whole year's heat
+exactly with the thermometer's readings and within about 10% without them;
+scaling them gave less than half.
+
+The heat follows the thermometer: one that reads warm, in the sun or against
+the house, counts fewer degree-hours than the weather service. A heat loss
+worked out from a gas bill in the card makes up for it, as long as the house
+after a change is scaled from that figure.
 
 **The heat pump.** The heat is the degree-hour method of VDI 4710: on each day
 whose mean outdoor temperature is below the heating limit, the heat loss times

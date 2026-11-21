@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- The scenario lab reads the outdoor thermometer for the whole year, also before the solar and the house's meter were set up. Filled days keep its own readings, and a day it measured cold borrows a cold day's sun, so the winter's heat comes from the winter that was, not an estimate from the summer.
+
 ## [0.27.0] - 2026-11-21
 
 ### Added

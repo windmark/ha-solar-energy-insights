@@ -11,9 +11,11 @@ The borrowed day keeps its own weather, but moved to the date it fills:
 - its solar is scaled by how much sunlight reaches the top of the atmosphere on
   each date (`daily_extraterrestrial`), so a November day standing in for
   December gives a little less;
-- its temperatures keep their departure from the season, laid on the typical
-  temperature of the date it fills (`AnnualCycle`), so a mild day stays mild,
-  but for January;
+- its temperatures are the thermometer's own for those hours where it has
+  them, as it usually does: it records all year, whatever else is missing.
+  Where it has none, the borrowed day's departure from its season is laid on
+  the typical temperature of the date it fills (`AnnualCycle`), so a mild day
+  stays mild, but for January;
 - the house's own use is taken as it was.
 """
 
@@ -21,7 +23,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 
@@ -147,6 +149,8 @@ class Year:
     # Each calendar month's share of borrowed hours, January first.
     filled_share_by_month: tuple[float, ...] = (0.0,) * 12
     cycle: AnnualCycle | None = None
+    # Borrowed hours that kept the thermometer's own reading.
+    measured_temperature_hours: int = 0
 
 
 def _day_of_year(d: date) -> int:
@@ -164,19 +168,32 @@ def _sun_distance(a: int, b: int) -> tuple[float, int]:
 
 
 def fill_year(
-    hours: Sequence[Hour], end: datetime, latitude: float, seed: int = 0
+    hours: Sequence[Hour],
+    end: datetime,
+    latitude: float,
+    seed: int = 0,
+    temperatures: Mapping[datetime, float] | None = None,
 ) -> Year:
     """The year up to *end*, every missing hour borrowed from a recorded day.
 
     Each day with missing hours gets one donor, a whole recorded day drawn by
     the k-nearest-neighbour resampling of Rajagopalan & Lall ("A k-nearest-
     neighbor simulator for daily precipitation and other weather variables",
-    Water Resources Research 35(10), 1999): of the k recorded days with the
-    sun most like its own (k = √n for n recorded days, as they suggest), the
-    j-th nearest is drawn with a weight of 1/j. Drawing among several keeps
-    the variety of the weather: always taking the single nearest day would
-    repeat one November day all through December. The draw is seeded, so the
-    same hours always make the same year.
+    Water Resources Research 35(10), 1999): of the k recorded days most like
+    it (k = √n for n recorded days, as they suggest), the j-th nearest is
+    drawn with a weight of 1/j. Drawing among several keeps the variety of the
+    weather: always taking the single nearest day would repeat one November
+    day all through December. The draw is seeded, so the same hours always
+    make the same year.
+
+    "Most like it" is first the sun, then, where the thermometer measured the
+    day, its departure from the season: of the 3k days with the sun most like
+    its own, the k whose departure is nearest, so a cold clear January day
+    borrows a cold clear November one, with its sun, not a mild grey one.
+
+    *temperatures* are the thermometer's hourly means over the whole year,
+    also for hours without solar or house readings. They fit the annual cycle
+    and stand in borrowed hours as measured.
     """
     end = end.replace(minute=0, second=0, microsecond=0)
     start = end - timedelta(days=YEAR_DAYS)
@@ -190,12 +207,18 @@ def fill_year(
         return unfilled
 
     cycle = None
-    if any(h.outdoor_c is not None for h in recorded.values()):
+    measured = {t: c for t, c in (temperatures or {}).items() if start <= t < end} or {
+        h.start: h.outdoor_c for h in recorded.values() if h.outdoor_c is not None
+    }
+    means: dict[date, float] = {}
+    if measured:
+        per_day: dict[date, list[float]] = defaultdict(list)
+        for t, c in measured.items():
+            per_day[t.date()].append(c)
         means = {
             d: float(np.mean(temps))
-            for d, day in by_day.items()
-            if len(temps := [h.outdoor_c for h in day if h.outdoor_c is not None])
-            >= MIN_TEMPERATURE_HOURS
+            for d, temps in per_day.items()
+            if len(temps) >= MIN_TEMPERATURE_HOURS
         }
         cycle = fit_annual_cycle(
             [_day_of_year(d) for d in means], list(means.values()), latitude
@@ -206,6 +229,14 @@ def fill_year(
             return unfilled
 
     donor_days = np.array([_day_of_year(d) for d in donors])
+
+    def departure(d: date) -> float | None:
+        mean = means.get(d)
+        return (
+            None if cycle is None or mean is None else mean - cycle.at(_day_of_year(d))
+        )
+
+    donor_departure = [departure(d) for d in donors]
     hour_of = {d: {h.start.hour: h for h in by_day[d]} for d in donors}
     k = max(1, round(math.sqrt(len(donors))))
     weights = 1 / np.arange(1, k + 1)
@@ -216,6 +247,7 @@ def fill_year(
     out: list[Hour] = []
     borrowed = [0] * 12
     in_month = [0] * 12
+    kept_temperature = 0
     chosen: dict[date, date] = {}
     t = start
     while t < end:
@@ -230,11 +262,22 @@ def fill_year(
         if day not in chosen:
             n = _day_of_year(day)
             distance = [_sun_distance(n, int(m)) for m in donor_days]
-            near = sorted(range(len(donors)), key=distance.__getitem__)[:k]
+            near = sorted(range(len(donors)), key=distance.__getitem__)
+            own_departure = departure(day)
+            if own_departure is not None:
+                near = sorted(
+                    near[: 3 * k],
+                    key=lambda i: abs((donor_departure[i] or 0.0) - own_departure),
+                )
+            near = near[:k]
             chosen[day] = donors[near[int(rng.choice(len(near), p=weights))]]
         donor_day = chosen[day]
         donor = hour_of[donor_day][t.hour]
-        out.append(_borrow(donor, t, day, donor_day, cycle, sun_at))
+        hour = _borrow(donor, t, day, donor_day, cycle, sun_at)
+        if t in measured:
+            hour = replace(hour, outdoor_c=measured[t])
+            kept_temperature += 1
+        out.append(hour)
         borrowed[month] += 1
         t += timedelta(hours=1)
     return Year(
@@ -244,6 +287,7 @@ def fill_year(
         sum(borrowed),
         tuple(b / m if m else 0.0 for b, m in zip(borrowed, in_month, strict=True)),
         cycle,
+        kept_temperature,
     )
 
 

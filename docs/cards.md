@@ -192,8 +192,9 @@ and what it saves against gas. Needs the solar energy counter, and for a heat
 pump an outdoor thermometer, in the integration's options.
 
 The days the recorder doesn't have yet are filled from recorded days with a
-similar sun, moved to their season, so even half a year gives a year with a
-winter in it. The header says how many days were recorded and how many filled;
+similar sun, at the temperatures your outdoor thermometer measured then, or
+moved to their season where it has none, so even half a year gives a year with
+a winter in it. The header says how many days were recorded and how many filled;
 filled months are drawn lighter.
 
 Each slider shows its value as it moves, and the year is replayed when you let
