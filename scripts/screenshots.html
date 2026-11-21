@@ -18,9 +18,9 @@ customElements.define("ha-icon", class extends HTMLElement {
     this.innerHTML = `<svg viewBox="0 0 24 24" style="width:100%;height:100%;fill:currentColor"><path d="${d}"/></svg>`;
   }
 });
-const outcome = (imported, offGrid) => ({ import_kwh: imported, export_kwh: 4100,
-  use_kwh: 4200, heat_pump_kwh: 0, self_sufficiency_pct: Math.round((1 - imported / 4200) * 1000) / 10,
-  nights: 365, nights_off_grid: offGrid });
+const outcome = (imported, offGrid, use = 4200) => ({ import_kwh: imported, export_kwh: 4100,
+  use_kwh: use, heat_pump_kwh: 0, self_sufficiency_pct: Math.round((1 - imported / use) * 1000) / 10,
+  nights: 365, nights_off_grid: offGrid, battery_cycles: 250 });
 const hourly = (q) => {
   const out = {};
   for (const id of q.statistic_ids) {
@@ -37,6 +37,28 @@ const hourly = (q) => {
   }
   return out;
 };
+// A year near Augsburg: a renovated house's heat pump and a bigger battery.
+const scenario = (sd) => {
+  const pump = sd.heat_loss_w_per_k ? 4300 : 0, extra = sd.extra_battery_kwh;
+  const roof = [12, 40, 150, 230, 110, 160, 75, 85, 85, 80, 15, 8];
+  const use = [830, 620, 640, 590, 140, 180, 80, 95, 150, 360, 530, 640];
+  const scale = pump / use.reduce((a, b) => a + b);
+  return {
+    days: 365, now: outcome(900, 240),
+    changed: { ...outcome(900 - 40 * extra + pump * 0.77, 240 + 4 * extra, 4200 + pump), heat_pump_kwh: pump,
+      export_kwh: 3500, space_heat_kwh: pump ? 12400 : 0, hot_water_heat_kwh: pump ? 3000 : 0,
+      heating_rod_kwh: 0, seasonal_cop: pump ? 3.6 : null, battery_cycles: 210 },
+    saving_per_year: 45 * extra - (pump ? 1050 : 0), battery_saving_per_year: 45 * extra,
+    heat_pump_cost_per_year: pump ? 1050 : null, heat_pump_solar_pct: pump ? 23 : null,
+    payback_years: sd.battery_price ? sd.battery_price / (45 * extra) : null,
+    gas: sd.gas_price ? { cost_per_year: 1880, saving_per_year: 830 } : null,
+    degree_hours: { 12: 80000, 13: 84000, 15: 90000 }, degree_hours_g20_15: 91000,
+    year: { filled: true, measured_days: 197, filled_days: 168, filled_by_month: [] },
+    months: use.map((u, i) => ({ month: i + 1, import_now_kwh: 75, import_kwh: 70,
+      heat_pump_kwh: u * scale, heat_pump_solar_kwh: roof[i] * scale, measured_pct: i >= 4 && i <= 10 ? 100 : 0 })),
+    price: 0.3, feed_in: 0.08,
+  };
+};
 window.hass = {
   states: SOLAR.states,
   config: { currency: "EUR", time_zone: "Europe/Berlin" },
@@ -48,12 +70,7 @@ window.hass = {
     : q.type === "solar_energy_insights/config" ? SOLAR.config
     : q.type === "solar_energy_insights/achievements" ? ACH
     : q.type === "recorder/statistics_during_period" ? hourly(q)
-    : q.type === "call_service" && q.service === "scenario"
-      ? { response: { days: 365, now: outcome(900, 240),
-          changed: outcome(900 - 40 * q.service_data.extra_battery_kwh, 240 + 4 * q.service_data.extra_battery_kwh),
-          saving_per_year: 45 * q.service_data.extra_battery_kwh, heat_pump_solar_pct: null,
-          payback_years: q.service_data.battery_price ? q.service_data.battery_price / (45 * q.service_data.extra_battery_kwh) : null,
-          price: 0.3, feed_in: 0.08 } }
+    : q.type === "call_service" && q.service === "scenario" ? { response: scenario(q.service_data) }
     : q.type === "call_service" ? { response: SOLAR.plan }
     : {},
 };

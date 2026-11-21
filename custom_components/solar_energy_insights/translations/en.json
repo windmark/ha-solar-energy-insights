@@ -540,7 +540,7 @@
     },
     "scenario": {
       "name": "Scenario",
-      "description": "Your last year again, with a bigger battery or a heat pump: what you would have bought, exported and saved, per year.",
+      "description": "Your last year again, with a bigger battery or a heat pump: what you would have bought, exported and saved, per year. Days the recorder lacks are filled from recorded days with a similar sun, so the year has a winter.",
       "fields": {
         "extra_battery_kwh": {
           "name": "Extra battery",
@@ -548,11 +548,11 @@
         },
         "heat_loss_w_per_k": {
           "name": "Heat loss",
-          "description": "The house's heat loss per degree between inside and out, for example from an energy consultant's report. 0 for no heat pump."
+          "description": "The house's effective heat loss per degree between inside and out: the heat it used in a year over the year's degree-hours, with the sun's and the household's heat already taken off. Lower than a heat-load calculation's. 0 for no heat pump."
         },
         "heating_limit_c": {
           "name": "Heating limit",
-          "description": "The outdoor temperature above which the house needs no heating."
+          "description": "The daily mean outdoor temperature from which the house needs no heating: about 15 °C for an older house, 12 °C for a well-insulated one."
         },
         "indoor_c": {
           "name": "Indoor temperature",
@@ -565,6 +565,42 @@
         "battery_price": {
           "name": "Battery price",
           "description": "What the extra battery costs, for the years it takes to pay back."
+        },
+        "design_flow_c": {
+          "name": "Design flow temperature",
+          "description": "The heating water's temperature on the coldest day the heating is designed for."
+        },
+        "design_outdoor_c": {
+          "name": "Design outdoor temperature",
+          "description": "The coldest day the heating is designed for, for example −12 °C."
+        },
+        "heat_pump_kw": {
+          "name": "Heat pump size",
+          "description": "The most heat the heat pump gives. Above it, a heating rod adds the rest. Empty: always enough."
+        },
+        "rated_cop": {
+          "name": "Rated COP",
+          "description": "The datasheet's COP at A2/W35. Empty: an average heat pump."
+        },
+        "hot_water_at_noon": {
+          "name": "Hot water in the sun",
+          "description": "Heat the hot water in the day's sunniest hours instead of through the day."
+        },
+        "gas_price": {
+          "name": "Gas price",
+          "description": "What a kWh of gas costs, to compare the heat pump with the heating it replaces."
+        },
+        "boiler_efficiency": {
+          "name": "Boiler efficiency",
+          "description": "Heat per kWh of gas billed: about 0.9 for a condensing boiler."
+        },
+        "gas_standing_charge": {
+          "name": "Gas standing charge",
+          "description": "The gas connection's yearly standing charge, saved once it goes."
+        },
+        "fill_year": {
+          "name": "Fill the year",
+          "description": "Fill the days the recorder lacks from recorded days with a similar sun. Off: scale the recorded days to a year."
         }
       }
     }

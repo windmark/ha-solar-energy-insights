@@ -984,10 +984,47 @@
           },
         },
         {
+          name: "heating_limit_c",
+          selector: {
+            number: { min: 8, max: 18, step: 0.5, unit_of_measurement: "°C" },
+          },
+        },
+        {
           name: "hot_water_kwh_per_day",
           selector: {
             number: { min: 0, max: 20, step: 0.5, unit_of_measurement: "kWh" },
           },
+        },
+        {
+          name: "design_flow_c",
+          selector: {
+            number: { min: 30, max: 60, step: 1, unit_of_measurement: "°C" },
+          },
+        },
+        {
+          name: "design_outdoor_c",
+          selector: {
+            number: { min: -25, max: 0, step: 1, unit_of_measurement: "°C" },
+          },
+        },
+        {
+          name: "heat_pump_kw",
+          selector: {
+            number: { min: 0, max: 16, step: 0.5, unit_of_measurement: "kW" },
+          },
+        },
+        {
+          name: "rated_cop",
+          selector: { number: { min: 0, max: 6, step: 0.1, mode: "box" } },
+        },
+        { name: "hot_water_at_noon", selector: { boolean: {} } },
+        {
+          name: "gas_price",
+          selector: { number: { min: 0, max: 1, step: 0.001, mode: "box" } },
+        },
+        {
+          name: "gas_standing_charge",
+          selector: { number: { min: 0, max: 1000, step: 1, mode: "box" } },
         },
         {
           name: "battery_price_per_kwh",
@@ -997,7 +1034,15 @@
       labels: {
         extra_battery_kwh: "Extra battery to start from",
         heat_loss_w_per_k: "Heat loss to start from (0: no heat pump)",
-        hot_water_kwh_per_day: "Hot water heat per day, with a heat pump",
+        heating_limit_c: "Heating limit",
+        hot_water_kwh_per_day: "Hot water heat per day",
+        design_flow_c: "Flow temperature on the coldest day",
+        design_outdoor_c: "The coldest day the heating is designed for",
+        heat_pump_kw: "Heat pump size (0: always enough)",
+        rated_cop: "Heat pump COP at A2/W35 (0: an average one)",
+        hot_water_at_noon: "Heat the hot water in the sunniest hours",
+        gas_price: "Gas price per kWh, to compare with",
+        gas_standing_charge: "Gas standing charge a year, saved without gas",
         battery_price_per_kwh: "Battery price per kWh, for the payback",
       },
       stub: { extra_battery_kwh: 5, heat_loss_w_per_k: 0 },
@@ -3154,94 +3199,112 @@
     FORMS.forecastTrust,
   );
 
+  // The scenario lab's settings: [key, config key, default]. What the sliders and
+  // fields are set to is kept per dashboard and card, so a reload keeps them.
+  const LAB_KEYS = [
+    ["battery", "extra_battery_kwh", 0],
+    ["loss", "heat_loss_w_per_k", 0],
+    ["limit", "heating_limit_c", 15],
+    ["water", "hot_water_kwh_per_day", 8],
+    ["flow", "design_flow_c", 45],
+    ["kw", "heat_pump_kw", 0],
+    ["cop", "rated_cop", 0],
+    ["noon", "hot_water_at_noon", false],
+    ["gas", "gas_price", 0],
+    ["bill", "gas_kwh_per_year", 0],
+  ];
+  const labStart = (cfg) => {
+    const out = {};
+    LAB_KEYS.forEach(([k, c, d]) => {
+      const v = cfg[c];
+      out[k] =
+        typeof d === "boolean"
+          ? v === undefined
+            ? d
+            : !!v
+          : v === undefined || v === null || v === ""
+            ? d
+            : +v;
+    });
+    return out;
+  };
+  const labStoreKey = (cfg) => {
+    let h = 0;
+    const s = JSON.stringify(cfg, Object.keys(cfg).sort());
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    const page = (typeof location !== "undefined" && location.pathname) || "";
+    return `solarDash.scenarioLab:${page}:${(h >>> 0).toString(36)}`;
+  };
+  const labLoad = (cfg) => {
+    const lab = labStart(cfg);
+    try {
+      const saved = JSON.parse(
+        window.localStorage.getItem(labStoreKey(cfg)) || "null",
+      );
+      if (saved && typeof saved === "object")
+        LAB_KEYS.forEach(([k, , d]) => {
+          if (k in saved && typeof saved[k] === typeof d) lab[k] = saved[k];
+        });
+    } catch (x) {}
+    return lab;
+  };
+  const labSave = (cfg, lab) => {
+    try {
+      window.localStorage.setItem(labStoreKey(cfg), JSON.stringify(lab));
+    } catch (x) {}
+  };
+  const labForget = (cfg) => {
+    try {
+      window.localStorage.removeItem(labStoreKey(cfg));
+    } catch (x) {}
+  };
+  // What a slider shows while it moves, before anything is asked again.
+  const LAB_SHOW = {
+    battery: (v) => (v ? `+${v} kWh` : "none"),
+    loss: (v) => (v ? `${v} W/K` : "no heat pump"),
+    limit: (v) => `${v} °C`,
+    water: (v) => (v ? `${v} kWh a day` : "none"),
+    flow: (v) => `${v} °C`,
+    kw: (v) => (v ? `${v} kW` : "always enough"),
+    cop: (v) => (v ? `${v}` : "an average one"),
+  };
+  // The yearly heat for a heat loss and heating limit, from the degree-hours of
+  // the last answer: heat = heat loss × degree-hours (VDI 4710).
+  const labHeat = (r, loss, limit) => {
+    const dh = r && r.degree_hours;
+    if (!dh || !loss) return null;
+    const lo = Math.floor(limit),
+      hi = Math.ceil(limit);
+    const a = dh[String(lo)],
+      b = dh[String(hi)];
+    if (a === undefined || b === undefined) return null;
+    const kh = a + (b - a) * (limit - lo);
+    return (loss * kh) / 1000;
+  };
+  // An effective heat loss from a year's gas: the useful heat less the hot
+  // water's, over the year's G20/15 degree-hours.
+  const labFromBill = (r, gasKwh, water, efficiency) => {
+    const dh = r && r.degree_hours_g20_15;
+    if (!dh || !gasKwh) return null;
+    const heat = gasKwh * efficiency - water * 365;
+    return heat > 0 ? (heat * 1000) / dh : null;
+  };
+  const MONTHS = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
+
   defineCard(
     "solar-energy-insights-scenario-lab",
     "Scenario lab",
-    "Your last year again, with a bigger battery or a heat pump.",
+    "A year in your house again, with a bigger battery or a heat pump.",
     function (states, hass) {
       const el = this;
       const { W, C, sub, head } = window.SolarDash.ui(this, hass, states);
       const cfg = el._config || {};
-      // The sliders are the card's own: a change asks again, nothing is saved.
-      const lab = (el._lab = el._lab || {
-        battery: +cfg.extra_battery_kwh || 0,
-        loss: +cfg.heat_loss_w_per_k || 0,
-      });
-      if (!el._labListen && el.shadowRoot) {
-        el._labListen = true;
-        el.shadowRoot.addEventListener("change", (ev) => {
-          const k = ev.target?.dataset?.lab;
-          if (!k) return;
-          lab[k] = +ev.target.value;
-          el.requestUpdate();
-        });
+      if (el._labFor !== cfg) {
+        el._labFor = cfg;
+        el._lab = labLoad(cfg);
       }
-      const water = lab.loss > 0 ? +cfg.hot_water_kwh_per_day || 0 : 0;
-      const key = [lab.battery, lab.loss, water].join("|");
-      const cache = (W.scenarios = W.scenarios || {});
-      const c = cache[key];
-      if ((!c || (!c.pending && Date.now() - c.t > 3600e3)) && hass?.callWS) {
-        cache[key] = { ...(c || {}), t: Date.now(), pending: true };
-        hass
-          .callWS({
-            type: "call_service",
-            domain: "solar_energy_insights",
-            service: "scenario",
-            service_data: {
-              extra_battery_kwh: lab.battery,
-              heat_loss_w_per_k: lab.loss,
-              hot_water_kwh_per_day: water,
-              ...(cfg.battery_price_per_kwh && lab.battery
-                ? { battery_price: cfg.battery_price_per_kwh * lab.battery }
-                : {}),
-            },
-            return_response: true,
-          })
-          .then((r) => (cache[key] = { t: Date.now(), data: r.response }))
-          .catch(
-            (e) =>
-              (cache[key] = {
-                t: Date.now(),
-                error: String(e?.message || e),
-              }),
-          )
-          .finally(() => (W.listeners || []).forEach((f) => f()));
-      }
-      const slider = (k, label, max, step, unit) =>
-        `<label style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;font-size:13px;color:${
-          C.text
-        };margin:6px 0">${label}<span style="color:${C.muted}">${
-          lab[k] ? lab[k] + " " + unit : "none"
-        }</span><input type="range" data-lab="${k}" min="0" max="${max}" step="${step}" value="${
-          lab[k]
-        }" style="grid-column:1 / -1;width:100%"></label>`;
-      const controls =
-        slider(
-          "battery",
-          "Extra battery",
-          cfg.max_battery_kwh || 20,
-          0.5,
-          "kWh",
-        ) +
-        slider(
-          "loss",
-          "Heat pump, heat loss",
-          cfg.max_heat_loss || 400,
-          5,
-          "W/K",
-        );
-      const r = cache[key]?.data;
-      const top = head("mdi:flask-outline", "Scenario lab", "your last year");
-      if (!r)
-        return (
-          top +
-          controls +
-          sub(
-            cache[key]?.error
-              ? "Could not replay the year: " + cache[key].error
-              : "Replaying your year…",
-          )
-        );
+      const lab = el._lab;
+      const ui = (el._labUi = el._labUi || { open: {} });
       const n = (v, d = 0) =>
         (+v).toLocaleString(undefined, {
           maximumFractionDigits: d,
@@ -3253,19 +3316,294 @@
           currency: hass?.config?.currency || "EUR",
           maximumFractionDigits: 0,
         });
+      const efficiency = +cfg.boiler_efficiency || 0.9;
+      const pump = lab.loss > 0;
+      const params = {
+        extra_battery_kwh: lab.battery,
+        heat_loss_w_per_k: lab.loss,
+        ...(pump
+          ? {
+              heating_limit_c: lab.limit,
+              hot_water_kwh_per_day: lab.water,
+              design_flow_c: lab.flow,
+              hot_water_at_noon: lab.noon,
+              ...(cfg.design_outdoor_c !== undefined
+                ? { design_outdoor_c: +cfg.design_outdoor_c }
+                : {}),
+              ...(lab.kw ? { heat_pump_kw: lab.kw } : {}),
+              ...(lab.cop ? { rated_cop: lab.cop } : {}),
+              ...(lab.gas
+                ? {
+                    gas_price: lab.gas,
+                    boiler_efficiency: efficiency,
+                    gas_standing_charge: +cfg.gas_standing_charge || 0,
+                  }
+                : {}),
+            }
+          : {}),
+        ...(cfg.battery_price_per_kwh && lab.battery
+          ? { battery_price: cfg.battery_price_per_kwh * lab.battery }
+          : {}),
+      };
+      const key = JSON.stringify(params);
+      const cache = (W.scenarios = W.scenarios || {});
+      const c = cache[key];
+      if ((!c || (!c.pending && Date.now() - c.t > 3600e3)) && hass?.callWS) {
+        cache[key] = { ...(c || {}), t: Date.now(), pending: true };
+        hass
+          .callWS({
+            type: "call_service",
+            domain: "solar_energy_insights",
+            service: "scenario",
+            service_data: params,
+            return_response: true,
+          })
+          .then((x) => (cache[key] = { t: Date.now(), data: x.response }))
+          .catch(
+            (e) =>
+              (cache[key] = {
+                t: Date.now(),
+                error: String(e?.message || e),
+              }),
+          )
+          .finally(() => (W.listeners || []).forEach((f) => f()));
+      }
+      // While a new answer comes, the last one stays, so the card doesn't jump.
+      if (c?.data) el._labLast = c.data;
+      const shown = c?.data || el._labLast || null;
+
+      const estimate = (k, v) => {
+        const loss = k === "loss" ? v : lab.loss,
+          limit = k === "limit" ? v : lab.limit,
+          water = k === "water" ? v : lab.water;
+        const parts = [];
+        const heat = labHeat(shown, loss, limit);
+        if (heat !== null) parts.push(`≈ ${n(heat)} kWh of heating`);
+        if (loss && water)
+          parts.push(`${n(water * 365)} kWh of hot water a year`);
+        return parts.join(" + ");
+      };
+      const billText = (gasKwh) => {
+        const h = labFromBill(shown, gasKwh, lab.water, efficiency);
+        return h === null
+          ? "Enter a year’s gas to work out today’s heat loss."
+          : `Today’s house: about <b>${n(h)} W/K</b>, at ${Math.round(
+              efficiency * 100,
+            )}% boiler efficiency, less the hot water, over this year’s weather.`;
+      };
+      // The listeners outlive this drawing: they read the card's state as it is.
+      el._labFns = { estimate, billText, efficiency };
+      if (!el._labListen && el.shadowRoot) {
+        el._labListen = true;
+        const root = el.shadowRoot;
+        const fns = () => el._labFns;
+        const out = (k, text) => {
+          const o = root.querySelector(`[data-out="${k}"]`);
+          if (o) o.textContent = text;
+        };
+        // While dragging, only the readouts change: redrawing would drop the thumb.
+        root.addEventListener("input", (ev) => {
+          const t = ev.target,
+            k = t?.dataset?.lab;
+          if (!k) return;
+          const v = +t.value;
+          if (LAB_SHOW[k]) out(k, LAB_SHOW[k](v));
+          if (["loss", "limit", "water"].includes(k))
+            out("estimate", fns().estimate(k, v));
+          if (k === "bill") {
+            const o = root.querySelector('[data-out="bill"]');
+            if (o) o.innerHTML = fns().billText(v);
+          }
+        });
+        root.addEventListener("change", (ev) => {
+          const t = ev.target,
+            k = t?.dataset?.lab;
+          if (!k) return;
+          el._lab[k] = t.type === "checkbox" ? !!t.checked : +t.value || 0;
+          labSave(el._config || {}, el._lab);
+          el.requestUpdate();
+        });
+        root.addEventListener("click", (ev) => {
+          const act = ev.target?.closest?.("[data-act]")?.dataset?.act;
+          const now = el._config || {},
+            l = el._lab;
+          if (act === "reset") {
+            labForget(now);
+            el._lab = labStart(now);
+            el.requestUpdate();
+          } else if (act === "use-bill") {
+            const h = labFromBill(
+              el._labLast,
+              l.bill,
+              l.water,
+              fns().efficiency,
+            );
+            if (h) {
+              l.loss = Math.round(h / 5) * 5;
+              labSave(now, l);
+              el.requestUpdate();
+            }
+          }
+        });
+        // A section opened stays open when the answer redraws the card.
+        root.addEventListener(
+          "toggle",
+          (ev) => {
+            const k = ev.target?.dataset?.section;
+            if (k) ui.open[k] = ev.target.open;
+          },
+          true,
+        );
+      }
+
+      const slider = (k, label, min, max, step, hint = "") =>
+        `<label style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;font-size:13px;color:${
+          C.text
+        };margin:8px 0 4px">${label}<output data-out="${k}" style="color:${
+          C.text
+        };font-variant-numeric:tabular-nums;font-weight:500">${LAB_SHOW[k](
+          lab[k],
+        )}</output><input type="range" data-lab="${k}" min="${min}" max="${max}" step="${step}" value="${
+          lab[k]
+        }" aria-label="${label}" style="grid-column:1 / -1;width:100%;margin:2px 0;accent-color:var(--primary-color, ${
+          C.typical
+        })">${
+          hint
+            ? `<span style="grid-column:1 / -1;font-size:11px;color:${C.muted};white-space:normal">${hint}</span>`
+            : ""
+        }</label>`;
+      const box = (k, label, step, unit) =>
+        `<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;color:${
+          C.text
+        };margin:6px 0">${label}<span style="display:flex;align-items:center;gap:4px;color:${
+          C.muted
+        }"><input type="number" data-lab="${k}" min="0" step="${step}" value="${
+          lab[k] || ""
+        }" aria-label="${label}" style="width:84px;font:inherit;padding:3px 6px;border-radius:6px;border:1px solid ${
+          C.track
+        };background:transparent;color:${
+          C.text
+        };text-align:right">${unit}</span></label>`;
+      const section = (k, title, body) =>
+        `<details data-section="${k}"${
+          ui.open[k] ? " open" : ""
+        } style="margin:6px 0;border-top:1px solid ${
+          C.track
+        };padding-top:6px"><summary style="cursor:pointer;font-size:12px;color:${
+          C.muted
+        }">${title}</summary>${body}</details>`;
+
+      const heatControls = pump
+        ? slider(
+            "limit",
+            "Heating limit",
+            8,
+            18,
+            0.5,
+            "About 15 °C for the house as it is, 12–13 °C once well insulated.",
+          ) +
+          slider(
+            "water",
+            "Hot water heat",
+            0,
+            20,
+            0.5,
+            "About 2 kWh a day per person.",
+          ) +
+          `<div data-out="estimate" style="font-size:12px;color:${
+            C.muted
+          };white-space:normal;margin:2px 0 4px">${estimate()}</div>` +
+          section(
+            "pump",
+            "The heat pump itself",
+            slider("flow", "Flow temperature on the coldest day", 30, 60, 1) +
+              slider(
+                "kw",
+                "Heat pump size",
+                0,
+                16,
+                0.5,
+                "Above it, a heating rod adds the rest.",
+              ) +
+              slider(
+                "cop",
+                "COP at A2/W35, from its datasheet",
+                0,
+                6,
+                0.1,
+                "0 for an average heat pump.",
+              ) +
+              `<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:${
+                C.text
+              };margin:8px 0"><input type="checkbox" data-lab="noon"${
+                lab.noon ? " checked" : ""
+              }>Heat the hot water in the sunniest hours</label>`,
+          ) +
+          section(
+            "gas",
+            "Against gas, and from your gas bill",
+            box("gas", "Gas price", 0.001, "€/kWh") +
+              box("bill", "Gas a year, today", 100, "kWh") +
+              `<div style="display:flex;gap:8px;align-items:flex-start;justify-content:space-between"><div data-out="bill" style="font-size:12px;color:${
+                C.muted
+              };white-space:normal">${billText(lab.bill)}</div>${
+                labFromBill(shown, lab.bill, lab.water, efficiency)
+                  ? `<button type="button" data-act="use-bill" style="border:0;font:inherit;font-size:12px;padding:4px 10px;border-radius:8px;cursor:pointer;background:${C.track};color:${C.text}">Use</button>`
+                  : ""
+              }</div>`,
+          )
+        : "";
+      const controls =
+        slider("battery", "Extra battery", 0, +cfg.max_battery_kwh || 20, 0.5) +
+        slider(
+          "loss",
+          "Heat pump: the house’s heat loss",
+          0,
+          +cfg.max_heat_loss || 400,
+          5,
+          pump
+            ? ""
+            : "The effective heat loss, as from a heating bill: lower than a heat-load calculation’s.",
+        ) +
+        heatControls;
+      const year = shown?.year;
+      const top = head(
+        "mdi:flask-outline",
+        "Scenario lab",
+        year
+          ? year.filled && year.filled_days
+            ? `${n(year.measured_days)} days recorded, ${n(
+                year.filled_days,
+              )} filled`
+            : `${n(year.measured_days)} days`
+          : "a year in your house",
+      );
+      if (!shown)
+        return (
+          top +
+          controls +
+          sub(
+            c?.error
+              ? "Could not replay the year: " + c.error
+              : "Replaying your year…",
+          )
+        );
+
       const row = (label, now, changed, better) =>
         `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;font-size:13px;padding:4px 0;border-top:1px solid ${
           C.track
-        }"><span style="color:${C.muted}">${label}</span><span style="color:${
+        }"><span style="color:${
+          C.muted
+        };white-space:normal">${label}</span><span style="color:${
           C.muted
         };text-align:right">${now}</span><span style="text-align:right;color:${
           better === null ? C.text : better ? C.ok : C.heavy
         }">${changed}</span></div>`;
-      const a = r.now,
-        b = r.changed;
-      const saving = r.saving_per_year;
+      const a = shown.now,
+        b = shown.changed;
+      const withPump = b.heat_pump_kwh > 0;
       const rows =
-        `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;font-size:11px;color:${C.muted};margin-top:8px"><span></span><span style="text-align:right">as it is</span><span style="text-align:right">with it</span></div>` +
+        `<div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;font-size:11px;color:${C.muted};margin-top:10px"><span>a year</span><span style="text-align:right">as it is</span><span style="text-align:right">with it</span></div>` +
         row(
           "Bought from the grid",
           n(a.import_kwh) + " kWh",
@@ -3290,42 +3628,195 @@
           `${b.nights_off_grid} of ${b.nights}`,
           b.nights_off_grid >= a.nights_off_grid,
         ) +
-        (b.heat_pump_kwh
+        (lab.battery
           ? row(
-              "Heat pump",
-              "",
-              `${n(b.heat_pump_kwh)} kWh, ${n(
-                r.heat_pump_solar_pct,
-              )}% from the roof`,
+              "Battery cycles",
+              n(a.battery_cycles),
+              n(b.battery_cycles),
               null,
             )
+          : "") +
+        (withPump
+          ? row(
+              "Heat: rooms + hot water",
+              "",
+              `${n(b.space_heat_kwh)} + ${n(b.hot_water_heat_kwh)} kWh`,
+              null,
+            ) +
+            row(
+              "Heat pump electricity",
+              "",
+              `${n(b.heat_pump_kwh)} kWh${
+                b.seasonal_cop ? `, SPF ${n(b.seasonal_cop, 1)}` : ""
+              }`,
+              null,
+            ) +
+            row(
+              "Of it from the roof",
+              "",
+              `${n(shown.heat_pump_solar_pct)}%`,
+              null,
+            ) +
+            (b.heating_rod_kwh
+              ? row(
+                  "Of it the heating rod",
+                  "",
+                  `${n(b.heating_rod_kwh)} kWh`,
+                  false,
+                )
+              : "")
           : "");
-      const verdict =
-        !lab.battery && !lab.loss
-          ? "Move a slider to see what would change."
-          : saving >= 0
-            ? `Saves about ${money(saving)} a year${
-                r.payback_years
-                  ? `, paid back in ${n(r.payback_years, 1)} years`
+
+      // The year by month: the heat pump's electricity, from the roof and from
+      // the grid; without one, what is bought, as it is and with the change.
+      const months = shown.months || [];
+      const chart = (() => {
+        if (months.length < 2) return "";
+        const W_ = 240,
+          H_ = 64,
+          gap = 3,
+          bw = (W_ - gap * 11) / 12;
+        const byMonth = {};
+        months.forEach((m) => (byMonth[m.month] = m));
+        const top_ = Math.max(
+          1,
+          ...months.map((m) =>
+            withPump
+              ? m.heat_pump_kwh
+              : Math.max(m.import_now_kwh, m.import_kwh),
+          ),
+        );
+        const y = (v) => (H_ * v) / top_;
+        let bars = "";
+        for (let i = 0; i < 12; i++) {
+          const m = byMonth[i + 1];
+          const x = i * (bw + gap);
+          if (m) {
+            const op = m.measured_pct < 50 ? 0.45 : 1;
+            if (withPump) {
+              const roof = y(m.heat_pump_solar_kwh),
+                all = y(m.heat_pump_kwh);
+              bars += `<rect x="${x}" y="${H_ - all}" width="${bw}" height="${
+                all - roof
+              }" rx="1.5" fill="${
+                C.heavy
+              }" opacity="${op}"/><rect x="${x}" y="${
+                H_ - roof
+              }" width="${bw}" height="${roof}" rx="1.5" fill="${
+                C.ok
+              }" opacity="${op}"/>`;
+            } else {
+              const hn = y(m.import_now_kwh),
+                hc = y(m.import_kwh);
+              bars += `<rect x="${x}" y="${H_ - hn}" width="${
+                bw / 2
+              }" height="${hn}" rx="1.5" fill="${
+                C.muted
+              }" opacity="${op}"/><rect x="${x + bw / 2}" y="${
+                H_ - hc
+              }" width="${bw / 2}" height="${hc}" rx="1.5" fill="${
+                C.typical
+              }" opacity="${op}"/>`;
+            }
+          }
+          bars += `<text x="${x + bw / 2}" y="${
+            H_ + 11
+          }" font-size="8" text-anchor="middle" fill="${C.muted}">${
+            MONTHS[i]
+          }</text>`;
+        }
+        const key = withPump
+          ? `<span style="color:${C.ok}">■</span> from the roof <span style="color:${C.heavy}">■</span> from the grid`
+          : `<span style="color:${C.muted}">■</span> bought as it is <span style="color:${C.typical}">■</span> with it`;
+        const lighter = months.some((m) => m.measured_pct < 50)
+          ? " · lighter: filled months"
+          : "";
+        return `<div style="margin-top:12px"><div style="font-size:11px;color:${
+          C.muted
+        };margin-bottom:4px;white-space:normal">${
+          withPump ? "Heat pump electricity" : "Bought"
+        } by month: ${key}${lighter}</div><svg viewBox="0 0 ${W_} ${
+          H_ + 14
+        }" width="100%" role="img" aria-label="By month">${bars}</svg></div>`;
+      })();
+
+      const lines = [];
+      if (!lab.battery && !lab.loss)
+        lines.push("Move a slider to see what would change.");
+      if (lab.battery) {
+        const s = shown.battery_saving_per_year;
+        lines.push(
+          s > 0
+            ? `${n(lab.battery, 1)} kWh more battery saves about <b>${money(
+                s,
+              )}</b> a year${
+                shown.payback_years
+                  ? `, paid back in ${n(shown.payback_years, 1)} years`
                   : ""
               }.`
-            : `Costs about ${money(-saving)} a year more in electricity${
-                b.heat_pump_kwh ? ", in place of the heating you use now" : ""
-              }.`;
+            : `${n(
+                lab.battery,
+                1,
+              )} kWh more battery would save next to nothing.`,
+        );
+      }
+      if (withPump) {
+        const cost = shown.heat_pump_cost_per_year;
+        const gas = shown.gas;
+        lines.push(
+          gas
+            ? gas.saving_per_year >= 0
+              ? `The heat pump adds about ${money(
+                  cost,
+                )} a year to the electricity bill; gas for the same heat costs ${money(
+                  gas.cost_per_year,
+                )}: it saves about <b>${money(gas.saving_per_year)}</b> a year.`
+              : `The heat pump adds about ${money(
+                  cost,
+                )} a year to the electricity bill, ${money(
+                  -gas.saving_per_year,
+                )} more than gas for the same heat (${money(
+                  gas.cost_per_year,
+                )}).`
+            : `The heat pump adds about <b>${money(
+                cost,
+              )}</b> a year to the electricity bill, in place of the heating you use now.`,
+        );
+      }
+      const verdict = `<div style="font-size:14px;color:${
+        C.text
+      };margin-top:10px;white-space:normal;line-height:1.45">${lines.join(
+        "<br>",
+      )}</div>`;
+      const filled = year?.filled && year.filled_days;
+      const notes = [
+        filled
+          ? `Your last ${n(
+              year.measured_days,
+            )} recorded days, with the other ${n(
+              year.filled_days,
+            )} borrowed from recorded days with a similar sun, moved to their season.`
+          : `Your last ${n(shown.days)} recorded days, scaled to a year${
+              shown.days < 330
+                ? ": with no winter in them, a heat pump comes out too small and too sunny"
+                : ""
+            }.`,
+        `At ${n(shown.price * 100, 1)} ct bought and ${n(
+          shown.feed_in * 100,
+          1,
+        )} ct exported.`,
+        withPump
+          ? "Heat: the heat loss times the degree-hours below the heating limit. COP: the published curve of real air-source heat pumps, at the flow temperature the heating curve asks for."
+          : "",
+        `<button type="button" data-act="reset" style="border:0;padding:0;font:inherit;background:none;color:${C.muted};text-decoration:underline;cursor:pointer">Back to the card’s settings</button>`,
+      ];
       return (
         top +
         controls +
         rows +
-        `<div style="font-size:14px;color:${C.text};margin-top:10px">${verdict}</div>` +
-        sub(
-          `Your last ${n(r.days)} recorded days, per year, at ${n(
-            r.price * 100,
-            1,
-          )} ct bought and ${n(
-            r.feed_in * 100,
-            1,
-          )} ct exported. The heat pump is a simple model: heat loss below a heating limit, divided by a COP that falls in the cold.`,
-        )
+        chart +
+        verdict +
+        sub(notes.filter(Boolean).join(" "))
       );
     },
     FORMS.scenarioLab,

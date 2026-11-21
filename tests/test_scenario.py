@@ -77,9 +77,12 @@ async def scenario(home: HomeAssistant, **data: Any) -> Any:
 async def test_more_battery_buys_less_from_the_grid(home: HomeAssistant) -> None:
     await setup_entry(home)
 
-    result = await scenario(home, extra_battery_kwh=5, battery_price=2500)
+    result = await scenario(
+        home, extra_battery_kwh=5, battery_price=2500, fill_year=False
+    )
 
     assert result["days"] == pytest.approx(30, abs=1)
+    assert not result["year"]["filled"]
     assert result["changed"]["import_kwh"] < result["now"]["import_kwh"]
     assert (
         result["changed"]["self_sufficiency_pct"]
@@ -105,12 +108,47 @@ async def test_a_heat_pump_in_the_cold_uses_more_than_the_roof_gives(
     await record_temperature(home, 2.0)
     await setup_entry(home, **{const.CONF_OUTDOOR_TEMPERATURE: OUTDOOR})
 
-    result = await scenario(home, heat_loss_w_per_k=180, hot_water_kwh_per_day=6)
+    result = await scenario(
+        home, heat_loss_w_per_k=180, hot_water_kwh_per_day=6, gas_price=0.12
+    )
 
-    assert result["changed"]["heat_pump_kwh"] > 5_000
-    assert result["changed"]["import_kwh"] > result["now"]["import_kwh"]
+    changed = result["changed"]
+    assert changed["heat_pump_kwh"] > 5_000
+    assert changed["import_kwh"] > result["now"]["import_kwh"]
     assert result["saving_per_year"] < 0
     assert 0 <= result["heat_pump_solar_pct"] <= 100
+    # A steady 2 °C: every day a heating day, 18 K below 20 °C every hour.
+    assert changed["space_heat_kwh"] == pytest.approx(
+        180 * 18 * 24 * 365 / 1000, rel=0.02
+    )
+    assert 2 < changed["seasonal_cop"] < 4
+    assert result["degree_hours"]["15"] == pytest.approx(18 * 24 * 365, rel=0.02)
+    gas = result["gas"]
+    assert gas["cost_per_year"] == pytest.approx(
+        (changed["space_heat_kwh"] + changed["hot_water_heat_kwh"]) / 0.9 * 0.12,
+        rel=0.01,
+    )
+    assert gas["saving_per_year"] == pytest.approx(
+        gas["cost_per_year"] - result["heat_pump_cost_per_year"], abs=1
+    )
+
+
+async def test_a_short_history_is_filled_to_a_year(home: HomeAssistant) -> None:
+    days = recent(45)
+    await record_house(home, days, evening)
+    await record_energy(home, SOLAR, days, sun)
+    set_states(home)
+    await setup(home, {const.CONF_SOLAR_ENERGY: SOLAR})
+
+    result = await scenario(home, extra_battery_kwh=5)
+
+    year = result["year"]
+    assert year["filled"]
+    assert result["days"] == pytest.approx(365)
+    assert year["measured_days"] + year["filled_days"] == pytest.approx(365)
+    assert year["filled_days"] > 300
+    assert len(result["months"]) == 12
+    assert result["changed"]["import_kwh"] < result["now"]["import_kwh"]
 
 
 async def test_a_heat_pump_needs_the_outdoor_temperature(home: HomeAssistant) -> None:

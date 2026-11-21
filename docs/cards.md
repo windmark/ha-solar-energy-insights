@@ -185,15 +185,45 @@ footnotes: true
 
 <img src="images/scenario-lab.png" width="380" alt="Scenario lab card">
 
-Your last year replayed with a bigger battery or a heat pump, against the house
-as it is: what you would have bought, exported and saved. Needs the solar energy
-counter, and for a heat pump an outdoor thermometer, in the integration's
-options.
+A year in your house again, with a bigger battery or a heat pump, against the
+house as it is: what you would have bought, exported and saved, and for a heat
+pump its heat, its electricity, how much of it the roof covers, month by month,
+and what it saves against gas. Needs the solar energy counter, and for a heat
+pump an outdoor thermometer, in the integration's options.
+
+The days the recorder doesn't have yet are filled from recorded days with a
+similar sun, moved to their season, so even half a year gives a year with a
+winter in it. The header says how many days were recorded and how many filled;
+filled months are drawn lighter.
+
+Each slider shows its value as it moves, and the year is replayed when you let
+go. What you set is kept, per dashboard and card, until **Back to the card's
+settings**.
+
+- **Heat loss**: the _effective_ one, as from a heating bill, with the sun's and
+  the household's heat already in it. Under **Against gas, and from your gas
+  bill**, enter a year's gas and the card works it out for the house as it is.
+  An energy consultant's heat load ÷ (20 °C − the design temperature) is higher,
+  as it leaves those out; scale it by your bill.
+- **Heating limit**: the daily mean temperature from which the house needs no
+  heating, about 15 °C for an older house and 12–13 °C once well insulated.
+- **Hot water**: about 2 kWh of heat a day per person.
+- **The heat pump itself**: the flow temperature on the coldest day, its size
+  (above it, a heating rod adds the rest), the COP at A2/W35 from its datasheet,
+  and whether it heats the hot water in the sunniest hours.
+
+See [the scenario action](reference.md#actions) for how the year is filled and
+the heat pump modelled.
 
 **In the card editor**
 
-- **Extra battery to start from**, **Heat loss to start from** (0: no heat pump)
-  and **Hot water heat per day**: where the sliders start.
+- **Extra battery to start from**, **Heat loss to start from** (0: no heat
+  pump), **Heating limit**, **Hot water heat per day**, **Flow temperature on
+  the coldest day**, **Heat pump size** and **COP at A2/W35**: where the sliders
+  start.
+- **The coldest day the heating is designed for**: −12 °C by default.
+- **Heat the hot water in the sunniest hours**
+- **Gas price per kWh** and **Gas standing charge**: to compare with gas.
 - **Battery price per kWh**: for the payback.
 
 <details>
@@ -202,8 +232,16 @@ options.
 ```yaml
 type: custom:solar-energy-insights-scenario-lab
 extra_battery_kwh: 5
-heat_loss_w_per_k: 0 # 0: no heat pump
-hot_water_kwh_per_day: 6
+heat_loss_w_per_k: 150 # 0: no heat pump
+heating_limit_c: 12.5
+hot_water_kwh_per_day: 8
+design_flow_c: 45
+design_outdoor_c: -12
+heat_pump_kw: 7 # optional, 0: always enough
+rated_cop: 4.5 # optional, 0: an average heat pump
+hot_water_at_noon: true
+gas_price: 0.11 # optional
+gas_standing_charge: 150 # optional
 battery_price_per_kwh: 400 # optional
 ```
 

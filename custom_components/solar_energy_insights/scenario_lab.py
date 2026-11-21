@@ -1,5 +1,6 @@
 """The scenario action: the last year replayed with a bigger battery or a heat
-pump, from the recorder's hourly statistics."""
+pump, from the recorder's hourly statistics, the days it lacks filled from the
+days it has."""
 
 from __future__ import annotations
 
@@ -19,8 +20,9 @@ from .const import (
     CONF_OUTDOOR_TEMPERATURE,
     CONF_SOLAR_ENERGY,
 )
+from .core.climate import Year, fill_year
 from .core.nights import plausible
-from .core.scenario import Comparison, Hour, Outcome, StringWorth
+from .core.scenario import Comparison, Gas, Hour, Outcome, StringWorth
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -122,6 +124,8 @@ class ScenarioLab:
         self.coordinator = coordinator
         self._hours: list[Hour] = []
         self._read_at: datetime | None = None
+        self._year: Year | None = None
+        self._year_of: datetime | None = None
 
     @property
     def temperature(self) -> str | None:
@@ -155,35 +159,107 @@ class ScenarioLab:
             self._read_at = now
         return self._hours
 
+    async def async_year(self) -> Year:
+        """The last year, the days the recorder lacks borrowed from the days it
+        has (see `climate.fill_year`). Filled once per reading."""
+        hours = await self.async_hours()
+        if self._year is None or self._year_of != self._read_at:
+            hass = self.coordinator.hass
+            end = self._read_at or dt_util.utcnow()
+            self._year = await hass.async_add_executor_job(
+                fill_year, hours, end, hass.config.latitude
+            )
+            self._year_of = self._read_at
+        return self._year
+
 
 def _outcome(o: Outcome, per_year: float) -> dict[str, Any]:
+    scop = o.seasonal_cop
     return {
         "import_kwh": round(o.import_kwh * per_year),
         "export_kwh": round(o.export_kwh * per_year),
         "use_kwh": round(o.load_kwh * per_year),
         "heat_pump_kwh": round(o.heat_pump_kwh * per_year),
+        "space_heat_kwh": round(o.space_heat_kwh * per_year),
+        "hot_water_heat_kwh": round(o.water_heat_kwh * per_year),
+        "heating_rod_kwh": round(o.backup_kwh * per_year),
+        "seasonal_cop": None if scop is None else round(scop, 2),
+        "heating_days": round(o.heating_days * per_year),
+        "battery_cycles": round(o.battery_cycles * per_year),
         "self_sufficiency_pct": round(o.self_sufficiency * 100, 1),
         "nights": o.nights,
         "nights_off_grid": o.nights_off_grid,
     }
 
 
+def _year(year: Year | None, c: Comparison) -> dict[str, Any]:
+    if year is None or not year.filled:
+        return {
+            "filled": False,
+            "measured_days": round(c.now.days, 1),
+            "filled_days": 0,
+            "filled_by_month": [0] * 12,
+        }
+    return {
+        "filled": True,
+        "measured_days": round(year.recorded_hours / 24, 1),
+        "filled_days": round(year.filled_hours / 24, 1),
+        "filled_by_month": [round(x * 100) for x in year.filled_share_by_month],
+    }
+
+
 def comparison_dict(
-    c: Comparison, extra_battery_kwh: float, battery_price: float | None
+    c: Comparison,
+    extra_battery_kwh: float,
+    battery_price: float | None,
+    gas: Gas | None = None,
+    year: Year | None = None,
 ) -> dict[str, Any]:
-    """The comparison per year, with the battery's payback if it has a price."""
+    """The comparison per year, with the battery's payback if it has a price,
+    and the heat pump against gas if that has one."""
     per_year = c.per_year
-    saving = c.saving_per_year
     share = c.heat_pump_solar_share
+    battery_saving = c.battery_saving_per_year
+    pump = c.changed.heat_pump_kwh > 0
+    gas_cost = c.gas_cost_per_year(gas) if gas is not None and pump else None
+    pump_cost = c.heat_pump_cost_per_year
     return {
         "days": round(c.now.days, 1),
         "now": _outcome(c.now, per_year),
         "changed": _outcome(c.changed, per_year),
-        "saving_per_year": round(saving, 2),
+        "saving_per_year": round(c.saving_per_year, 2),
+        "battery_saving_per_year": round(battery_saving, 2),
+        "heat_pump_cost_per_year": round(pump_cost, 2) if pump else None,
         "heat_pump_solar_pct": None if share is None else round(share * 100, 1),
-        "payback_years": round(battery_price / saving, 1)
-        if battery_price and extra_battery_kwh > 0 and saving > 0
+        "payback_years": round(battery_price / battery_saving, 1)
+        if battery_price and extra_battery_kwh > 0 and battery_saving > 0
         else None,
+        "gas": None
+        if gas_cost is None
+        else {
+            "cost_per_year": round(gas_cost, 2),
+            "saving_per_year": round(gas_cost - pump_cost, 2),
+        },
+        # Kelvin-hours a year by heating limit, so the card can show the heat
+        # for a heat loss before asking again; and G20/15 for a heating bill.
+        "degree_hours": {
+            f"{limit:g}": round(kh * per_year) for limit, kh in c.degree_hours.items()
+        },
+        "degree_hours_g20_15": None
+        if c.degree_hours_g20_15 is None
+        else round(c.degree_hours_g20_15 * per_year),
+        "year": _year(year, c),
+        "months": [
+            {
+                "month": m.month,
+                "import_now_kwh": round(m.import_now_kwh, 1),
+                "import_kwh": round(m.import_kwh, 1),
+                "heat_pump_kwh": round(m.heat_pump_kwh, 1),
+                "heat_pump_solar_kwh": round(m.heat_pump_solar_kwh, 1),
+                "measured_pct": round(m.measured_share * 100),
+            }
+            for m in c.months()
+        ],
         "price": round(c.price, 4),
         "feed_in": round(c.feed_in, 4),
     }

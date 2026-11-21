@@ -13,13 +13,20 @@ from custom_components.solar_energy_insights.core import batch
 from custom_components.solar_energy_insights.core.batch import Slices
 from custom_components.solar_energy_insights.core.battery import Battery
 from custom_components.solar_energy_insights.core.scenario import (
+    COP_IN_THE_FIELD,
+    G20_15,
+    Comparison,
+    Gas,
     HeatPump,
     Hour,
     Scenario,
     compare,
+    cop,
+    degree_hours,
     replay,
     string_worth,
 )
+from tests.core.weather_year import weather_year
 
 START = datetime(2025, 11, 1, tzinfo=UTC)
 BATTERY = Battery(capacity_kwh=10.0, soc_pct=50.0, floor_pct=10.0)
@@ -122,13 +129,207 @@ def test_a_house_losing_less_heat_needs_less() -> None:
     assert tight.import_kwh < leaky.import_kwh
 
 
-def test_no_heating_above_the_heating_limit() -> None:
+def test_no_heating_on_a_day_warmer_than_the_heating_limit() -> None:
+    # A mild day, 16 °C on average, with a chilly morning.
+    day = [
+        Hour(START + timedelta(hours=k), 0.0, 0.3, 16.0 + (6 if k > 6 else -4))
+        for k in range(24)
+    ]
+    cold = [replace(h, start=h.start + timedelta(days=1), outdoor_c=5.0) for h in day]
     pump = HeatPump(heat_loss_w_per_k=200.0, heating_limit_c=15.0)
 
-    assert pump.kwh(16.0) == 0.0
-    assert pump.kwh(0.0) > pump.kwh(10.0) > 0
+    load = pump.load(
+        [h.start for h in day + cold],
+        np.array([h.outdoor_c for h in day + cold]),
+        np.zeros(48),
+    )
+
+    assert load.space_heat[:24].sum() == 0.0
+    assert load.space_heat[24:].sum() > 0
+    assert load.heating_days == 1
+
+
+def test_the_cop_is_the_published_curve_in_the_field() -> None:
+    # Ruhnau et al. 2019, eq. 4, at a 33 K lift (A2/W35): 3.65, times 0.85.
+    assert float(cop(33.0)) == pytest.approx(3.6545 * COP_IN_THE_FIELD, rel=1e-4)
+    assert float(cop(33.0, rated_a2w35=4.6)) == pytest.approx(4.6 * COP_IN_THE_FIELD)
+    lifts = np.linspace(15, 65, 11)
+    assert all(np.diff(cop(lifts)) < 0)
+    # Held to the curve's range, it never turns back up.
+    assert float(cop(90.0)) == float(cop(65.0))
+
+
+def test_the_heating_curve_runs_from_the_room_to_the_design_flow() -> None:
+    pump = HeatPump(150.0, design_flow_c=45.0, design_outdoor_c=-12.0)
+
+    assert float(pump.flow_c(-12.0)) == pytest.approx(45.0)
+    assert float(pump.flow_c(20.0)) == pytest.approx(20.0)
+    # Radiators give more than linearly with their excess temperature, so
+    # half the load needs more than half the excess (EN 442, n = 1.3).
+    assert float(pump.flow_c(4.0)) > 20.0 + 0.5 * 25
     # Colder air: both more heat and a worse coefficient of performance.
-    assert pump.cop(-7.0) < pump.cop(7.0)
+    assert float(pump.space_cop(-7.0)) < float(pump.space_cop(7.0))
+    # A lower flow temperature is more efficient.
+    assert float(HeatPump(150.0, design_flow_c=35.0).space_cop(0.0)) > float(
+        pump.space_cop(0.0)
+    )
+
+
+def test_the_heat_is_the_heat_loss_times_the_degree_hours() -> None:
+    hours = weather_year()
+    pump = HeatPump(180.0, heating_limit_c=14.0)
+    starts = [h.start for h in hours]
+    temps = np.array([h.outdoor_c for h in hours])
+
+    outcome = replay(hours, BATTERY, pump)
+
+    assert outcome.space_heat_kwh == pytest.approx(
+        180.0 * degree_hours(starts, temps, 20.0, 14.0) / 1000
+    )
+
+
+def test_degree_hours_count_as_germanys_degree_days_do() -> None:
+    # A month at a steady 5 °C: 30 days of 15 K each, below the 15 °C limit.
+    starts = [START + timedelta(hours=k) for k in range(30 * 24)]
+    steady = np.full(len(starts), 5.0)
+
+    assert degree_hours(starts, steady, *G20_15) == pytest.approx(30 * 15 * 24)
+    assert degree_hours(starts, steady + 11.0, *G20_15) == 0.0
+
+
+def test_a_renovated_house_near_augsburg_lands_where_the_bill_says() -> None:
+    """A check against real numbers: an effective 245 W/K at G20/15 gives the
+    ~22,000 kWh a year of space heat a 1970 house near Augsburg burns gas for,
+    and the renovated house at 150 W/K, a 12.5 °C limit and 3,000 kWh of hot
+    water needs a third of that in electricity, a fifth to a third of it from
+    the roof (most of the heat is needed when the sun is low)."""
+    hours = weather_year()
+    today = compare(hours, BATTERY, Scenario(heat_pump=HeatPump(245.0)), PRICE, FEED_IN)
+    renovated = compare(
+        hours,
+        BATTERY,
+        Scenario(heat_pump=HeatPump(150.0, 12.5, hot_water_kwh_per_day=8.2)),
+        PRICE,
+        FEED_IN,
+    )
+
+    assert today.degree_hours_g20_15 is not None
+    assert 3_300 < today.degree_hours_g20_15 / 24 < 4_300  # Kd
+    assert 19_000 < today.changed.space_heat_kwh < 25_000
+    o = renovated.changed
+    assert 10_000 < o.space_heat_kwh < 14_000
+    assert o.water_heat_kwh == pytest.approx(8.2 * 365, rel=0.01)
+    assert o.seasonal_cop is not None
+    assert 2.8 < o.seasonal_cop < 3.6
+    share = renovated.heat_pump_solar_share
+    assert share is not None
+    assert 0.15 < share < 0.35
+
+
+def roof(c: Comparison) -> float:
+    """The heat pump's share from the roof, which a heat pump always has."""
+    assert c.heat_pump_solar_share is not None
+    return c.heat_pump_solar_share
+
+
+def test_hot_water_in_the_sun_takes_more_from_the_roof() -> None:
+    hours = weather_year()
+    spread = HeatPump(150.0, 12.5, hot_water_kwh_per_day=8.0)
+    sunny = replace(spread, hot_water_at_noon=True)
+
+    a = compare(hours, BATTERY, Scenario(heat_pump=spread), PRICE, FEED_IN)
+    b = compare(hours, BATTERY, Scenario(heat_pump=sunny), PRICE, FEED_IN)
+
+    assert b.changed.water_heat_kwh == pytest.approx(a.changed.water_heat_kwh)
+    assert roof(b) > roof(a)
+    assert b.heat_pump_cost_per_year < a.heat_pump_cost_per_year
+
+
+def test_a_small_heat_pump_leaves_the_coldest_hours_to_the_heating_rod() -> None:
+    hours = weather_year()
+    big = HeatPump(250.0)
+    small = replace(big, capacity_kw=4.0)
+
+    a = replay(hours, BATTERY, big)
+    b = replay(hours, BATTERY, small)
+
+    assert a.backup_kwh == 0.0
+    assert b.backup_kwh > 0
+    assert b.heat_kwh == pytest.approx(a.heat_kwh)
+    assert b.heat_pump_kwh > a.heat_pump_kwh
+    assert a.seasonal_cop is not None
+    assert b.seasonal_cop is not None
+    assert b.seasonal_cop < a.seasonal_cop
+
+
+def test_a_battery_and_a_heat_pump_are_priced_apart() -> None:
+    hours = weather_year()
+    pump = HeatPump(150.0, 12.5, hot_water_kwh_per_day=8.0)
+
+    battery_only = compare(
+        hours, BATTERY, Scenario(extra_battery_kwh=5.0), PRICE, FEED_IN
+    )
+    pump_only = compare(hours, BATTERY, Scenario(heat_pump=pump), PRICE, FEED_IN)
+    both = compare(
+        hours, BATTERY, Scenario(extra_battery_kwh=5.0, heat_pump=pump), PRICE, FEED_IN
+    )
+
+    # Together, the savings add up to the whole change.
+    assert both.saving_per_year == pytest.approx(
+        both.battery_saving_per_year - pump_only.heat_pump_cost_per_year
+    )
+    # With the heat pump's nights to cover, the battery is worth no less.
+    assert both.battery_saving_per_year >= battery_only.battery_saving_per_year - 1e-6
+    # The bigger battery lets more of the heat pump run on the roof's power.
+    assert roof(both) >= roof(pump_only)
+    assert both.heat_pump_cost_per_year <= pump_only.heat_pump_cost_per_year
+
+
+def test_the_months_add_up_to_the_year() -> None:
+    hours = weather_year()
+    result = compare(
+        hours,
+        BATTERY,
+        Scenario(heat_pump=HeatPump(150.0, 12.5, hot_water_kwh_per_day=8.0)),
+        PRICE,
+        FEED_IN,
+    )
+
+    months = result.months()
+    assert [m.month for m in months] == list(range(1, 13))
+    assert sum(m.heat_pump_kwh for m in months) == pytest.approx(
+        result.changed.heat_pump_kwh
+    )
+    assert sum(m.import_kwh for m in months) == pytest.approx(result.changed.import_kwh)
+    january, june = months[0], months[5]
+    assert january.heat_pump_kwh > 3 * june.heat_pump_kwh
+    assert (
+        january.heat_pump_solar_kwh / january.heat_pump_kwh
+        < june.heat_pump_solar_kwh / june.heat_pump_kwh
+    )
+
+
+def test_against_gas_the_heat_pump_saves_when_gas_is_dear_enough() -> None:
+    hours = weather_year()
+    result = compare(
+        hours, BATTERY, Scenario(heat_pump=HeatPump(150.0, 12.5)), PRICE, FEED_IN
+    )
+
+    cheap = result.gas_cost_per_year(Gas(0.05))
+    dear = result.gas_cost_per_year(Gas(0.15, standing_per_year=150))
+
+    assert cheap is not None
+    assert dear is not None
+    assert cheap < result.heat_pump_cost_per_year < dear
+    assert dear == pytest.approx(result.changed.heat_kwh / 0.9 * 0.15 + 150)
+
+
+def test_a_bigger_battery_cycles_less_for_the_same_house() -> None:
+    hours = year()
+    result = compare(hours, BATTERY, Scenario(extra_battery_kwh=10.0), PRICE, FEED_IN)
+
+    assert 50 < result.now.battery_cycles < 365
+    assert result.changed.battery_cycles < result.now.battery_cycles
 
 
 def test_a_heat_pump_without_temperatures_is_refused() -> None:

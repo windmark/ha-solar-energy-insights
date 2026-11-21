@@ -75,3 +75,65 @@ scenario:
           max: 1000000
           step: 1
           mode: box
+    design_flow_c:
+      default: 45
+      selector:
+        number:
+          min: 25
+          max: 75
+          step: 1
+          unit_of_measurement: °C
+    design_outdoor_c:
+      default: -12
+      selector:
+        number:
+          min: -30
+          max: 5
+          step: 1
+          unit_of_measurement: °C
+    heat_pump_kw:
+      example: 7
+      selector:
+        number:
+          min: 0
+          max: 50
+          step: 0.5
+          unit_of_measurement: kW
+    rated_cop:
+      example: 4.5
+      selector:
+        number:
+          min: 2
+          max: 7
+          step: 0.1
+    hot_water_at_noon:
+      default: false
+      selector:
+        boolean:
+    gas_price:
+      example: 0.11
+      selector:
+        number:
+          min: 0
+          max: 2
+          step: 0.001
+          mode: box
+    boiler_efficiency:
+      default: 0.9
+      selector:
+        number:
+          min: 0.5
+          max: 1.1
+          step: 0.01
+    gas_standing_charge:
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 10000
+          step: 1
+          mode: box
+    fill_year:
+      default: true
+      selector:
+        boolean:
