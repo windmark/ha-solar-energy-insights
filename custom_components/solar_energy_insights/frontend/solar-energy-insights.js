@@ -3711,7 +3711,7 @@
               bars += `<rect x="${x}" y="${H_ - hn}" width="${
                 bw / 2
               }" height="${hn}" rx="1.5" fill="${
-                C.track
+                C.muted
               }" opacity="${op}"/><rect x="${x + bw / 2}" y="${
                 H_ - hc
               }" width="${bw / 2}" height="${hc}" rx="1.5" fill="${
