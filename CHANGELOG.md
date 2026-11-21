@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.27.0] - 2026-11-21
+
 ### Added
 
 - The scenario lab fills the days the recorder doesn't have yet from recorded days with a similar sun, moved to their season, so half a year replays as a whole one with a winter in it. Before, it scaled the recorded days up, which for a summer and an autumn made a heat pump look less than half its size and twice as sunny.
