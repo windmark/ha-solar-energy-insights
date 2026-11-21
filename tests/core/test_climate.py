@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import numpy as np
 import pytest
@@ -19,6 +19,7 @@ from custom_components.solar_energy_insights.core.climate import (
 from custom_components.solar_energy_insights.core.scenario import (
     Comparison,
     HeatPump,
+    Hour,
     Scenario,
     compare,
 )
@@ -170,3 +171,73 @@ def test_a_filled_half_year_answers_much_like_the_whole_year() -> None:
     assert heat(filled) == pytest.approx(heat(whole), rel=0.15)
     assert roof(scaled) > 1.5 * roof(whole)
     assert roof(filled) == pytest.approx(roof(whole), abs=0.05)
+
+
+def test_the_thermometers_own_year_stands_in_borrowed_hours() -> None:
+    """The thermometer usually records all year, the solar and the house's
+    meter only lately: the borrowed hours keep its readings."""
+    hours = weather_year()
+    temperatures = {h.start: h.outdoor_c for h in hours if h.outdoor_c is not None}
+    part = [h for h in hours if h.start >= END - timedelta(days=197)]
+
+    year = fill_year(part, END, LATITUDE, temperatures=temperatures)
+
+    assert year.filled
+    assert year.measured_temperature_hours == year.filled_hours
+    assert [h.outdoor_c for h in year.hours] == [h.outdoor_c for h in hours]
+
+
+def test_with_its_thermometer_a_filled_half_year_gets_the_winter_right() -> None:
+    hours = weather_year()
+    temperatures = {h.start: h.outdoor_c for h in hours if h.outdoor_c is not None}
+    part = [h for h in hours if h.start >= END - timedelta(days=197)]
+    scenario = Scenario(heat_pump=RENOVATED)
+
+    whole = compare(hours, BATTERY, scenario, 0.30, 0.08)
+    filled = compare(
+        fill_year(part, END, LATITUDE, temperatures=temperatures).hours,
+        BATTERY,
+        scenario,
+        0.30,
+        0.08,
+    )
+
+    assert filled.changed.space_heat_kwh == pytest.approx(
+        whole.changed.space_heat_kwh, rel=1e-9
+    )
+    assert filled.degree_hours_g20_15 == pytest.approx(whole.degree_hours_g20_15)
+    # Cold days borrow cold days' sun: the roof's share stays close.
+    whole_share = whole.heat_pump_solar_share
+    assert whole_share is not None
+    assert filled.heat_pump_solar_share == pytest.approx(whole_share, abs=0.04)
+
+
+def test_a_cold_day_borrows_a_cold_day() -> None:
+    """Among recorded days with a similar sun, a day the thermometer measured
+    cold borrows a cold one. Here the recorded autumn alternates mild and cold
+    days, the house using 1 kWh an hour on mild ones and 2 on cold ones, and
+    the winter to fill was measured cold throughout."""
+    start = END - timedelta(days=365)
+    recorded_from = END - timedelta(days=60)
+
+    def mean(t: datetime) -> float:
+        n = t.timetuple().tm_yday
+        return 9.0 - 9.0 * math.cos(2 * math.pi * (n - 17) / 365.25)
+
+    def cold(t: datetime) -> bool:
+        return t < recorded_from or t.toordinal() % 2 == 1
+
+    temperatures, hours = {}, []
+    t = start
+    while t < END:
+        temperatures[t] = mean(t) + (-4.0 if cold(t) else 4.0)
+        if t >= recorded_from:
+            hours.append(Hour(t, 0.5, 2.0 if cold(t) else 1.0, temperatures[t]))
+        t += timedelta(hours=1)
+
+    year = fill_year(hours, END, LATITUDE, temperatures=temperatures)
+
+    assert year.filled
+    borrowed = [h.house_kwh for h in year.hours if not h.measured]
+    assert borrowed
+    assert set(borrowed) == {2.0}
